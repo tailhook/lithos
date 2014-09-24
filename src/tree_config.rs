@@ -5,4 +5,6 @@ pub struct TreeConfig {
     readonly_paths: Vec<Path>,
     writable_paths: Vec<Path>,
     devices: Path,
+    min_port: u16,
+    max_port: u16,
 }

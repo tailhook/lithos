@@ -16,4 +16,8 @@ struct ContainerConfig {
     memory_limit: uint,
     cpu_shares: uint,
     instances: uint,
+    executable: Path,
+    hostname: String,
+    command: Vec<String>,
+    environ: TreeMap<String, String>,
 }
