@@ -1,0 +1,24 @@
+#!/bin/sh -e
+
+target_dir="$1"
+
+if test -z "${target_dir}"; then
+    echo "Usage: lithos-mkdev /var/lib/lithos/dev" >&2
+    exit 1
+fi
+
+set -x
+
+mkdir -p "${target_dir}"
+mknod -m 666 "${target_dir}/null" c 1 3
+mknod -m 666 "${target_dir}/zero" c 1 5
+mknod -m 666 "${target_dir}/random" c 1 8
+mknod -m 666 "${target_dir}/urandom" c 1 9
+mknod -m 666 "${target_dir}/tty" c 5 0
+mknod -m 666 "${target_dir}/full" c 1 7
+mknod -m 666 "${target_dir}/ptmx" c 5 2
+
+ln -s /proc/self/fd "${target_dir}/fd"
+ln -s /proc/self/fd/0 "${target_dir}/stdin"
+ln -s /proc/self/fd/1 "${target_dir}/stdout"
+ln -s /proc/self/fd/2 "${target_dir}/stderr"
