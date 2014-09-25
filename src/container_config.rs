@@ -1,4 +1,8 @@
+use std::default::Default;
 use std::collections::TreeMap;
+
+use quire::validate::{Validator, Structure, Sequence, Scalar, Numeric};
+use quire::validate::{Mapping};
 
 /*
 TODO(tailhook) use the following volume
@@ -11,13 +15,50 @@ enum Volume {
 
 type Volume = String;
 
-struct ContainerConfig {
-    volumes: TreeMap<String, Volume>,
-    memory_limit: uint,
-    cpu_shares: uint,
-    instances: uint,
-    executable: Path,
-    hostname: String,
-    command: Vec<String>,
-    environ: TreeMap<String, String>,
+#[deriving(Decodable)]
+pub struct ContainerConfig {
+    pub volumes: TreeMap<String, Volume>,
+    pub memory_limit: u64,
+    pub cpu_shares: uint,
+    pub instances: uint,
+    pub executable: Path,
+    pub hostname: String,
+    pub command: Vec<String>,
+    pub environ: TreeMap<String, String>,
+}
+
+impl ContainerConfig {
+    pub fn validator() -> Box<Validator> {
+        return box Structure { members: vec!(
+            ("volumes".to_string(), box Mapping {
+                key_element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+                value_element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+            } as Box<Validator>),
+            ("memory_limit".to_string(), box Numeric {
+                default: Some(0xffffffffffffffffu64),
+                .. Default::default()} as Box<Validator>),
+            ("cpu_shares".to_string(), box Numeric {
+                default: Some(1024u),
+                .. Default::default()} as Box<Validator>),
+            ("instances".to_string(), box Numeric {
+                default: Some(1u),
+                .. Default::default()} as Box<Validator>),
+            ("executable".to_string(), box Scalar {
+                .. Default::default() } as Box<Validator>),
+            ("hostname".to_string(), box Scalar {
+                .. Default::default()} as Box<Validator>),
+            ("command".to_string(), box Sequence {
+                element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+                } as Box<Validator>),
+            ("environ".to_string(), box Mapping {
+                key_element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+                value_element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+            } as Box<Validator>),
+        )} as Box<Validator>;
+    }
 }

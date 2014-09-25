@@ -7,20 +7,16 @@ extern crate argparse;
 extern crate quire;
 
 
-use std::rc::Rc;
 use std::io::stderr;
-use std::io::fs::File;
+use std::io::fs::readdir;
 use std::os::set_exit_status;
 use std::default::Default;
-use std::collections::TreeMap;
-use serialize::Decodable;
 
 use argparse::{ArgumentParser, Store};
-use quire::parser::parse;
-use quire::ast::process;
-use quire::decode::YamlDecoder;
+use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
+use lithos::container_config::ContainerConfig;
 
 #[path="../mod.rs"]
 mod lithos;
@@ -33,19 +29,20 @@ macro_rules! try_str {
 
 
 fn run(config_file: Path) -> Result<(), String> {
-    let mut file = try_str!(File::open(&config_file));
-    let body = try_str!(file.read_to_str());
-    let (ast, warnings) = try_str!(parse(
-        Rc::new(config_file.display().as_maybe_owned().into_string()),
-        body.as_slice(),
-        |doc| { process(Default::default(), doc) }));
-    if warnings.len() > 0 {
-        (write!(stderr(), "Warnings: {}", warnings.len())).ok();
-        return Err("Error parsing configuration file".to_string());
-    }
+    let cfg: TreeConfig = try_str!(parse_config(&config_file,
+        TreeConfig::validator(), Default::default()));
 
-    let mut dec = YamlDecoder::new(ast);
-    let cfg: TreeConfig = try_str!(Decodable::decode(&mut dec));
+    let mut children: Vec<ContainerConfig> = Vec::new();
+    for child_fn in try_str!(readdir(&cfg.config_dir)).iter() {
+        match (child_fn.filestem_str(), child_fn.extension_str()) {
+            (Some(""), _) => continue,  // Hidden files
+            (_, Some(".yaml")) => {}
+            _ => continue,  // Non-yaml, old, whatever, files
+        }
+        let child_cfg = try_str!(parse_config(&config_file,
+            ContainerConfig::validator(), Default::default()));
+        children.push(child_cfg);
+    }
 
     return Ok(());
 }

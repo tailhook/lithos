@@ -1,0 +1,6 @@
+containers:
+
+  busybox:
+    builder: docker
+    parameters:
+      image: busybox
