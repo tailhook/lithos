@@ -54,7 +54,7 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
 
     info!("Starting container {}", name);
 
-    let mut mon = Monitor::new();
+    let mut mon = Monitor::new(name.clone());
     let name = name + ".main";
     mon.add(name.clone(), box Target {
         name: name,

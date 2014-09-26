@@ -3,6 +3,9 @@
 #include <signal.h>
 #include <sched.h>
 #include <unistd.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 
 typedef struct {
@@ -11,6 +14,12 @@ typedef struct {
     char ** const exec_args;
     char ** const exec_environ;
 } CCommand;
+
+typedef struct {
+    int signo;
+    pid_t pid;
+    int status;
+} CSignalInfo;
 
 static void _run_container(CCommand *cmd) {
     (void)execve(cmd->exec_path, cmd->exec_args, cmd->exec_environ);
@@ -25,5 +34,32 @@ pid_t execute_command(CCommand *cmd) {
         stack + stack_size,
         cmd->namespaces|SIGCHLD,
         cmd);
+}
+
+void block_all_signals() {
+    sigset_t mask;
+    sigfillset(&mask);
+    sigprocmask(SIG_BLOCK, &mask, NULL);
+}
+
+void wait_any_signal(CSignalInfo *sig) {
+    sigset_t mask;
+    sigfillset(&mask);
+    while(1) {
+        siginfo_t native_info;
+        int rc = sigwaitinfo(&mask, &native_info);
+        if(rc < 0){
+            if(errno == EINTR) {
+                continue;
+            } else {
+                fprintf(stderr, "Wrong error code for sigwaitinfo: %m\n");
+                abort();
+            }
+        }
+        sig->signo = native_info.si_signo;
+        sig->pid = native_info.si_pid;
+        sig->status = native_info.si_status;
+        return;
+    }
 }
 

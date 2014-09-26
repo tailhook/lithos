@@ -2,6 +2,7 @@ use std::collections::TreeMap;
 use libc::pid_t;
 
 use super::container::Command;
+use super::signal;
 
 pub trait Executor {
     fn command(&self) -> Command;
@@ -13,12 +14,14 @@ pub struct Process<'a> {
 }
 
 pub struct Monitor<'a> {
+    myname: String,
     processes: TreeMap<String, Process<'a>>,
 }
 
 impl<'a> Monitor<'a> {
-    pub fn new() -> Monitor {
+    pub fn new(name: String) -> Monitor {
         return Monitor {
+            myname: name,
             processes: TreeMap::new(),
         };
     }
@@ -32,7 +35,8 @@ impl<'a> Monitor<'a> {
         for (name, prc) in self.processes.mut_iter() {
             match prc.executor.command().spawn() {
                 Ok(pid) => {
-                    info!("Process {} started with pid {}", name, pid);
+                    info!("[{:s}] Process {} started with pid {}",
+                        self.myname, name, pid);
                     prc.current_pid = Some(pid);
                 }
                 Err(e) => {
@@ -41,6 +45,9 @@ impl<'a> Monitor<'a> {
                 }
             }
         }
-        unimplemented!();
+        loop {
+            let sig = signal::wait_next();
+            info!("[{:s}] Got signal {}", self.myname, sig);
+        }
     }
 }

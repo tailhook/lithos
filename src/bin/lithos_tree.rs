@@ -23,6 +23,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::monitor::{Monitor, Executor};
 use lithos::container::Command;
+use lithos::signal;
 
 #[path="../mod.rs"]
 mod lithos;
@@ -74,7 +75,7 @@ fn run(config_file: Path) -> Result<(), String> {
         children.insert(child_fn, child_cfg);
     }
 
-    let mut mon = Monitor::new();
+    let mut mon = Monitor::new("lithos-tree".to_string());
     let config_file = Rc::new(config_file);
     for (path, cfg) in children.move_iter() {
         let cfg = Rc::new(cfg);
@@ -112,6 +113,9 @@ fn check_binaries() -> bool {
 }
 
 fn main() {
+
+    signal::block_all();
+
     if !check_binaries() {
         set_exit_status(127);
         return;
