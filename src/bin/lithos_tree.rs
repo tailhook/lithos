@@ -8,9 +8,9 @@ extern crate argparse;
 extern crate quire;
 
 
+use std::rc::Rc;
 use std::io::stderr;
 use std::io::fs::readdir;
-use std::io::process::Command;
 use std::os::{set_exit_status, self_exe_path};
 use std::default::Default;
 use std::collections::HashMap;
@@ -20,32 +20,35 @@ use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
-use lithos::monitor::Monitor;
+use lithos::monitor::{Monitor, Executor};
 use lithos::container::Command;
 
 #[path="../mod.rs"]
 mod lithos;
 
-macro_rules! try_str {
-    ($expr:expr) => {
-        try!(($expr).map_err(|e| format!("{}: {}", stringify!($expr), e)))
-    }
+
+struct Child {
+    name: String,
+    global_config: Rc<Path>,
+    container_file: Rc<Path>,
+    container_config: Rc<ContainerConfig>,
 }
 
-fn gen_command(name: &String, global_config: &Path,
-    container_file: &Path, _container_config: &ContainerConfig) -> Command
-{
-    let mut cmd = Command::new(self_exe_path().unwrap().join("lithos_knot"));
+impl Executor for Child {
+    fn command(&self) -> Command
+    {
+        let mut cmd = Command::new(
+            self_exe_path().unwrap().join("lithos_knot"));
+        // Name is first here, so it's easily visible in ps
+        cmd.arg("--name");
+        cmd.arg(self.name.as_slice());
 
-    // Name is first here, so it's easily visible in ps
-    cmd.arg("--name");
-    cmd.arg(name.as_slice());
-
-    cmd.arg("--global-config");
-    cmd.arg(global_config);
-    cmd.arg("--container-config");
-    cmd.arg(container_file);
-    return cmd;
+        cmd.arg("--global-config");
+        cmd.arg(&*self.global_config);
+        cmd.arg("--container-config");
+        cmd.arg(&*self.container_file);
+        return cmd;
+    }
 }
 
 fn run(config_file: Path) -> Result<(), String> {
@@ -53,25 +56,36 @@ fn run(config_file: Path) -> Result<(), String> {
         TreeConfig::validator(), Default::default()));
 
     let mut children: HashMap<Path, ContainerConfig> = HashMap::new();
-    for child_fn in try_str!(readdir(&cfg.config_dir)).move_iter() {
+    debug!("Checking child dir {}", cfg.config_dir);//.display());
+    for child_fn in try_str!(readdir(&Path::new(cfg.config_dir.as_slice()))).move_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
-            (_, Some(".yaml")) => {}
+            (_, Some("yaml")) => {}
             _ => continue,  // Non-yaml, old, whatever, files
         }
-        let child_cfg = try_str!(parse_config(&config_file,
+        debug!("Adding {}", child_fn.display());
+        let child_cfg = try_str!(parse_config(&child_fn,
             ContainerConfig::validator(), Default::default()));
         children.insert(child_fn, child_cfg);
     }
 
     let mut mon = Monitor::new();
-    for (path, cfg) in children.iter() {
+    let config_file = Rc::new(config_file);
+    for (path, cfg) in children.move_iter() {
+        let cfg = Rc::new(cfg);
+        let path = Rc::new(path);
+        let stem = path.filestem_str().unwrap();
         for i in range(0, cfg.instances) {
-            let name = format!("{}.{}", path.filestem_str(), i);
-            mon.add(name, |name| gen_command(name, &config_file, path, cfg));
+            let name = format!("{}.{}", stem, i);
+            mon.add(name.clone(), box Child {
+                name: name,
+                global_config: config_file.clone(),
+                container_file: path.clone(),
+                container_config: cfg.clone(),
+            });
         }
     }
-    mon.wait_all();
+    mon.run();
 
     return Ok(());
 }

@@ -15,13 +15,13 @@ enum Volume {
 
 type Volume = String;
 
-#[deriving(Decodable)]
+#[deriving(Decodable, Encodable)]
 pub struct ContainerConfig {
     pub volumes: TreeMap<String, Volume>,
     pub memory_limit: u64,
     pub cpu_shares: uint,
     pub instances: uint,
-    pub executable: Path,
+    pub executable: String,
     pub hostname: String,
     pub command: Vec<String>,
     pub environ: TreeMap<String, String>,

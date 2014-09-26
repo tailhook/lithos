@@ -7,10 +7,15 @@ DESTDIR ?=
 QUIRELIB = rust-quire/$(shell rustc --crate-file-name rust-quire/src/lib.rs)
 ARGPARSELIB = rust-argparse/$(shell rustc --crate-file-name rust-argparse/argparse/mod.rs)
 
-all: quire argparse lithos_tree
+all: quire argparse lithos_tree lithos_knot
 
 lithos_tree: $(ARGPARSELIB) $(QUIRELIB) src/*.rs src/*/*.rs libcontainer.a
 	$(RUSTC) src/bin/lithos_tree.rs -g -o $@ \
+		-L rust-quire -L rust-argparse \
+		$(if $(NIX_PROFILES_SUPPORT),--cfg nix_profiles,)
+
+lithos_knot: $(ARGPARSELIB) $(QUIRELIB) src/*.rs src/*/*.rs libcontainer.a
+	$(RUSTC) src/bin/lithos_knot.rs -g -o $@ \
 		-L rust-quire -L rust-argparse \
 		$(if $(NIX_PROFILES_SUPPORT),--cfg nix_profiles,)
 
