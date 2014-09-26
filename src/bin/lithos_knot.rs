@@ -8,7 +8,7 @@ extern crate libc;
 extern crate argparse;
 extern crate quire;
 
-use std::os::{set_exit_status};
+use std::os::{set_exit_status, getenv};
 use std::io::stderr;
 use std::default::Default;
 
@@ -17,11 +17,34 @@ use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
-use lithos::monitor::{Monitor};
+use lithos::container::{Command};
+use lithos::monitor::{Monitor, Executor};
 
 #[path="../mod.rs"]
 mod lithos;
 
+struct Target {
+    name: String,
+    global: TreeConfig,
+    local: ContainerConfig,
+}
+
+impl Executor for Target {
+    fn command(&self) -> Command
+    {
+        let mut cmd = Command::new(self.local.executable.as_slice());
+
+        // Should we propagate TERM?
+        cmd.set_env("TERM".to_string(),
+                    getenv("TERM").unwrap_or("dumb".to_string()));
+        cmd.update_env(self.local.environ.iter());
+        cmd.set_env("LITHOS_NAME".to_string(), self.name.clone());
+
+        cmd.args(self.local.arguments.as_slice());
+
+        return cmd;
+    }
+}
 
 fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     let global: TreeConfig = try_str!(parse_config(&global_cfg,
@@ -32,6 +55,12 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     info!("Starting container {}", name);
 
     let mut mon = Monitor::new();
+    let name = name + ".main";
+    mon.add(name.clone(), box Target {
+        name: name,
+        global: global,
+        local: local,
+    });
     mon.run();
 
     return Ok(());

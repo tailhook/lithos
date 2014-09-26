@@ -23,7 +23,7 @@ pub struct ContainerConfig {
     pub instances: uint,
     pub executable: String,
     pub hostname: String,
-    pub command: Vec<String>,
+    pub arguments: Vec<String>,
     pub environ: TreeMap<String, String>,
 }
 

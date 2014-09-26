@@ -62,9 +62,21 @@ impl Command {
     pub fn arg<T:ToCStr>(&mut self, arg: T) {
         self.arguments.push(arg.to_c_str());
     }
+    pub fn args<T:ToCStr>(&mut self, arg: &[T]) {
+        self.arguments.extend(arg.iter().map(|v| v.to_c_str()));
+    }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
     }
+
+    pub fn update_env<'x, I: Iterator<(&'x String, &'x String)>>(&mut self,
+        mut env: I)
+    {
+        for (k, v) in env {
+            self.environment.insert(k.clone(), v.clone());
+        }
+    }
+
     pub fn container(&mut self, network: bool) {
         self.namespaces.add(NewMount);
         self.namespaces.add(NewUts);
