@@ -21,7 +21,7 @@ pid_t execute_command(CCommand *cmd) {
     size_t stack_size = sysconf(_SC_PAGESIZE);
     void *stack = alloca(stack_size);
 
-    return clone(_run_container,
+    return clone((int (*)(void*))_run_container,
         stack + stack_size,
         cmd->namespaces|SIGCHLD,
         cmd);

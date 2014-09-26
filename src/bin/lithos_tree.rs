@@ -10,6 +10,7 @@ extern crate quire;
 
 use std::rc::Rc;
 use std::io::stderr;
+use std::os::getenv;
 use std::io::fs::readdir;
 use std::os::{set_exit_status, self_exe_path};
 use std::default::Default;
@@ -47,6 +48,10 @@ impl Executor for Child {
         cmd.arg(&*self.global_config);
         cmd.arg("--container-config");
         cmd.arg(&*self.container_file);
+        cmd.set_env("TERM".to_string(),
+                    getenv("TERM").unwrap_or("dumb".to_string()));
+        getenv("RUST_LOG").map(|x| cmd.set_env("RUST_LOG".to_string(), x));
+        cmd.container(false);
         return cmd;
     }
 }

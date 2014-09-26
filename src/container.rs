@@ -8,6 +8,7 @@ use std::collections::enum_set::{EnumSet, CLike};
 
 use libc::{c_int, pid_t};
 
+#[deriving(Show)]
 enum Namespace {
     NewMount,
     NewUts,
@@ -60,6 +61,18 @@ impl Command {
     }
     pub fn arg<T:ToCStr>(&mut self, arg: T) {
         self.arguments.push(arg.to_c_str());
+    }
+    pub fn set_env(&mut self, key: String, value: String) {
+        self.environment.insert(key, value);
+    }
+    pub fn container(&mut self, network: bool) {
+        self.namespaces.add(NewMount);
+        self.namespaces.add(NewUts);
+        self.namespaces.add(NewIpc);
+        self.namespaces.add(NewPid);
+        if network {
+            self.namespaces.add(NewNet);
+        }
     }
     pub fn spawn(&self) -> Result<pid_t, IoError> {
         let mut exec_args: Vec<*u8> = self.arguments.iter()

@@ -29,6 +29,8 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     let local: ContainerConfig = try_str!(parse_config(&local_cfg,
         ContainerConfig::validator(), Default::default()));
 
+    info!("Starting container {}", name);
+
     let mut mon = Monitor::new();
     mon.run();
 

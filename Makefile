@@ -20,7 +20,7 @@ lithos_knot: $(ARGPARSELIB) $(QUIRELIB) src/*.rs src/*/*.rs libcontainer.a
 		$(if $(NIX_PROFILES_SUPPORT),--cfg nix_profiles,)
 
 libcontainer.a: container.c
-	$(CC) -c $< -o $@
+	$(CC) -c $< -o $@ -D_GNU_SOURCE -std=c99
 
 quire:
 	make -C rust-quire quire-lib
