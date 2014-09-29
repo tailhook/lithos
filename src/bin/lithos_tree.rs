@@ -11,8 +11,9 @@ extern crate quire;
 use std::rc::Rc;
 use std::io::stderr;
 use std::os::getenv;
-use std::io::fs::readdir;
+use std::io::fs::{readdir, mkdir, mkdir_recursive, rmdir, rmdir_recursive};
 use std::os::{set_exit_status, self_exe_path};
+use std::io::FilePermission;
 use std::default::Default;
 use std::collections::HashMap;
 
@@ -57,13 +58,40 @@ impl Executor for Child {
     }
 }
 
+fn check_config(cfg: &TreeConfig) -> Result<(), String> {
+    if !Path::new(cfg.devfs_dir.as_slice()).exists() {
+        return Err(format!(
+            "Devfs dir ({}) must exist and contain device nodes",
+            cfg.devfs_dir));
+    }
+    return Ok(());
+}
+
+fn global_init(cfg: &TreeConfig) -> Result<(), String> {
+    try_str!(mkdir_recursive(&Path::new(cfg.mount_dir.as_slice()),
+        FilePermission::from_bits_truncate(0o755)));
+    try_str!(mkdir_recursive(&Path::new(cfg.state_dir.as_slice()),
+        FilePermission::from_bits_truncate(0o755)));
+    return Ok(());
+}
+
+fn global_cleanup(cfg: &TreeConfig) {
+    rmdir(&Path::new(cfg.mount_dir.as_slice())).map_err(
+        |e| error!("Error removing mount dir {}: {}", cfg.mount_dir, e));
+    rmdir_recursive(&Path::new(cfg.state_dir.as_slice())).map_err(
+        |e| error!("Error removing state dir {}: {}", cfg.state_dir, e));
+}
+
 fn run(config_file: Path) -> Result<(), String> {
     let cfg: TreeConfig = try_str!(parse_config(&config_file,
         TreeConfig::validator(), Default::default()));
 
+    try!(check_config(&cfg));
+
     let mut children: HashMap<Path, ContainerConfig> = HashMap::new();
     debug!("Checking child dir {}", cfg.config_dir);//.display());
-    for child_fn in try_str!(readdir(&Path::new(cfg.config_dir.as_slice()))).move_iter() {
+    let dirlist = try_str!(readdir(&Path::new(cfg.config_dir.as_slice())));
+    for child_fn in dirlist.move_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
             (_, Some("yaml")) => {}
@@ -74,6 +102,8 @@ fn run(config_file: Path) -> Result<(), String> {
             ContainerConfig::validator(), Default::default()));
         children.insert(child_fn, child_cfg);
     }
+
+    try!(global_init(&cfg));
 
     let mut mon = Monitor::new("lithos-tree".to_string());
     let config_file = Rc::new(config_file);
@@ -92,6 +122,8 @@ fn run(config_file: Path) -> Result<(), String> {
         }
     }
     mon.run();
+
+    global_cleanup(&cfg);
 
     return Ok(());
 }

@@ -95,7 +95,7 @@ impl<'a> Monitor<'a> {
             }
         }
         info!("[{:s}] Shutting down", self.myname);
-        // Main shut down loop
+        // Shut down loop
         let mut processes = TreeMap::new();
         swap(&mut processes, &mut self.processes);
         let mut left: TreeMap<pid_t, Process> = FromIterator::from_iter(
@@ -113,12 +113,11 @@ impl<'a> Monitor<'a> {
                             None => {}
                         }
                     }
-                    break;
                 }
                 signal::Child(pid, status) => {
                     match left.pop(&pid) {
                         Some(prc) => {
-                            warn!("[{:s}] Child {}:{} exited with status {}",
+                            info!("[{:s}] Child {}:{} exited with status {}",
                                 self.myname, prc.name, pid, status);
                         }
                         None => {

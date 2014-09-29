@@ -11,6 +11,7 @@ use quire::validate::{Validator, Structure, Mapping, Scalar, Numeric};
 pub struct TreeConfig {
     pub config_dir: String,
     pub state_dir: String,
+    pub mount_dir: String,
     pub readonly_paths: TreeMap<String, String>,
     pub writable_paths: TreeMap<String, String>,
     pub devfs_dir: String,
@@ -26,6 +27,9 @@ impl TreeConfig {
                 .. Default::default() } as Box<Validator>),
             ("state_dir".to_string(), box Scalar {
                 default: Some("/run/lithos/state".to_string()),
+                .. Default::default() } as Box<Validator>),
+            ("mount_dir".to_string(), box Scalar {
+                default: Some("/run/lithos/mnt".to_string()),
                 .. Default::default() } as Box<Validator>),
             ("readonly_paths".to_string(), box Mapping {
                 key_element: box Scalar { .. Default::default()},

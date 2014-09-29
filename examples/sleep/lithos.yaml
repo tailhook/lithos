@@ -1,6 +1,5 @@
 min-port: 7000
 max-port: 7100
 config-dir: examples/sleep/children
-state-dir: run/sleep-example-state
 readonly-paths:
   /src: /var/lib/lithos/containers/busybox
