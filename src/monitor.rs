@@ -58,10 +58,10 @@ impl<'a> Monitor<'a> {
             let sig = signal::wait_next();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
-                signal::Terminate => {
+                signal::Terminate(sig) => {
                     for (_name, prc) in self.processes.iter() {
                         match prc.current_pid {
-                            Some(pid) => signal::terminate(pid),
+                            Some(pid) => signal::send_signal(pid, sig),
                             None => {}
                         }
                     }
@@ -106,10 +106,10 @@ impl<'a> Monitor<'a> {
             let sig = signal::wait_next();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
-                signal::Terminate => {
+                signal::Terminate(sig) => {
                     for (_name, prc) in left.iter() {
                         match prc.current_pid {
-                            Some(pid) => signal::terminate(pid),
+                            Some(pid) => signal::send_signal(pid, sig),
                             None => {}
                         }
                     }

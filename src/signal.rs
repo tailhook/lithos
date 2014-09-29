@@ -2,7 +2,7 @@ use std::ptr::null;
 use std::default::Default;
 use std::io::process::Process;
 
-use libc::consts::os::posix88::SIGTERM;
+use libc::consts::os::posix88::{SIGTERM, SIGINT};
 use libc::{c_int, pid_t};
 
 
@@ -11,7 +11,7 @@ static WNOHANG: c_int = 1;
 
 #[deriving(Show)]
 pub enum Signal {
-    Terminate,
+    Terminate(int),
     Child(pid_t, int),
 }
 
@@ -42,8 +42,8 @@ pub fn wait_next() -> Signal {
         let ptr = Default::default();
         unsafe { wait_any_signal(&ptr) }
         match ptr.signo {
-            SIGTERM => {
-                return Terminate;
+            sig@SIGTERM | sig@SIGINT => {
+                return Terminate(sig as int);
             }
             SIGCHLD => {
                 unsafe { waitpid(ptr.pid, null(), WNOHANG) };
@@ -54,6 +54,6 @@ pub fn wait_next() -> Signal {
     }
 }
 
-pub fn terminate(pid: pid_t) {
-    Process::kill(pid, SIGTERM as int).ok();
+pub fn send_signal(pid: pid_t, sig: int) {
+    Process::kill(pid, sig).ok();
 }
