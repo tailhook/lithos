@@ -19,6 +19,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
+use lithos::signal;
 
 #[path="../mod.rs"]
 mod lithos;
@@ -67,6 +68,9 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
 }
 
 fn main() {
+
+    signal::block_all();
+
     let mut global_config = Path::new("/etc/lithos.yaml");
     let mut container_config = Path::new("");
     let mut name = "".to_string();
