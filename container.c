@@ -1,3 +1,4 @@
+#include <sys/prctl.h>
 #include <alloca.h>
 #include <unistd.h>
 #include <signal.h>
@@ -22,6 +23,7 @@ typedef struct {
 } CSignalInfo;
 
 static void _run_container(CCommand *cmd) {
+    prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
     (void)execve(cmd->exec_path, cmd->exec_args, cmd->exec_environ);
     _exit(127);
 }
