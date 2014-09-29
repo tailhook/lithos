@@ -47,6 +47,7 @@ pub struct Command {
     arguments: Vec<CString>,
     environment: TreeMap<String, String>,
     namespaces: EnumSet<Namespace>,
+    restore_sigmask: bool,
 }
 
 
@@ -57,7 +58,11 @@ impl Command {
             arguments: vec!(cmd.to_c_str()),
             namespaces: EnumSet::empty(),
             environment: TreeMap::new(),
+            restore_sigmask: true,
         };
+    }
+    pub fn keep_sigmask(&mut self) {
+        self.restore_sigmask = false;
     }
     pub fn arg<T:ToCStr>(&mut self, arg: T) {
         self.arguments.push(arg.to_c_str());
@@ -100,6 +105,7 @@ impl Command {
             exec_args: exec_args.as_slice().as_ptr(),
             exec_environ: exec_environ.as_slice().as_ptr(),
             namespaces: convert_namespaces(self.namespaces),
+            restore_sigmask: if self.restore_sigmask { 1 } else { 0 },
         }) };
         if pid < 0 {
             return Err(IoError::last_error());
@@ -133,6 +139,7 @@ static CLONE_NEWNET: c_int = 0x40000000;  /* New network namespace.  */
 
 pub struct CCommand {
     namespaces: c_int,
+    restore_sigmask: c_int,
     exec_path: *u8,
     exec_args: **u8,
     exec_environ: **u8,

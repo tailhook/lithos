@@ -11,7 +11,7 @@ extern crate quire;
 use std::rc::Rc;
 use std::io::stderr;
 use std::os::getenv;
-use std::io::fs::{readdir, mkdir, mkdir_recursive, rmdir, rmdir_recursive};
+use std::io::fs::{readdir, mkdir_recursive, rmdir, rmdir_recursive};
 use std::os::{set_exit_status, self_exe_path};
 use std::io::FilePermission;
 use std::default::Default;
@@ -42,6 +42,8 @@ impl Executor for Child {
     {
         let mut cmd = Command::new(
             self_exe_path().unwrap().join("lithos_knot"));
+        cmd.keep_sigmask();
+
         // Name is first here, so it's easily visible in ps
         cmd.arg("--name");
         cmd.arg(self.name.as_slice());
@@ -76,9 +78,9 @@ fn global_init(cfg: &TreeConfig) -> Result<(), String> {
 }
 
 fn global_cleanup(cfg: &TreeConfig) {
-    rmdir(&Path::new(cfg.mount_dir.as_slice())).map_err(
+    rmdir(&Path::new(cfg.mount_dir.as_slice())).unwrap_or_else(
         |e| error!("Error removing mount dir {}: {}", cfg.mount_dir, e));
-    rmdir_recursive(&Path::new(cfg.state_dir.as_slice())).map_err(
+    rmdir_recursive(&Path::new(cfg.state_dir.as_slice())).unwrap_or_else(
         |e| error!("Error removing state dir {}: {}", cfg.state_dir, e));
 }
 

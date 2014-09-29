@@ -11,6 +11,7 @@
 
 typedef struct {
     int namespaces;
+    int restore_sigmask;
     const char *exec_path;
     char ** const exec_args;
     char ** const exec_environ;
@@ -24,6 +25,11 @@ typedef struct {
 
 static void _run_container(CCommand *cmd) {
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+    if(cmd->restore_sigmask) {
+        sigset_t mask;
+        sigfillset(&mask);
+        sigprocmask(SIG_UNBLOCK, &mask, NULL);
+    }
     (void)execve(cmd->exec_path, cmd->exec_args, cmd->exec_environ);
     _exit(127);
 }
