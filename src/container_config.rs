@@ -4,20 +4,17 @@ use std::collections::TreeMap;
 use quire::validate::{Validator, Structure, Sequence, Scalar, Numeric};
 use quire::validate::{Mapping};
 
-/*
-TODO(tailhook) use the following volume
-enum Volume {
+//  TODO(tailhook) Currently we parse the string into the following
+//  enum, but in future we should just decode into it
+pub enum Volume {
     Readonly(Path),
     Persistent(Path),
     Tmpfs(String),
 }
-*/
-
-type Volume = String;
 
 #[deriving(Decodable, Encodable)]
 pub struct ContainerConfig {
-    pub volumes: TreeMap<String, Volume>,
+    pub volumes: TreeMap<String, String>,
     pub memory_limit: u64,
     pub cpu_shares: uint,
     pub instances: uint,
@@ -60,5 +57,28 @@ impl ContainerConfig {
                     .. Default::default() } as Box<Validator>,
             } as Box<Validator>),
         )} as Box<Validator>;
+    }
+}
+
+pub fn parse_volume(val: &str) -> Result<Volume, String> {
+    if val.starts_with("/") {
+        let p = Path::new(val);
+        if !p.is_absolute() {
+            return Err(format!("Volume path must be absolute: \"{}\"",
+                               p.display()));
+        }
+        return Ok(Readonly(p));
+    } else if val.starts_with("rw:") {
+        let p = Path::new(val.slice_from(3));
+        if !p.is_absolute() {
+            return Err(format!("Volume path must be absolute: \"{}\"",
+                               p.display()));
+        }
+        return Ok(Persistent(p));
+    } else if val.starts_with("tmpfs:") {
+        // TODO(tailhook) validate parameters
+        return Ok(Tmpfs(val.slice_from(6).to_string()));
+    } else {
+        return Err(format!("Unknown volume type {}", val));
     }
 }

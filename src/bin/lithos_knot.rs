@@ -11,13 +11,16 @@ extern crate quire;
 use std::os::{set_exit_status, getenv};
 use std::io::stderr;
 use std::default::Default;
+use std::collections::TreeMap;
 
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::ContainerConfig;
+use lithos::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
+use lithos::container_config::{parse_volume};
 use lithos::container::{Command};
+use lithos::mount::{bind_mount_rw, bind_mount_ro, mount_tmpfs};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
 
@@ -47,6 +50,66 @@ impl Executor for Target {
     }
 }
 
+fn map_dir(dir: &Path, dirs: &TreeMap<String, String>) -> Option<Path> {
+    for (prefix, real_dir) in dirs.iter() {
+        let dir_prefix = Path::new(prefix.as_slice());
+        match dir.path_relative_from(&dir_prefix) {
+            Some(tail) => {
+                return Some(Path::new(real_dir.as_slice()).join(tail));
+            }
+            None => continue,
+        }
+    }
+    return None;
+}
+
+fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
+    -> Result<(), String>
+{
+    let mntdir = Path::new(global.mount_dir.as_slice());
+    assert!(mntdir.is_absolute());
+
+    let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
+    volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
+
+    for &(mp_str, volume_str) in volumes.iter() {
+        let tmp_mp = Path::new(mp_str.as_slice());
+        assert!(tmp_mp.is_absolute());  // should be checked earlier
+        let mount_point = tmp_mp.path_relative_from(&Path::new("/")).unwrap();
+
+        match try_str!(parse_volume(volume_str.as_slice())) {
+            Readonly(dir) => {
+                let path = match map_dir(&dir, &global.readonly_paths).or(
+                                 map_dir(&dir, &global.writable_paths)) {
+                    None => {
+                        return Err(format!(concat!("Can't find volume for {},",
+                            " probably missing entry in readonly-paths"),
+                            dir.display()));
+                    }
+                    Some(path) => path,
+                };
+                try!(bind_mount_ro(&path, &mntdir.join(mount_point)));
+            }
+            Persistent(dir) => {
+                let path = match map_dir(&dir, &global.writable_paths) {
+                    None => {
+                        return Err(format!(concat!("Can't find volume for {},",
+                            " probably missing entry in writable-paths"),
+                            dir.display()));
+                    }
+                    Some(path) => path,
+                };
+                try!(bind_mount_rw(&path, &mntdir.join(mount_point)));
+            }
+            Tmpfs(opt) => {
+                try!(mount_tmpfs(&mntdir.join(mount_point), opt.as_slice()));
+            }
+        }
+    }
+
+    return Ok(());
+}
+
 fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     let global: TreeConfig = try_str!(parse_config(&global_cfg,
         TreeConfig::validator(), Default::default()));
@@ -54,6 +117,8 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
         ContainerConfig::validator(), Default::default()));
 
     info!("[{:s}] Starting container", name);
+
+    try!(setup_filesystem(&global, &local));
 
     let mut mon = Monitor::new(name.clone());
     let name = name + ".main";
