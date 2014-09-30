@@ -20,7 +20,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
 use lithos::container_config::{parse_volume};
 use lithos::container::{Command};
-use lithos::mount::{bind_mount_rw, bind_mount_ro, mount_tmpfs};
+use lithos::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
 
@@ -75,8 +75,9 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
     for &(mp_str, volume_str) in volumes.iter() {
         let tmp_mp = Path::new(mp_str.as_slice());
         assert!(tmp_mp.is_absolute());  // should be checked earlier
-        let mount_point = tmp_mp.path_relative_from(&Path::new("/")).unwrap();
 
+        let dest = mntdir.join(
+            tmp_mp.path_relative_from(&Path::new("/")).unwrap());
         match try_str!(parse_volume(volume_str.as_slice())) {
             Readonly(dir) => {
                 let path = match map_dir(&dir, &global.readonly_paths).or(
@@ -88,7 +89,8 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
                     }
                     Some(path) => path,
                 };
-                try!(bind_mount_ro(&path, &mntdir.join(mount_point)));
+                try!(bind_mount(&path, &dest));
+                try!(mount_ro_recursive(&dest));
             }
             Persistent(dir) => {
                 let path = match map_dir(&dir, &global.writable_paths) {
@@ -99,10 +101,10 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
                     }
                     Some(path) => path,
                 };
-                try!(bind_mount_rw(&path, &mntdir.join(mount_point)));
+                try!(bind_mount(&path, &dest));
             }
             Tmpfs(opt) => {
-                try!(mount_tmpfs(&mntdir.join(mount_point), opt.as_slice()));
+                try!(mount_tmpfs(&dest, opt.as_slice()));
             }
         }
     }

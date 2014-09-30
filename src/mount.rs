@@ -3,7 +3,7 @@ use std::io::{IoError, EndOfFile};
 use std::io::BufferedReader;
 use std::ptr::null;
 use std::io::fs::File;
-use libc::{c_ulong, c_char, c_int};
+use libc::{c_ulong, c_int};
 
 // sys/mount.h
 static MS_RDONLY: c_ulong = 1;                /* Mount read-only.  */
@@ -37,20 +37,11 @@ extern {
     fn mount(source: *u8, target: *u8,
         filesystemtype: *u8, flags: c_ulong,
         data: *u8) -> c_int;
+    fn umount(target: *u8) -> c_int;
 }
 
-pub fn bind_mount_ro(source: &Path, target: &Path) -> Result<(), String> {
-    let c_source = source.to_c_str();
-    let c_target = target.to_c_str();
-    let rc = unsafe {
-        mount(c_source.as_bytes().as_ptr(), c_target.as_bytes().as_ptr(),
-        null(), MS_BIND|MS_REC, null()) };
-    if rc != 0 {
-        let err = IoError::last_error();
-        return Err(format!("Can't mount bind {} to {}: {}",
-            source.display(), target.display(), err));
-    }
-
+pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
+    let none = "none".to_c_str();
     //  Must recursively remount readonly
     let file = try_str!(File::open(&Path::new("/proc/mounts")));
     let mut buf = BufferedReader::new(file);
@@ -82,25 +73,44 @@ pub fn bind_mount_ro(source: &Path, target: &Path) -> Result<(), String> {
             continue;
         }
         if target.is_ancestor_of(&cur_target) {
-            let c_source = cur_source.to_c_str();
             let c_target = cur_target.to_c_str();
+            debug!("Remount readonly {} ({})",
+                cur_target.display(), cur_source);
             let rc = unsafe { mount(
-                c_source.as_bytes().as_ptr(),
+                none.as_bytes().as_ptr(),
                 c_target.as_bytes().as_ptr(),
                 null(), MS_BIND|MS_REMOUNT|MS_RDONLY, null()) };
             if rc != 0 {
                 let err = IoError::last_error();
-                return Err(format!("Can't mount bind {} to {}: {}",
-                    source.display(), target.display(), err));
+                return Err(format!("Remount readonly {}: {}",
+                    cur_target.display(), err));
             }
         }
     }
     return Ok(());
 }
 
-pub fn bind_mount_rw(source: &Path, target: &Path) -> Result<(), String> {
+pub fn mount_private(target: &Path) -> Result<(), String> {
+    let none = "none".to_c_str();
+    let c_target = target.to_c_str();
+    debug!("Making private {}", target.display());
+    let rc = unsafe { mount(
+        none.as_bytes().as_ptr(),
+        c_target.as_bytes().as_ptr(),
+        null(), MS_PRIVATE, null()) };
+    if rc == 0 {
+        return Ok(());
+    } else {
+        let err = IoError::last_error();
+        return Err(format!("Can't make {} a slave: {}",
+            target.display(), err));
+    }
+}
+
+pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
     let c_source = source.to_c_str();
     let c_target = target.to_c_str();
+    debug!("Bind mount {} -> {}", source.display(), target.display());
     let rc = unsafe {
         mount(c_source.as_bytes().as_ptr(), c_target.as_bytes().as_ptr(),
         null(), MS_BIND|MS_REC, null()) };
@@ -117,6 +127,7 @@ pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
     let c_tmpfs = "tmpfs".to_c_str();
     let c_target = target.to_c_str();
     let c_opts = options.to_c_str();
+    debug!("Tmpfs mount {} {}", target.display(), options);
     let rc = unsafe { mount(
         c_tmpfs.as_bytes().as_ptr(),
         c_target.as_bytes().as_ptr(),
@@ -129,5 +140,16 @@ pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
         let err = IoError::last_error();
         return Err(format!("Can't mount tmpfs {} (options: {}): {}",
             target.display(), options, err));
+    }
+}
+
+pub fn unmount(target: &Path) -> Result<(), String> {
+    let c_target = target.to_c_str();
+    let rc = unsafe { umount(c_target.as_bytes().as_ptr()) };
+    if rc == 0 {
+        return Ok(());
+    } else {
+        let err = IoError::last_error();
+        return Err(format!("Can't unmount {} : {}", target.display(), err));
     }
 }

@@ -1,5 +1,5 @@
 volumes:
-  /: /src/busybox
+  /: /src/busybox.3518680
 memory_limit: 104857600
 cpu_shares: 3
 instances: 1

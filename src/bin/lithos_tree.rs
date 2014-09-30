@@ -24,6 +24,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::monitor::{Monitor, Executor};
 use lithos::container::Command;
+use lithos::mount::{bind_mount, mount_private, unmount};
 use lithos::signal;
 
 #[path="../mod.rs"]
@@ -70,16 +71,24 @@ fn check_config(cfg: &TreeConfig) -> Result<(), String> {
 }
 
 fn global_init(cfg: &TreeConfig) -> Result<(), String> {
-    try_str!(mkdir_recursive(&Path::new(cfg.mount_dir.as_slice()),
-        FilePermission::from_bits_truncate(0o755)));
     try_str!(mkdir_recursive(&Path::new(cfg.state_dir.as_slice()),
         FilePermission::from_bits_truncate(0o755)));
+
+    let mntdir = Path::new(cfg.mount_dir.as_slice());
+    try_str!(mkdir_recursive(&mntdir,
+        FilePermission::from_bits_truncate(0o755)));
+    try_str!(bind_mount(&mntdir, &mntdir));
+    try_str!(mount_private(&mntdir));
     return Ok(());
 }
 
 fn global_cleanup(cfg: &TreeConfig) {
-    rmdir(&Path::new(cfg.mount_dir.as_slice())).unwrap_or_else(
+    let mntdir = Path::new(cfg.mount_dir.as_slice());
+    unmount(&mntdir).unwrap_or_else(
+        |e| error!("Error unmouting mount dir {}: {}", cfg.mount_dir, e));
+    rmdir(&mntdir).unwrap_or_else(
         |e| error!("Error removing mount dir {}: {}", cfg.mount_dir, e));
+
     rmdir_recursive(&Path::new(cfg.state_dir.as_slice())).unwrap_or_else(
         |e| error!("Error removing state dir {}: {}", cfg.state_dir, e));
 }
