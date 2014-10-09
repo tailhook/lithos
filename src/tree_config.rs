@@ -34,11 +34,11 @@ impl TreeConfig {
             ("readonly_paths".to_string(), box Mapping {
                 key_element: box Scalar { .. Default::default()},
                 value_element: box Scalar { .. Default::default()},
-                } as Box<Validator>),
+                .. Default::default()} as Box<Validator>),
             ("writable_paths".to_string(), box Mapping {
                 key_element: box Scalar { .. Default::default()},
                 value_element: box Scalar { .. Default::default()},
-                } as Box<Validator>),
+                .. Default::default() } as Box<Validator>),
             ("devfs_dir".to_string(), box Scalar {
                 default: Some("/var/lib/lithos/dev".to_string()),
                 .. Default::default() } as Box<Validator>),
@@ -48,6 +48,6 @@ impl TreeConfig {
             ("max_port".to_string(), box Numeric {
                 default: Some(29999u16),
                 .. Default::default() } as Box<Validator>),
-        )} as Box<Validator>;
+        ), .. Default::default() } as Box<Validator>;
     }
 }

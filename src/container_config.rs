@@ -32,7 +32,7 @@ impl ContainerConfig {
                     .. Default::default() } as Box<Validator>,
                 value_element: box Scalar {
                     .. Default::default() } as Box<Validator>,
-            } as Box<Validator>),
+            .. Default::default() } as Box<Validator>),
             ("memory_limit".to_string(), box Numeric {
                 default: Some(0xffffffffffffffffu64),
                 .. Default::default()} as Box<Validator>),
@@ -49,14 +49,14 @@ impl ContainerConfig {
             ("command".to_string(), box Sequence {
                 element: box Scalar {
                     .. Default::default() } as Box<Validator>,
-                } as Box<Validator>),
+                .. Default::default() } as Box<Validator>),
             ("environ".to_string(), box Mapping {
                 key_element: box Scalar {
                     .. Default::default() } as Box<Validator>,
                 value_element: box Scalar {
                     .. Default::default() } as Box<Validator>,
-            } as Box<Validator>),
-        )} as Box<Validator>;
+            .. Default::default() } as Box<Validator>),
+        ), .. Default::default() } as Box<Validator>;
     }
 }
 
