@@ -20,7 +20,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
 use lithos::container_config::{parse_volume};
 use lithos::container::{Command};
-use lithos::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
+use lithos::mount::{bind_mount, mount_ro_recursive, mount_tmpfs, mount_private};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
 
@@ -102,6 +102,7 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
                     Some(path) => path,
                 };
                 try!(bind_mount(&path, &dest));
+                try_str!(mount_private(&dest));
             }
             Tmpfs(opt) => {
                 try!(mount_tmpfs(&dest, opt.as_slice()));

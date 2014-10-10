@@ -43,6 +43,7 @@ extern {
 pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
     let none = "none".to_c_str();
     //  Must recursively remount readonly
+    //  TODO(tailhook) fix double and overlapping bind mounts
     let file = try_str!(File::open(&Path::new("/proc/mounts")));
     let mut buf = BufferedReader::new(file);
     loop {
@@ -77,14 +78,15 @@ pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
             debug!("Remount readonly {} ({})",
                 cur_target.display(), cur_source);
             let rc = unsafe { mount(
-                none.as_bytes().as_ptr(),
-                c_target.as_bytes().as_ptr(),
-                null(), MS_BIND|MS_REMOUNT|MS_RDONLY, null()) };
+               none.as_bytes().as_ptr(),
+               c_target.as_bytes().as_ptr(),
+               null(), MS_BIND|MS_REMOUNT|MS_RDONLY, null()) };
             if rc != 0 {
                 let err = IoError::last_error();
                 return Err(format!("Remount readonly {}: {}",
                     cur_target.display(), err));
             }
+            try_str!(mount_private(&cur_target));
         }
     }
     return Ok(());
