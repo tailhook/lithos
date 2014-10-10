@@ -125,6 +125,32 @@ pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
     }
 }
 
+pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
+    -> Result<(), String>
+{
+    let c_name = name.to_c_str();
+    let c_target = target.to_c_str();
+    let c_opts = options.to_c_str();
+    let mut flags = MS_NOSUID | MS_NOEXEC | MS_NODEV | MS_NOATIME;
+    if readonly {
+        flags |= MS_RDONLY;
+    }
+    debug!("Pseusofs mount {} {} {}", target.display(), name, options);
+    let rc = unsafe { mount(
+        c_name.as_bytes().as_ptr(),
+        c_target.as_bytes().as_ptr(),
+        c_name.as_bytes().as_ptr(),
+        flags,
+        c_opts.as_bytes().as_ptr()) };
+    if rc == 0 {
+        return Ok(());
+    } else {
+        let err = IoError::last_error();
+        return Err(format!("Can't mount pseudofs {} ({}, options: {}): {}",
+            target.display(), options, name, err));
+    }
+}
+
 pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
     let c_tmpfs = "tmpfs".to_c_str();
     let c_target = target.to_c_str();
@@ -134,7 +160,7 @@ pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
         c_tmpfs.as_bytes().as_ptr(),
         c_target.as_bytes().as_ptr(),
         c_tmpfs.as_bytes().as_ptr(),
-        MS_NOSUID | MS_NODEV,
+        MS_NOSUID | MS_NODEV | MS_NOATIME,
         c_opts.as_bytes().as_ptr()) };
     if rc == 0 {
         return Ok(());
