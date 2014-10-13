@@ -4,14 +4,14 @@ use std::collections::TreeMap;
 use quire::validate::{Validator, Structure, Mapping, Scalar, Numeric};
 
 
-// Update to Path in next rust
-// in rust0.12 Path has Ord
 // Check if Decodable is ok?
 #[deriving(Decodable, Encodable)]
 pub struct TreeConfig {
     pub config_dir: String,
     pub state_dir: String,
     pub mount_dir: String,
+    //  Update to Path in next rust
+    //  in rust0.12 Path has Ord
     pub readonly_paths: TreeMap<String, String>,
     pub writable_paths: TreeMap<String, String>,
     pub devfs_dir: String,
