@@ -2,7 +2,7 @@ use std::ptr::null;
 use std::default::Default;
 use std::io::process::Process;
 
-pub use libc::consts::os::posix88::{SIGTERM, SIGINT};
+pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT};
 use libc::{c_int, pid_t};
 
 
@@ -13,6 +13,7 @@ static WNOHANG: c_int = 1;
 pub enum Signal {
     Terminate(int),
     Child(pid_t, int),
+    Reboot,
 }
 
 #[deriving(Default)]
@@ -32,7 +33,7 @@ pub fn block_all() {
     unsafe { block_all_signals() };
 }
 
-pub fn wait_next() -> Signal {
+pub fn wait_next(reboot_supported: bool) -> Signal {
     let status: i32 = 0;
     let pid = unsafe { waitpid(-1, &status, WNOHANG) };
     if pid > 0 {
@@ -42,12 +43,15 @@ pub fn wait_next() -> Signal {
         let ptr = Default::default();
         unsafe { wait_any_signal(&ptr) }
         match ptr.signo {
-            sig@SIGTERM | sig@SIGINT => {
-                return Terminate(sig as int);
-            }
             SIGCHLD => {
                 unsafe { waitpid(ptr.pid, null(), WNOHANG) };
                 return Child(ptr.pid, ptr.status as int);
+            }
+            SIGQUIT if reboot_supported => {
+                return Reboot;
+            }
+            sig@SIGTERM | sig@SIGINT | sig@SIGQUIT => {
+                return Terminate(sig as int);
             }
             _ => continue,   // TODO(tailhook) improve logging
         }

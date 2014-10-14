@@ -135,7 +135,7 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
         name: name,
         global: global,
         local: local,
-    });
+    }, None);
     mon.run();
 
     return Ok(());

@@ -6,6 +6,11 @@ use libc::pid_t;
 use super::container::Command;
 use super::signal;
 
+pub enum MonitorResult {
+    Killed,
+    Reboot,
+}
+
 pub trait Executor {
     fn command(&self) -> Command;
 }
@@ -20,6 +25,7 @@ pub struct Monitor<'a> {
     myname: String,
     processes: TreeMap<String, Process<'a>>,
     pids: HashMap<pid_t, String>,
+    allow_reboot: bool,
 }
 
 impl<'a> Monitor<'a> {
@@ -28,21 +34,37 @@ impl<'a> Monitor<'a> {
             myname: name,
             processes: TreeMap::new(),
             pids: HashMap::new(),
+            allow_reboot: false,
         };
     }
-    pub fn add(&mut self, name: String, executor: Box<Executor>) {
+    pub fn allow_reboot(&mut self) {
+        self.allow_reboot = true;
+    }
+    pub fn add(&mut self, name: String, executor: Box<Executor>,
+        pid: Option<pid_t>)
+    {
+        if pid.is_some() {
+            info!("[{:s}] Registered process pid: {} as name: {}",
+                self.myname, pid, name);
+        }
         self.processes.insert(name.clone(), Process {
             name: name,
-            current_pid: None,
+            current_pid: pid,
             executor: executor});
     }
     pub fn has(&self, name: &String) -> bool {
         return self.processes.contains_key(name);
     }
-    pub fn run(&mut self) {
+    fn _wait_signal(&self) -> signal::Signal {
+        return signal::wait_next(self.allow_reboot);
+    }
+    pub fn run(&mut self) -> MonitorResult {
         debug!("[{:s}] Starting with {} processes",
             self.myname, self.processes.len());
         for (name, prc) in self.processes.mut_iter() {
+            if prc.current_pid.is_some() {
+                continue;
+            }
             match prc.executor.command().spawn() {
                 Ok(pid) => {
                     info!("[{:s}] Process {} started with pid {}",
@@ -58,7 +80,7 @@ impl<'a> Monitor<'a> {
         }
         // Main loop
         loop {
-            let sig = signal::wait_next();
+            let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
                 signal::Terminate(sig) => {
@@ -93,7 +115,9 @@ impl<'a> Monitor<'a> {
                             // TODO(tailhook) add to restart-later list
                         }
                     }
-
+                }
+                signal::Reboot => {
+                    return Reboot;
                 }
             }
         }
@@ -106,7 +130,7 @@ impl<'a> Monitor<'a> {
             .filter(|&(_, ref prc)| prc.current_pid.is_some())
             .map(|(_, prc)| (prc.current_pid.unwrap(), prc)));
         while left.len() > 0 {
-            let sig = signal::wait_next();
+            let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
                 signal::Terminate(sig) => {
@@ -129,7 +153,11 @@ impl<'a> Monitor<'a> {
                         }
                     }
                 }
+                signal::Reboot => {
+                    return Reboot;
+                }
             }
         }
+        return Killed;
     }
 }

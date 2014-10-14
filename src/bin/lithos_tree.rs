@@ -5,11 +5,13 @@ extern crate libc;
 #[phase(plugin, link)] extern crate log;
 extern crate regex;
 #[phase(plugin)] extern crate regex_macros;
+extern crate debug;
 
 extern crate argparse;
 extern crate quire;
 
 
+use std::os::args;
 use std::rc::Rc;
 use std::io::stderr;
 use std::io::{IoResult, IoError};
@@ -19,12 +21,14 @@ use std::io::BufferedReader;
 use std::from_str::FromStr;
 use std::str::from_utf8;
 use std::io::fs::{readdir, mkdir_recursive, rmdir, rmdir_recursive};
-use std::os::{set_exit_status, self_exe_path};
+use std::os::{set_exit_status, self_exe_path, self_exe_name};
 use std::io::FilePermission;
+use std::ptr::null;
+use std::c_str::{ToCStr, CString};
 use std::default::Default;
 use std::collections::HashMap;
 use libc::consts::os::posix88::EINVAL;
-use libc::funcs::posix88::unistd::getpid;
+use libc::funcs::posix88::unistd::{getpid, execv};
 use libc::pid_t;
 
 use argparse::{ArgumentParser, Store};
@@ -32,9 +36,9 @@ use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
-use lithos::monitor::{Monitor, Executor};
+use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::container::Command;
-use lithos::mount::{bind_mount, mount_private, unmount};
+use lithos::mount::{bind_mount, mount_private, unmount, check_mount_point};
 use lithos::signal;
 
 #[path="../mod.rs"]
@@ -87,8 +91,23 @@ fn global_init(cfg: &TreeConfig) -> Result<(), String> {
     let mntdir = Path::new(cfg.mount_dir.as_slice());
     try_str!(mkdir_recursive(&mntdir,
         FilePermission::from_bits_truncate(0o755)));
-    try_str!(bind_mount(&mntdir, &mntdir));
-    try_str!(mount_private(&mntdir));
+
+    let mut bind = true;
+    let mut private = true;
+    try!(check_mount_point(cfg.mount_dir.as_slice(), |m| {
+        bind = false;
+        if m.is_private() {
+            private = false;
+        }
+    }));
+
+    if bind {
+        try_str!(bind_mount(&mntdir, &mntdir));
+    }
+    if private {
+        try_str!(mount_private(&mntdir));
+    }
+
     return Ok(());
 }
 
@@ -103,18 +122,20 @@ fn global_cleanup(cfg: &TreeConfig) {
         |e| error!("Error removing state dir {}: {}", cfg.state_dir, e));
 }
 
-fn any_error<E>(_: E) { }
+fn discard<E>(_: E) { }
 
 fn _read_args(procfsdir: &Path) -> Result<(String, String, String), ()> {
-    let f = try!(File::open(&procfsdir.join("cmdline")).map_err(any_error));
-    let mut buf = BufferedReader::new(f);
-    let exe = try!(String::from_utf8(
-        try!(buf.read_until(0).map_err(any_error))).map_err(any_error));
-    let name_flag = try!(String::from_utf8(
-        try!(buf.read_until(0).map_err(any_error))).map_err(any_error));
-    let name = try!(String::from_utf8(
-        try!(buf.read_until(0).map_err(any_error))).map_err(any_error));
-    return Ok((exe, name_flag, name));
+    let mut f = try!(File::open(&procfsdir.join("cmdline")).map_err(discard));
+    let line = try!(f.read_to_str().map_err(discard));
+    let mut iter = line.as_slice().splitn('\0', 3);
+    let exe = iter.next();
+    let name_flag = iter.next();
+    let name = iter.next();
+    match (exe, name_flag, name) {
+        (Some(exe), Some(name_flag), Some(name))
+        => Ok((exe.to_string(), name_flag.to_string(), name.to_string())),
+        _ => Err(())
+    }
 }
 
 fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
@@ -190,7 +211,8 @@ fn run(config_file: Path) -> Result<(), String> {
             Some((fullname, childname)) => (fullname, childname),
             None => continue,
         };
-        let cfg_path = configdir.join(childname);
+        let cfg_path = configdir.join(childname + ".yaml");
+        println!("CONFIG PATH {}", cfg_path.display());
         let cfg = match children.find(&cfg_path) {
             Some(cfg) => cfg,
             None => {
@@ -205,7 +227,7 @@ fn run(config_file: Path) -> Result<(), String> {
             global_config: config_file.clone(),
             container_file: Rc::new(cfg_path),
             container_config: cfg.clone(),
-        });
+        }, Some(pid));
     }
 
     for (path, cfg) in children.move_iter() {
@@ -221,14 +243,35 @@ fn run(config_file: Path) -> Result<(), String> {
                 global_config: config_file.clone(),
                 container_file: path.clone(),
                 container_config: cfg.clone(),
-            });
+            }, None);
         }
     }
-    mon.run();
+    mon.allow_reboot();
+    match mon.run() {
+        Killed => {}
+        Reboot => {
+            reexec_myself();
+        }
+    }
 
     global_cleanup(&cfg);
 
     return Ok(());
+}
+
+fn reexec_myself() -> ! {
+    let args = args();
+    let exe = self_exe_name().unwrap();
+    let c_exe = exe.to_c_str();
+    let c_args: Vec<CString> = args.iter().map(|x| x.to_c_str()).collect();
+    let mut c_argv: Vec<*u8> = c_args.iter().map(|x| x.as_bytes().as_ptr()).collect();
+    c_argv.push(null());
+    debug!("Executing {} {}", exe.display(), args);
+    unsafe {
+        execv(c_exe.as_bytes().as_ptr() as *i8,
+              c_argv.as_slice().as_ptr() as **i8);
+    }
+    fail!("Can't reexec myself: {}", IoError::last_error());
 }
 
 fn check_binaries() -> bool {

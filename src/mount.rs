@@ -3,6 +3,7 @@ use std::io::{IoError, EndOfFile};
 use std::io::BufferedReader;
 use std::ptr::null;
 use std::io::fs::File;
+use std::from_str::FromStr;
 use libc::{c_ulong, c_int};
 
 // sys/mount.h
@@ -32,12 +33,124 @@ static MS_STRICTATIME: c_ulong = 1 << 24;     /* Always perform atime updates.  
 static MS_ACTIVE: c_ulong = 1 << 30;
 static MS_NOUSER: c_ulong = 1 << 31;
 
+macro_rules! try_opt {
+    ($expr:expr) => {
+        match $expr {
+            Some(x) => x,
+            None => return None,
+        }
+    }
+}
+
 
 extern {
     fn mount(source: *u8, target: *u8,
         filesystemtype: *u8, flags: c_ulong,
         data: *u8) -> c_int;
     fn umount(target: *u8) -> c_int;
+}
+
+
+pub struct MountRecord<'a> {
+    pub mount_id: uint,
+    pub parent_id: uint,
+    _device: &'a str,  // TODO(tailhook) parse if ever need
+    pub relative_root: &'a str,
+    pub mount_point: &'a str,
+    pub mount_options: &'a str,
+    pub tag_shared: Option<uint>,
+    pub tag_master: Option<uint>,
+    pub tag_propagate_from: Option<uint>,
+    pub tag_unbindable: Option<()>,
+    pub fstype: &'a str,
+    pub mount_source: &'a str,
+    pub super_options: &'a str,
+}
+
+impl<'a> MountRecord<'a> {
+    pub fn from_str<'x>(line: &'x str) -> Option<MountRecord<'x>> {
+        let mut parts = line.words();
+        let mount_id = try_opt!(parts.next().and_then(FromStr::from_str));
+        let parent_id = try_opt!(parts.next().and_then(FromStr::from_str));
+        let device = try_opt!(parts.next());
+        let relative_root = try_opt!(parts.next());
+        let mount_point = try_opt!(parts.next());
+        let mount_options = try_opt!(parts.next());
+        let mut tag_shared = None;
+        let mut tag_master = None;
+        let mut tag_propagate_from = None;
+        let mut tag_unbindable = None;
+
+        for name in parts {
+            if name == "-" { break; }
+            let mut pair = name.splitn(':', 1);
+            let key = pair.next();
+            let value = pair.next();
+            match key {
+                Some("shared") => {
+                    tag_shared = Some(try_opt!(
+                        value.and_then(FromStr::from_str)));
+                }
+                Some("master") => {
+                    tag_master = Some(try_opt!(
+                        value.and_then(FromStr::from_str)));
+                }
+                Some("propagate_from") => {
+                    tag_propagate_from = Some(try_opt!(
+                        value.and_then(FromStr::from_str)));
+                }
+                Some("unbindable") => tag_unbindable = Some(()),
+                _ => {}
+            }
+        }
+
+        let fstype = try_opt!(parts.next());
+        let mount_source = try_opt!(parts.next());
+        let super_options = try_opt!(parts.next());
+
+        return Some(MountRecord {
+            mount_id: mount_id,
+            parent_id: parent_id,
+            _device: device,
+            relative_root: relative_root,
+            mount_point: mount_point,
+            mount_options: mount_options,
+            tag_shared: tag_shared,
+            tag_master: tag_master,
+            tag_propagate_from: tag_propagate_from,
+            tag_unbindable: tag_unbindable,
+            fstype: fstype,
+            mount_source: mount_source,
+            super_options: super_options,
+            });
+    }
+    pub fn is_private(&self) -> bool {
+        return self.tag_shared.is_none()
+            && self.tag_master.is_none()
+            && self.tag_propagate_from.is_none()
+            && self.tag_unbindable.is_none();
+    }
+}
+
+pub fn check_mount_point(dir: &str, fun: |MountRecord|)
+    -> Result<(), String>
+{
+    let f = try_str!(File::open(&Path::new("/proc/self/mountinfo")));
+    let mut buf = BufferedReader::new(f);
+    for line in buf.lines() {
+        let line = try_str!(line);
+        match MountRecord::from_str(line.as_slice()) {
+            Some(rec) => {
+                if rec.mount_point == dir {
+                    fun(rec);
+                }
+            }
+            None => {
+                return Err(format!("Can't parse mountinfo line: {}", line));
+            }
+        }
+    }
+    return Ok(());
 }
 
 pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
@@ -181,3 +294,4 @@ pub fn unmount(target: &Path) -> Result<(), String> {
         return Err(format!("Can't unmount {} : {}", target.display(), err));
     }
 }
+
