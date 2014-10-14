@@ -3,6 +3,8 @@
 extern crate serialize;
 extern crate libc;
 #[phase(plugin, link)] extern crate log;
+extern crate regex;
+#[phase(plugin)] extern crate regex_macros;
 
 extern crate argparse;
 extern crate quire;
@@ -10,12 +12,20 @@ extern crate quire;
 
 use std::rc::Rc;
 use std::io::stderr;
+use std::io::{IoResult, IoError};
+use std::io::fs::File;
 use std::os::getenv;
+use std::io::BufferedReader;
+use std::from_str::FromStr;
+use std::str::from_utf8;
 use std::io::fs::{readdir, mkdir_recursive, rmdir, rmdir_recursive};
 use std::os::{set_exit_status, self_exe_path};
 use std::io::FilePermission;
 use std::default::Default;
 use std::collections::HashMap;
+use libc::consts::os::posix88::EINVAL;
+use libc::funcs::posix88::unistd::getpid;
+use libc::pid_t;
 
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
@@ -93,15 +103,64 @@ fn global_cleanup(cfg: &TreeConfig) {
         |e| error!("Error removing state dir {}: {}", cfg.state_dir, e));
 }
 
+fn any_error<E>(_: E) { }
+
+fn _read_args(procfsdir: &Path) -> Result<(String, String, String), ()> {
+    let f = try!(File::open(&procfsdir.join("cmdline")).map_err(any_error));
+    let mut buf = BufferedReader::new(f);
+    let exe = try!(String::from_utf8(
+        try!(buf.read_until(0).map_err(any_error))).map_err(any_error));
+    let name_flag = try!(String::from_utf8(
+        try!(buf.read_until(0).map_err(any_error))).map_err(any_error));
+    let name = try!(String::from_utf8(
+        try!(buf.read_until(0).map_err(any_error))).map_err(any_error));
+    return Ok((exe, name_flag, name));
+}
+
+fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
+    let ppid_regex = regex!(r"^\d+\s+\([^)]*\)\s+\S+\s+(\d+)\s");
+    let stat =
+        File::open(&procfsdir.join("stat")).ok()
+        .and_then(|mut f| f.read_to_str().ok());
+    if stat.is_none() {
+        return None;
+    }
+
+    let ppid = ppid_regex.captures(stat.unwrap().as_slice())
+               .and_then(|c| FromStr::from_str(c.at(1)));
+    if ppid != Some(mypid) {
+        return None;
+    }
+
+    let name = match _read_args(procfsdir) {
+        Ok((exe, name_flag, name)) => {
+            if Path::new(exe.as_slice()).filename_str() == Some("lithos_knot")
+                && name_flag.as_slice() == "--name" {
+                name
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let name_regex = regex!(r"(\w+)\.\d+");
+    return name_regex.captures(name.as_slice())
+           .map(|captures| {
+        (captures.at(0).to_string(), captures.at(1).to_string())
+    });
+}
+
 fn run(config_file: Path) -> Result<(), String> {
     let cfg: TreeConfig = try_str!(parse_config(&config_file,
         TreeConfig::validator(), Default::default()));
 
     try!(check_config(&cfg));
 
-    let mut children: HashMap<Path, ContainerConfig> = HashMap::new();
+    let mut children: HashMap<Path, Rc<ContainerConfig>> = HashMap::new();
     debug!("Checking child dir {}", cfg.config_dir);//.display());
-    let dirlist = try_str!(readdir(&Path::new(cfg.config_dir.as_slice())));
+    let configdir = Path::new(cfg.config_dir.as_slice());
+    let dirlist = try_str!(readdir(&configdir));
     for child_fn in dirlist.move_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
@@ -111,19 +170,52 @@ fn run(config_file: Path) -> Result<(), String> {
         debug!("Adding {}", child_fn.display());
         let child_cfg = try_str!(parse_config(&child_fn,
             ContainerConfig::validator(), Default::default()));
-        children.insert(child_fn, child_cfg);
+        children.insert(child_fn, Rc::new(child_cfg));
     }
 
     try!(global_init(&cfg));
 
     let mut mon = Monitor::new("lithos-tree".to_string());
     let config_file = Rc::new(config_file);
+    let mypid = unsafe { getpid() };
+
+    for ppath in readdir(&Path::new("/proc"))
+        .ok().expect("Can't read procfs").iter() {
+        let pid: pid_t;
+        pid = match ppath.filename_str().and_then(FromStr::from_str) {
+            Some(pid) => pid,
+            None => continue,
+        };
+        let (fullname, childname) = match _get_name(ppath, mypid) {
+            Some((fullname, childname)) => (fullname, childname),
+            None => continue,
+        };
+        let cfg_path = configdir.join(childname);
+        let cfg = match children.find(&cfg_path) {
+            Some(cfg) => cfg,
+            None => {
+                warn!("Undefined child name: {}, pid: {}. Sending SIGTERM...",
+                      fullname, pid);
+                signal::send_signal(pid, signal::SIGTERM as int);
+                continue;
+            }
+        };
+        mon.add(fullname.clone(), box Child {
+            name: fullname,
+            global_config: config_file.clone(),
+            container_file: Rc::new(cfg_path),
+            container_config: cfg.clone(),
+        });
+    }
+
     for (path, cfg) in children.move_iter() {
-        let cfg = Rc::new(cfg);
         let path = Rc::new(path);
         let stem = path.filestem_str().unwrap();
         for i in range(0, cfg.instances) {
             let name = format!("{}.{}", stem, i);
+            if mon.has(&name) {
+                continue;
+            }
             mon.add(name.clone(), box Child {
                 name: name,
                 global_config: config_file.clone(),

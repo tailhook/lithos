@@ -3,7 +3,7 @@ volumes:
   /tmp: tmpfs:size=100m
 memory_limit: 104857600
 cpu_shares: 3
-instances: 1
+instances: 2
 hostname: sleep
 executable: /bin/sleep
 arguments: [60]

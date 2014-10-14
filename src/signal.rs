@@ -2,7 +2,7 @@ use std::ptr::null;
 use std::default::Default;
 use std::io::process::Process;
 
-use libc::consts::os::posix88::{SIGTERM, SIGINT};
+pub use libc::consts::os::posix88::{SIGTERM, SIGINT};
 use libc::{c_int, pid_t};
 
 

@@ -36,6 +36,9 @@ impl<'a> Monitor<'a> {
             current_pid: None,
             executor: executor});
     }
+    pub fn has(&self, name: &String) -> bool {
+        return self.processes.contains_key(name);
+    }
     pub fn run(&mut self) {
         debug!("[{:s}] Starting with {} processes",
             self.myname, self.processes.len());
