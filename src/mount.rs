@@ -33,15 +33,6 @@ static MS_STRICTATIME: c_ulong = 1 << 24;     /* Always perform atime updates.  
 static MS_ACTIVE: c_ulong = 1 << 30;
 static MS_NOUSER: c_ulong = 1 << 31;
 
-macro_rules! try_opt {
-    ($expr:expr) => {
-        match $expr {
-            Some(x) => x,
-            None => return None,
-        }
-    }
-}
-
 
 extern {
     fn mount(source: *u8, target: *u8,

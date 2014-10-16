@@ -1,4 +1,3 @@
-
 #![feature(phase, macro_rules)]
 
 extern crate serialize;
@@ -7,6 +6,8 @@ extern crate libc;
 
 extern crate argparse;
 extern crate quire;
+#[phase(plugin, link)] extern crate lithos;
+
 
 use std::os::{set_exit_status, getenv};
 use std::io::stderr;
@@ -25,8 +26,6 @@ use lithos::mount::{mount_pseudo};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
 
-#[path="../mod.rs"]
-mod lithos;
 
 struct Target {
     name: String,

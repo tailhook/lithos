@@ -9,6 +9,7 @@ extern crate debug;
 
 extern crate argparse;
 extern crate quire;
+#[phase(plugin, link)] extern crate lithos;
 
 
 use std::os::args;
@@ -38,11 +39,9 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::container::Command;
-use lithos::mount::{bind_mount, mount_private, unmount, check_mount_point};
+use lithos::mount::{bind_mount, mount_private, unmount};
+use lithos::mount::check_mount_point;
 use lithos::signal;
-
-#[path="../mod.rs"]
-mod lithos;
 
 
 struct Child {
