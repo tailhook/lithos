@@ -1,4 +1,8 @@
 /lithos_*
 /*.a
+/*.o
+/*.rlib
 /run
 /.vagga
+*.orig
+/todo.txt
