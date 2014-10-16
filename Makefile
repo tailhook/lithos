@@ -16,11 +16,11 @@ test: lithos_test
 
 $(LITHOSLIB): src/*.rs src/*/*.rs
 	$(RUSTC) src/lib.rs -g -o $@ \
-		-L rust-quire -L rust-argparse
+		-L rust-quire -L rust-argparse -L .
 
 lithos_test: $(ARGPARSELIB) $(QUIRELIB) src/*.rs src/*/*.rs libcontainer.a
 	$(RUSTC) src/lib.rs --test -g -o $@ \
-		-L rust-quire -L rust-argparse
+		-L rust-quire -L rust-argparse -L .
 
 lithos_tree: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_tree.rs libcontainer.a
 	$(RUSTC) src/bin/lithos_tree.rs -g -o $@ \
