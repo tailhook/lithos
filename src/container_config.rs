@@ -15,6 +15,7 @@ pub enum Volume {
 #[deriving(Decodable, Encodable)]
 pub struct ContainerConfig {
     pub volumes: TreeMap<String, String>,
+    pub user_id: uint,
     pub memory_limit: u64,
     pub cpu_shares: uint,
     pub instances: uint,
@@ -33,6 +34,11 @@ impl ContainerConfig {
                 value_element: box Scalar {
                     .. Default::default() } as Box<Validator>,
             .. Default::default() } as Box<Validator>),
+            ("user_id".to_string(), box Numeric {
+                min: Some(1),
+                max: Some(65534),
+                default: None::<uint>,
+                .. Default::default()} as Box<Validator>),
             ("memory_limit".to_string(), box Numeric {
                 default: Some(0xffffffffffffffffu64),
                 .. Default::default()} as Box<Validator>),

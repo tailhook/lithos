@@ -54,7 +54,7 @@ struct Child {
 impl Executor for Child {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new(
+        let mut cmd = Command::new(self.name.clone(),
             self_exe_path().unwrap().join("lithos_knot"));
         cmd.keep_sigmask();
 

@@ -36,7 +36,9 @@ struct Target {
 impl Executor for Target {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new(self.local.executable.as_slice());
+        let mut cmd = Command::new(self.name.clone(),
+            self.local.executable.as_slice());
+        cmd.set_user_id(self.local.user_id);
 
         // Should we propagate TERM?
         cmd.set_env("TERM".to_string(),

@@ -11,7 +11,9 @@
 
 typedef struct {
     int namespaces;
+    int user_id;
     int restore_sigmask;
+    const char *logprefix;
     const char *exec_path;
     char ** const exec_args;
     char ** const exec_environ;
@@ -25,6 +27,11 @@ typedef struct {
 
 static void _run_container(CCommand *cmd) {
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+    if(setuid(cmd->user_id)) {
+        fprintf(stderr, "%s Error setting userid %d: %m\n",
+            cmd->logprefix, cmd->user_id);
+        abort();
+    }
     if(cmd->restore_sigmask) {
         sigset_t mask;
         sigfillset(&mask);

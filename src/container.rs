@@ -43,23 +43,30 @@ impl CLike for Namespace {
 }
 
 pub struct Command {
+    name: String,
     executable: CString,
     arguments: Vec<CString>,
     environment: TreeMap<String, String>,
     namespaces: EnumSet<Namespace>,
     restore_sigmask: bool,
+    user_id: uint,
 }
 
 
 impl Command {
-    pub fn new<T:ToCStr>(cmd: T) -> Command {
+    pub fn new<T:ToCStr>(name: String, cmd: T) -> Command {
         return Command {
+            name: name,
             executable: cmd.to_c_str(),
             arguments: vec!(cmd.to_c_str()),
             namespaces: EnumSet::empty(),
             environment: TreeMap::new(),
             restore_sigmask: true,
+            user_id: 0,
         };
+    }
+    pub fn set_user_id(&mut self, uid: uint) {
+        self.user_id = uid;
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
@@ -100,11 +107,18 @@ impl Command {
         let mut exec_environ: Vec<*u8> = environ_cstr.iter()
             .map(|p| p.as_bytes().as_ptr()).collect();
         exec_environ.push(null());
+
+        let logprefix = format!(
+            // Only errors are logged from C code
+            "ERROR:lithos::container.c: [{}]", self.name
+            ).to_c_str();
         let pid = unsafe { execute_command(&CCommand {
+            logprefix: logprefix.as_bytes().as_ptr(),
             exec_path: self.executable.as_bytes().as_ptr(),
             exec_args: exec_args.as_slice().as_ptr(),
             exec_environ: exec_environ.as_slice().as_ptr(),
             namespaces: convert_namespaces(self.namespaces),
+            user_id: self.user_id as i32,
             restore_sigmask: if self.restore_sigmask { 1 } else { 0 },
         }) };
         if pid < 0 {
@@ -139,7 +153,9 @@ static CLONE_NEWNET: c_int = 0x40000000;  /* New network namespace.  */
 
 pub struct CCommand {
     namespaces: c_int,
+    user_id: c_int,
     restore_sigmask: c_int,
+    logprefix: *u8,
     exec_path: *u8,
     exec_args: **u8,
     exec_environ: **u8,
