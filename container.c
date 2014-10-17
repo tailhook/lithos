@@ -14,6 +14,7 @@ typedef struct {
     int user_id;
     int restore_sigmask;
     const char *logprefix;
+    const char *fs_root;
     const char *exec_path;
     char ** const exec_args;
     char ** const exec_environ;
@@ -27,6 +28,11 @@ typedef struct {
 
 static void _run_container(CCommand *cmd) {
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+    if(chroot(cmd->fs_root)) {
+        fprintf(stderr, "%s Error changing root %s: %m\n",
+            cmd->logprefix, cmd->fs_root);
+        abort();
+    }
     if(setuid(cmd->user_id)) {
         fprintf(stderr, "%s Error setting userid %d: %m\n",
             cmd->logprefix, cmd->user_id);

@@ -44,6 +44,7 @@ impl CLike for Namespace {
 
 pub struct Command {
     name: String,
+    chroot: CString,
     executable: CString,
     arguments: Vec<CString>,
     environment: TreeMap<String, String>,
@@ -57,6 +58,7 @@ impl Command {
     pub fn new<T:ToCStr>(name: String, cmd: T) -> Command {
         return Command {
             name: name,
+            chroot: "/".to_c_str(),
             executable: cmd.to_c_str(),
             arguments: vec!(cmd.to_c_str()),
             namespaces: EnumSet::empty(),
@@ -67,6 +69,9 @@ impl Command {
     }
     pub fn set_user_id(&mut self, uid: uint) {
         self.user_id = uid;
+    }
+    pub fn chroot(&mut self, dir: &Path) {
+        self.chroot = dir.to_c_str();
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
@@ -114,6 +119,7 @@ impl Command {
             ).to_c_str();
         let pid = unsafe { execute_command(&CCommand {
             logprefix: logprefix.as_bytes().as_ptr(),
+            fs_root: self.chroot.as_bytes().as_ptr(),
             exec_path: self.executable.as_bytes().as_ptr(),
             exec_args: exec_args.as_slice().as_ptr(),
             exec_environ: exec_environ.as_slice().as_ptr(),
@@ -156,6 +162,7 @@ pub struct CCommand {
     user_id: c_int,
     restore_sigmask: c_int,
     logprefix: *u8,
+    fs_root: *u8,
     exec_path: *u8,
     exec_args: **u8,
     exec_environ: **u8,

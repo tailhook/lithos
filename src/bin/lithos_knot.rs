@@ -39,6 +39,7 @@ impl Executor for Target {
         let mut cmd = Command::new(self.name.clone(),
             self.local.executable.as_slice());
         cmd.set_user_id(self.local.user_id);
+        cmd.chroot(&Path::new(self.global.mount_dir.as_slice()));
 
         // Should we propagate TERM?
         cmd.set_env("TERM".to_string(),
