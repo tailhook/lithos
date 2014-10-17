@@ -14,7 +14,7 @@ test: lithos_test
 	./lithos_test
 
 
-$(LITHOSLIB): src/*.rs src/*/*.rs
+$(LITHOSLIB): src/*.rs src/*/*.rs libcontainer.a
 	$(RUSTC) src/lib.rs -g -o $@ \
 		-L rust-quire -L rust-argparse -L .
 
@@ -30,9 +30,11 @@ lithos_knot: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_knot.rs libc
 	$(RUSTC) src/bin/lithos_knot.rs -g -o $@ \
 		-L rust-quire -L rust-argparse -L .
 
-libcontainer.a: container.c
-	$(CC) -c $< -o container.o -D_GNU_SOURCE -std=c99
-	$(AR) rcs $@ container.o
+container.o: container.c
+	$(CC) -c $< -o $@ -D_GNU_SOURCE -std=c99
+
+libcontainer.a: container.o
+	$(AR) rcs $@ $^
 
 quire:
 	make -C rust-quire quire-lib
