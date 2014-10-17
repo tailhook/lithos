@@ -1,6 +1,38 @@
+commands:
+
+  build-ubuntu-package:
+    container: ubuntu
+    write-mode: transient-hard-link-copy
+    command:
+    - checkinstall
+    - --default
+    - --maintainer=paul@colomiets.name
+    - --pkglicense=MIT
+    - --pkgname=lithos
+    - --nodoc
+    - make
+    - -B
+    - all
+    - install
+
 containers:
 
   busybox:
+    # This one is used as a container inside the lithos example
     builder: docker
     parameters:
       image: busybox
+
+  ubuntu:
+    # The container to build lithos ubuntu package
+    builder: ubuntu
+    uids: [0-1000, 65534]
+    gids: [0-1000, 65534]
+    parameters:
+      repos: universe
+      PPAs: hansjorg/rust
+      additional_keys: 37FD5E80BD6B6386  # for rust
+      packages: make checkinstall rust-0.11
+    tmpfs-volumes:
+      /tmp: size=1m,mode=1777
+      /var/tmp: size=100m,mode=1777

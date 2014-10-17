@@ -46,6 +46,7 @@ install:
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 lithos_tree $(DESTDIR)$(PREFIX)/bin/lithos_tree
 	install -m 755 lithos_knot $(DESTDIR)$(PREFIX)/bin/lithos_knot
+	install -m 755 bin/lithos_mkdev $(DESTDIR)$(PREFIX)/bin/lithos_mkdev
 
 
 .PHONY: all quire argparse install test
