@@ -45,7 +45,7 @@ use lithos::signal;
 
 
 struct Child {
-    name: String,
+    name: Rc<String>,
     global_config: Rc<Path>,
     container_file: Rc<Path>,
     container_config: Rc<ContainerConfig>,
@@ -54,7 +54,7 @@ struct Child {
 impl Executor for Child {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new(self.name.clone(),
+        let mut cmd = Command::new((*self.name).clone(),
             self_exe_path().unwrap().join("lithos_knot"));
         cmd.keep_sigmask();
 
@@ -210,6 +210,7 @@ fn run(config_file: Path) -> Result<(), String> {
             Some((fullname, childname)) => (fullname, childname),
             None => continue,
         };
+        let fullname = Rc::new(fullname);
         let cfg_path = configdir.join(childname + ".yaml");
         println!("CONFIG PATH {}", cfg_path.display());
         let cfg = match children.find(&cfg_path) {
@@ -233,7 +234,7 @@ fn run(config_file: Path) -> Result<(), String> {
         let path = Rc::new(path);
         let stem = path.filestem_str().unwrap();
         for i in range(0, cfg.instances) {
-            let name = format!("{}.{}", stem, i);
+            let name = Rc::new(format!("{}.{}", stem, i));
             if mon.has(&name) {
                 continue;
             }

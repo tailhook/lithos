@@ -9,6 +9,7 @@ extern crate quire;
 #[phase(plugin, link)] extern crate lithos;
 
 
+use std::rc::Rc;
 use std::os::{set_exit_status, getenv};
 use std::io::stderr;
 use std::default::Default;
@@ -28,7 +29,7 @@ use lithos::signal;
 
 
 struct Target {
-    name: String,
+    name: Rc<String>,
     global: TreeConfig,
     local: ContainerConfig,
 }
@@ -36,7 +37,7 @@ struct Target {
 impl Executor for Target {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new(self.name.clone(),
+        let mut cmd = Command::new((*self.name).clone(),
             self.local.executable.as_slice());
         cmd.set_user_id(self.local.user_id);
         cmd.chroot(&Path::new(self.global.mount_dir.as_slice()));
@@ -45,7 +46,7 @@ impl Executor for Target {
         cmd.set_env("TERM".to_string(),
                     getenv("TERM").unwrap_or("dumb".to_string()));
         cmd.update_env(self.local.environ.iter());
-        cmd.set_env("LITHOS_NAME".to_string(), self.name.clone());
+        cmd.set_env("LITHOS_NAME".to_string(), (*self.name).clone());
 
         cmd.args(self.local.arguments.as_slice());
 
@@ -136,7 +137,7 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     try!(setup_filesystem(&global, &local));
 
     let mut mon = Monitor::new(name.clone());
-    let name = name + ".main";
+    let name = Rc::new(name + ".main");
     mon.add(name.clone(), box Target {
         name: name,
         global: global,

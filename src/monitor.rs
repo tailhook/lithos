@@ -1,7 +1,10 @@
+use std::rc::Rc;
 use std::collections::TreeMap;
 use std::collections::HashMap;
+use std::collections::PriorityQueue;
 use std::mem::swap;
 use libc::pid_t;
+use time::Timespec;
 
 use super::container::Command;
 use super::signal;
@@ -16,15 +19,16 @@ pub trait Executor {
 }
 
 pub struct Process<'a> {
-    name: String,
+    name: Rc<String>,
     current_pid: Option<pid_t>,
     executor: Box<Executor>,
 }
 
 pub struct Monitor<'a> {
     myname: String,
-    processes: TreeMap<String, Process<'a>>,
-    pids: HashMap<pid_t, String>,
+    processes: TreeMap<Rc<String>, Process<'a>>,
+    startqueue: PriorityQueue<(Timespec, Rc<String>)>,
+    pids: HashMap<pid_t, Rc<String>>,
     allow_reboot: bool,
 }
 
@@ -35,12 +39,13 @@ impl<'a> Monitor<'a> {
             processes: TreeMap::new(),
             pids: HashMap::new(),
             allow_reboot: false,
+            startqueue: PriorityQueue::new(),
         };
     }
     pub fn allow_reboot(&mut self) {
         self.allow_reboot = true;
     }
-    pub fn add(&mut self, name: String, executor: Box<Executor>,
+    pub fn add(&mut self, name: Rc<String>, executor: Box<Executor>,
         pid: Option<pid_t>)
     {
         if pid.is_some() {
@@ -52,7 +57,7 @@ impl<'a> Monitor<'a> {
             current_pid: pid,
             executor: executor});
     }
-    pub fn has(&self, name: &String) -> bool {
+    pub fn has(&self, name: &Rc<String>) -> bool {
         return self.processes.contains_key(name);
     }
     fn _wait_signal(&self) -> signal::Signal {

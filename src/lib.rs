@@ -8,6 +8,7 @@ extern crate debug;
 extern crate libc;
 extern crate quire;
 extern crate serialize;
+extern crate time;
 
 pub mod tree_config;
 pub mod container_config;
