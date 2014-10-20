@@ -54,13 +54,17 @@ impl Executor for Target {
 }
 
 fn map_dir(dir: &Path, dirs: &TreeMap<String, String>) -> Option<Path> {
+    assert!(dir.is_absolute());
     for (prefix, real_dir) in dirs.iter() {
         let dir_prefix = Path::new(prefix.as_slice());
-        match dir.path_relative_from(&dir_prefix) {
-            Some(tail) => {
-                return Some(Path::new(real_dir.as_slice()).join(tail));
+        if dir_prefix.is_ancestor_of(dir) {
+            match dir.path_relative_from(&dir_prefix) {
+                Some(tail) => {
+                    assert!(!tail.is_absolute());
+                    return Some(Path::new(real_dir.as_slice()).join(tail));
+                }
+                None => continue,
             }
-            None => continue,
         }
     }
     return None;
@@ -83,8 +87,8 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
             tmp_mp.path_relative_from(&Path::new("/")).unwrap());
         match try_str!(parse_volume(volume_str.as_slice())) {
             Readonly(dir) => {
-                let path = match map_dir(&dir, &global.readonly_paths).or(
-                                 map_dir(&dir, &global.writable_paths)) {
+                let path = match map_dir(&dir, &global.readonly_paths).or_else(
+                                 || map_dir(&dir, &global.writable_paths)) {
                     None => {
                         return Err(format!(concat!("Can't find volume for {},",
                             " probably missing entry in readonly-paths"),
