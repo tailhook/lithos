@@ -6,7 +6,7 @@ use std::io::process::Process;
 use libc::types::os::common::posix01::timespec;
 use time::{Timespec, get_time};
 
-pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT};
+pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR};
 use libc::{c_int, pid_t};
 
 
@@ -40,11 +40,18 @@ pub fn block_all() {
     unsafe { block_all_signals() };
 }
 
+fn _convert_status(status: i32) -> int {
+    if status & 0xff == 0 {
+        return ((status & 0xff00) >> 8) as int;
+    }
+    return (128 + (status & 0x7f)) as int;  // signal
+}
+
 pub fn wait_next(reboot_supported: bool, timeout: Option<Timespec>) -> Signal {
     let mut status: i32 = 0;
     let pid = unsafe { waitpid(-1, &mut status, WNOHANG) };
     if pid > 0 {
-        return Child(pid, status as int);
+        return Child(pid, _convert_status(status));
     }
     loop {
         let mut ptr = Default::default();
@@ -74,8 +81,19 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Timespec>) -> Signal {
         }
         match ptr.signo {
             SIGCHLD => {
-                unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
-                assert_eq!(status, ptr.status);
+                loop {
+                    status = 0;
+                    let rc = unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
+                    if rc < 0 {
+                        if rc == EINTR {
+                            continue;
+                        }
+                        fail!("Failure {} not expected", rc);
+                    }
+                    assert_eq!(rc, ptr.pid);
+                    break;
+                }
+                assert_eq!(_convert_status(status), ptr.status as int);
                 return Child(ptr.pid, ptr.status as int);
             }
             SIGQUIT if reboot_supported => {
