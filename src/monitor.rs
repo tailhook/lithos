@@ -21,7 +21,7 @@ pub trait Executor {
 pub struct Process<'a> {
     name: Rc<String>,
     current_pid: Option<pid_t>,
-    executor: Box<Executor>,
+    executor: Box<Executor + 'a>,
 }
 
 pub struct Monitor<'a> {
@@ -33,7 +33,7 @@ pub struct Monitor<'a> {
 }
 
 impl<'a> Monitor<'a> {
-    pub fn new(name: String) -> Monitor {
+    pub fn new<'x>(name: String) -> Monitor<'x> {
         return Monitor {
             myname: name,
             processes: TreeMap::new(),
@@ -66,7 +66,7 @@ impl<'a> Monitor<'a> {
     pub fn run(&mut self) -> MonitorResult {
         debug!("[{:s}] Starting with {} processes",
             self.myname, self.processes.len());
-        for (name, prc) in self.processes.mut_iter() {
+        for (name, prc) in self.processes.iter_mut() {
             if prc.current_pid.is_some() {
                 continue;
             }
@@ -130,10 +130,10 @@ impl<'a> Monitor<'a> {
         // Shut down loop
         let mut processes = TreeMap::new();
         swap(&mut processes, &mut self.processes);
-        let mut left: TreeMap<pid_t, Process> = FromIterator::from_iter(
-            processes.move_iter()
+        let mut left: TreeMap<pid_t, Process> = processes.into_iter()
             .filter(|&(_, ref prc)| prc.current_pid.is_some())
-            .map(|(_, prc)| (prc.current_pid.unwrap(), prc)));
+            .map(|(_, prc)| (prc.current_pid.unwrap(), prc))
+            .collect();
         while left.len() > 0 {
             let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);

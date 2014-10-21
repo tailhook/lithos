@@ -35,10 +35,10 @@ static MS_NOUSER: c_ulong = 1 << 31;
 
 
 extern {
-    fn mount(source: *u8, target: *u8,
-        filesystemtype: *u8, flags: c_ulong,
-        data: *u8) -> c_int;
-    fn umount(target: *u8) -> c_int;
+    fn mount(source: *const u8, target: *const u8,
+        filesystemtype: *const u8, flags: c_ulong,
+        data: *const u8) -> c_int;
+    fn umount(target: *const u8) -> c_int;
 }
 
 
@@ -74,7 +74,7 @@ impl<'a> MountRecord<'a> {
 
         for name in parts {
             if name == "-" { break; }
-            let mut pair = name.splitn(':', 1);
+            let mut pair = name.splitn(1, ':');
             let key = pair.next();
             let value = pair.next();
             match key {
@@ -158,7 +158,7 @@ pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
                 return Err(format!("Error reading /proc/mounts: {}", e));
             }
         };
-        let mut iter = line.as_slice().splitn(' ', 2);
+        let mut iter = line.as_slice().splitn(2, ' ');
         let cur_source = match iter.next() {
             Some(src) => src,
             None => {

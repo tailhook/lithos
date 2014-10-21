@@ -104,12 +104,12 @@ impl Command {
         }
     }
     pub fn spawn(&self) -> Result<pid_t, IoError> {
-        let mut exec_args: Vec<*u8> = self.arguments.iter()
+        let mut exec_args: Vec<*const u8> = self.arguments.iter()
             .map(|a| a.as_bytes().as_ptr()).collect();
         exec_args.push(null());
         let environ_cstr: Vec<CString> = self.environment.iter()
             .map(|(k, v)| (*k + "=" + *v).to_c_str()).collect();
-        let mut exec_environ: Vec<*u8> = environ_cstr.iter()
+        let mut exec_environ: Vec<*const u8> = environ_cstr.iter()
             .map(|p| p.as_bytes().as_ptr()).collect();
         exec_environ.push(null());
 
@@ -157,19 +157,20 @@ static CLONE_NEWUSER: c_int = 0x10000000; /* New user namespace.  */
 static CLONE_NEWPID: c_int = 0x20000000;  /* New pid namespace.  */
 static CLONE_NEWNET: c_int = 0x40000000;  /* New network namespace.  */
 
+#[repr(C)]
 pub struct CCommand {
     namespaces: c_int,
     user_id: c_int,
     restore_sigmask: c_int,
-    logprefix: *u8,
-    fs_root: *u8,
-    exec_path: *u8,
-    exec_args: **u8,
-    exec_environ: **u8,
+    logprefix: *const u8,
+    fs_root: *const u8,
+    exec_path: *const u8,
+    exec_args: *const*const u8,
+    exec_environ: *const*const u8,
 }
 
 #[link(name="container", kind="static")]
 extern {
-    fn execute_command(cmd: *CCommand) -> pid_t;
+    fn execute_command(cmd: *const CCommand) -> pid_t;
 }
 

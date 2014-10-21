@@ -20,7 +20,7 @@ pub struct TreeConfig {
 }
 
 impl TreeConfig {
-    pub fn validator() -> Box<Validator> {
+    pub fn validator<'x>() -> Box<Validator + 'x> {
         return box Structure { members: vec!(
             ("config_dir".to_string(), box Scalar {
                 default: Some("/etc/lithos/current".to_string()),

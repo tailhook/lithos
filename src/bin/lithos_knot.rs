@@ -128,9 +128,9 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
 
 fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     let global: TreeConfig = try_str!(parse_config(&global_cfg,
-        TreeConfig::validator(), Default::default()));
+        &*TreeConfig::validator(), Default::default()));
     let local: ContainerConfig = try_str!(parse_config(&local_cfg,
-        ContainerConfig::validator(), Default::default()));
+        &*ContainerConfig::validator(), Default::default()));
 
     info!("[{:s}] Starting container", name);
 

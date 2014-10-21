@@ -1,4 +1,3 @@
-use std::ptr::null;
 use std::default::Default;
 use std::io::process::Process;
 
@@ -17,6 +16,7 @@ pub enum Signal {
 }
 
 #[deriving(Default)]
+#[repr(C)]
 struct CSignalInfo {
     signo: c_int,
     pid: pid_t,
@@ -25,8 +25,8 @@ struct CSignalInfo {
 
 extern {
     fn block_all_signals();
-    fn wait_any_signal(ptr: *CSignalInfo);
-    fn waitpid(pid: pid_t, status: *c_int, options: c_int) -> pid_t;
+    fn wait_any_signal(ptr: *mut CSignalInfo);
+    fn waitpid(pid: pid_t, status: *mut c_int, options: c_int) -> pid_t;
 }
 
 pub fn block_all() {
@@ -34,17 +34,18 @@ pub fn block_all() {
 }
 
 pub fn wait_next(reboot_supported: bool) -> Signal {
-    let status: i32 = 0;
-    let pid = unsafe { waitpid(-1, &status, WNOHANG) };
+    let mut status: i32 = 0;
+    let pid = unsafe { waitpid(-1, &mut status, WNOHANG) };
     if pid > 0 {
         return Child(pid, status as int);
     }
     loop {
-        let ptr = Default::default();
-        unsafe { wait_any_signal(&ptr) }
+        let mut ptr = Default::default();
+        unsafe { wait_any_signal(&mut ptr) }
         match ptr.signo {
             SIGCHLD => {
-                unsafe { waitpid(ptr.pid, null(), WNOHANG) };
+                unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
+                assert_eq!(status, ptr.status);
                 return Child(ptr.pid, ptr.status as int);
             }
             SIGQUIT if reboot_supported => {

@@ -1,4 +1,4 @@
-#![crate_id="lithos"]
+#![crate_name="lithos"]
 #![crate_type="lib"]
 
 #![feature(macro_rules,phase)]

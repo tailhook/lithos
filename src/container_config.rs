@@ -26,7 +26,7 @@ pub struct ContainerConfig {
 }
 
 impl ContainerConfig {
-    pub fn validator() -> Box<Validator> {
+    pub fn validator<'x>() -> Box<Validator + 'x> {
         return box Structure { members: vec!(
             ("volumes".to_string(), box Mapping {
                 key_element: box Scalar {

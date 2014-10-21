@@ -32,7 +32,7 @@ containers:
       repos: universe
       PPAs: hansjorg/rust
       additional_keys: 37FD5E80BD6B6386  # for rust
-      packages: make checkinstall rust-0.11
+      packages: make checkinstall rust-0.12
     tmpfs-volumes:
       /tmp: size=1m,mode=1777
       /var/tmp: size=100m,mode=1777

@@ -5,9 +5,9 @@ AR ?= ar
 PREFIX ?= /usr
 DESTDIR ?=
 
-LITHOSLIB = $(shell rustc --crate-file-name src/lib.rs)
-QUIRELIB = rust-quire/$(shell rustc --crate-file-name rust-quire/src/lib.rs)
-ARGPARSELIB = rust-argparse/$(shell rustc --crate-file-name rust-argparse/argparse/mod.rs)
+LITHOSLIB = liblithos.rlib
+QUIRELIB = rust-quire/libquire.rlib
+ARGPARSELIB = rust-argparse/libargparse.rlib
 
 all: quire argparse lithos_tree lithos_knot
 test: lithos_test
@@ -31,7 +31,7 @@ lithos_knot: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_knot.rs libc
 		-L rust-quire -L rust-argparse -L .
 
 container.o: container.c
-	$(CC) -c $< -o $@ -D_GNU_SOURCE -std=c99
+	$(CC) -c $< -o $@ -fPIC -D_GNU_SOURCE -std=c99
 
 libcontainer.a: container.o
 	$(AR) rcs $@ $^

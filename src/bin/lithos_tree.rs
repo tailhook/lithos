@@ -15,20 +15,18 @@ extern crate quire;
 use std::os::args;
 use std::rc::Rc;
 use std::io::stderr;
-use std::io::{IoResult, IoError};
+use std::io::IoError;
 use std::io::fs::File;
 use std::os::getenv;
-use std::io::BufferedReader;
 use std::from_str::FromStr;
-use std::str::from_utf8;
 use std::io::fs::{readdir, mkdir_recursive, rmdir, rmdir_recursive};
 use std::os::{set_exit_status, self_exe_path, self_exe_name};
 use std::io::FilePermission;
 use std::ptr::null;
+use std::io::fs::PathExtensions;
 use std::c_str::{ToCStr, CString};
 use std::default::Default;
 use std::collections::HashMap;
-use libc::consts::os::posix88::EINVAL;
 use libc::funcs::posix88::unistd::{getpid, execv};
 use libc::pid_t;
 
@@ -125,8 +123,8 @@ fn discard<E>(_: E) { }
 
 fn _read_args(procfsdir: &Path) -> Result<(String, String, String), ()> {
     let mut f = try!(File::open(&procfsdir.join("cmdline")).map_err(discard));
-    let line = try!(f.read_to_str().map_err(discard));
-    let mut iter = line.as_slice().splitn('\0', 3);
+    let line = try!(f.read_to_string().map_err(discard));
+    let mut iter = line.as_slice().splitn(3, '\0');
     let exe = iter.next();
     let name_flag = iter.next();
     let name = iter.next();
@@ -141,7 +139,7 @@ fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
     let ppid_regex = regex!(r"^\d+\s+\([^)]*\)\s+\S+\s+(\d+)\s");
     let stat =
         File::open(&procfsdir.join("stat")).ok()
-        .and_then(|mut f| f.read_to_str().ok());
+        .and_then(|mut f| f.read_to_string().ok());
     if stat.is_none() {
         return None;
     }
@@ -173,7 +171,7 @@ fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
 
 fn run(config_file: Path) -> Result<(), String> {
     let cfg: TreeConfig = try_str!(parse_config(&config_file,
-        TreeConfig::validator(), Default::default()));
+        &*TreeConfig::validator(), Default::default()));
 
     try!(check_config(&cfg));
 
@@ -181,7 +179,7 @@ fn run(config_file: Path) -> Result<(), String> {
     debug!("Checking child dir {}", cfg.config_dir);//.display());
     let configdir = Path::new(cfg.config_dir.as_slice());
     let dirlist = try_str!(readdir(&configdir));
-    for child_fn in dirlist.move_iter() {
+    for child_fn in dirlist.into_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
             (_, Some("yaml")) => {}
@@ -189,7 +187,7 @@ fn run(config_file: Path) -> Result<(), String> {
         }
         debug!("Adding {}", child_fn.display());
         let child_cfg = try_str!(parse_config(&child_fn,
-            ContainerConfig::validator(), Default::default()));
+            &*ContainerConfig::validator(), Default::default()));
         children.insert(child_fn, Rc::new(child_cfg));
     }
 
@@ -230,7 +228,7 @@ fn run(config_file: Path) -> Result<(), String> {
         }, Some(pid));
     }
 
-    for (path, cfg) in children.move_iter() {
+    for (path, cfg) in children.into_iter() {
         let path = Rc::new(path);
         let stem = path.filestem_str().unwrap();
         for i in range(0, cfg.instances) {
@@ -264,12 +262,12 @@ fn reexec_myself() -> ! {
     let exe = self_exe_name().unwrap();
     let c_exe = exe.to_c_str();
     let c_args: Vec<CString> = args.iter().map(|x| x.to_c_str()).collect();
-    let mut c_argv: Vec<*u8> = c_args.iter().map(|x| x.as_bytes().as_ptr()).collect();
+    let mut c_argv: Vec<*const u8>;
+    c_argv = c_args.iter().map(|x| x.as_bytes().as_ptr()).collect();
     c_argv.push(null());
     debug!("Executing {} {}", exe.display(), args);
     unsafe {
-        execv(c_exe.as_bytes().as_ptr() as *i8,
-              c_argv.as_slice().as_ptr() as **i8);
+        execv(c_exe.as_ptr(), c_argv.as_ptr() as *mut *const i8);
     }
     fail!("Can't reexec myself: {}", IoError::last_error());
 }
