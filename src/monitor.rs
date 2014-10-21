@@ -146,7 +146,6 @@ impl<'a> Monitor<'a> {
             }
         }
         self.start_queue.clear();
-        info!("[{:s}] Shutting down", self.myname);
         // Shut down loop
         let mut processes = TreeMap::new();
         swap(&mut processes, &mut self.processes);
@@ -154,6 +153,8 @@ impl<'a> Monitor<'a> {
             .filter(|&(_, ref prc)| prc.current_pid.is_some())
             .map(|(_, prc)| (prc.current_pid.unwrap(), prc))
             .collect();
+        info!("[{:s}] Shutting down, {} processes left",
+              self.myname, left.len());
         while left.len() > 0 {
             let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);
