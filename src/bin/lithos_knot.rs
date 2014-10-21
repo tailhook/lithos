@@ -12,6 +12,7 @@ extern crate quire;
 use std::rc::Rc;
 use std::os::{set_exit_status, getenv};
 use std::io::stderr;
+use std::time::Duration;
 use std::default::Default;
 use std::collections::TreeMap;
 
@@ -138,11 +139,12 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
 
     let mut mon = Monitor::new(name.clone());
     let name = Rc::new(name + ".main");
+    let timeo = Duration::milliseconds((local.restart_timeout*1000.) as i64);
     mon.add(name.clone(), box Target {
         name: name,
         global: global,
         local: local,
-    }, None);
+    }, timeo, None);
     mon.run();
 
     return Ok(());

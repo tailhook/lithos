@@ -1,10 +1,11 @@
-#![feature(phase, macro_rules)]
+#![feature(phase, macro_rules, if_let)]
 
 extern crate serialize;
 extern crate libc;
 #[phase(plugin, link)] extern crate log;
 extern crate regex;
 #[phase(plugin)] extern crate regex_macros;
+extern crate time;
 extern crate debug;
 
 extern crate argparse;
@@ -23,12 +24,14 @@ use std::io::fs::{readdir, mkdir_recursive, rmdir, rmdir_recursive};
 use std::os::{set_exit_status, self_exe_path, self_exe_name};
 use std::io::FilePermission;
 use std::ptr::null;
+use std::time::Duration;
 use std::io::fs::PathExtensions;
 use std::c_str::{ToCStr, CString};
 use std::default::Default;
 use std::collections::HashMap;
-use libc::funcs::posix88::unistd::{getpid, execv};
+use time::get_time;
 use libc::pid_t;
+use libc::funcs::posix88::unistd::{getpid, execv};
 
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
@@ -66,7 +69,12 @@ impl Executor for Child {
         cmd.arg(&*self.container_file);
         cmd.set_env("TERM".to_string(),
                     getenv("TERM").unwrap_or("dumb".to_string()));
-        getenv("RUST_LOG").map(|x| cmd.set_env("RUST_LOG".to_string(), x));
+        if let Some(x) = getenv("RUST_LOG") {
+            cmd.set_env("RUST_LOG".to_string(), x);
+        }
+        if let Some(x) = getenv("RUST_BACKTRACE") {
+            cmd.set_env("RUST_BACKTRACE".to_string(), x);
+        }
         cmd.container(false);
         return cmd;
     }
@@ -210,7 +218,6 @@ fn run(config_file: Path) -> Result<(), String> {
         };
         let fullname = Rc::new(fullname);
         let cfg_path = configdir.join(childname + ".yaml");
-        println!("CONFIG PATH {}", cfg_path.display());
         let cfg = match children.find(&cfg_path) {
             Some(cfg) => cfg,
             None => {
@@ -225,7 +232,8 @@ fn run(config_file: Path) -> Result<(), String> {
             global_config: config_file.clone(),
             container_file: Rc::new(cfg_path),
             container_config: cfg.clone(),
-        }, Some(pid));
+            }, Duration::seconds(1),
+            Some((pid, get_time())));
     }
 
     for (path, cfg) in children.into_iter() {
@@ -241,7 +249,8 @@ fn run(config_file: Path) -> Result<(), String> {
                 global_config: config_file.clone(),
                 container_file: path.clone(),
                 container_config: cfg.clone(),
-            }, None);
+            }, Duration::seconds(1),
+            None);
         }
     }
     mon.allow_reboot();

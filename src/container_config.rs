@@ -16,6 +16,7 @@ pub enum Volume {
 pub struct ContainerConfig {
     pub volumes: TreeMap<String, String>,
     pub user_id: uint,
+    pub restart_timeout: f32,
     pub memory_limit: u64,
     pub cpu_shares: uint,
     pub instances: uint,
@@ -44,6 +45,11 @@ impl ContainerConfig {
                 .. Default::default()} as Box<Validator>),
             ("cpu_shares".to_string(), box Numeric {
                 default: Some(1024u),
+                .. Default::default()} as Box<Validator>),
+            ("restart_timeout".to_string(), box Numeric {
+                min: Some(0.),
+                max: Some(86400.),
+                default: Some(1f32),
                 .. Default::default()} as Box<Validator>),
             ("instances".to_string(), box Numeric {
                 default: Some(1u),

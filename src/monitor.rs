@@ -3,8 +3,9 @@ use std::collections::TreeMap;
 use std::collections::HashMap;
 use std::collections::PriorityQueue;
 use std::mem::swap;
+use std::time::Duration;
 use libc::pid_t;
-use time::Timespec;
+use time::{Timespec, get_time};
 
 use super::container::Command;
 use super::signal;
@@ -21,15 +22,21 @@ pub trait Executor {
 pub struct Process<'a> {
     name: Rc<String>,
     current_pid: Option<pid_t>,
+    start_time: Option<Timespec>,
+    restart_timeout: Duration,
     executor: Box<Executor + 'a>,
 }
 
 pub struct Monitor<'a> {
     myname: String,
     processes: TreeMap<Rc<String>, Process<'a>>,
-    startqueue: PriorityQueue<(Timespec, Rc<String>)>,
+    start_queue: PriorityQueue<(i64, Rc<String>)>,
     pids: HashMap<pid_t, Rc<String>>,
     allow_reboot: bool,
+}
+
+fn _top_time(pq: &PriorityQueue<(i64, Rc<String>)>) -> Option<Timespec> {
+    return pq.top().map(|&(ts, _)| Timespec::new(-ts, 0));
 }
 
 impl<'a> Monitor<'a> {
@@ -39,55 +46,75 @@ impl<'a> Monitor<'a> {
             processes: TreeMap::new(),
             pids: HashMap::new(),
             allow_reboot: false,
-            startqueue: PriorityQueue::new(),
+            start_queue: PriorityQueue::new(),
         };
     }
     pub fn allow_reboot(&mut self) {
         self.allow_reboot = true;
     }
     pub fn add(&mut self, name: Rc<String>, executor: Box<Executor>,
-        pid: Option<pid_t>)
+        timeout: Duration, current: Option<(pid_t, Timespec)>)
     {
-        if pid.is_some() {
+        if current.is_some() {
             info!("[{:s}] Registered process pid: {} as name: {}",
-                self.myname, pid, name);
+                self.myname, current.map(|(pid, _)| pid).unwrap(), name);
+        } else {
+            self.start_queue.push((0, name.clone()));
         }
         self.processes.insert(name.clone(), Process {
             name: name,
-            current_pid: pid,
+            current_pid: current.map(|(pid, _)| pid),
+            start_time: current.map(|(_, time)| time),
+            restart_timeout: timeout,
             executor: executor});
     }
     pub fn has(&self, name: &Rc<String>) -> bool {
         return self.processes.contains_key(name);
     }
     fn _wait_signal(&self) -> signal::Signal {
-        return signal::wait_next(self.allow_reboot);
+        return signal::wait_next(
+            self.allow_reboot,
+            _top_time(&self.start_queue));
+    }
+    fn _start_processes(&mut self) {
+        let time = get_time();
+        loop {
+            let name = match self.start_queue.top() {
+                Some(&(ref ptime, ref name)) if Timespec::new(-ptime, 0) < time
+                => name.clone(),
+                _ => { break; }
+            };
+            self.start_queue.pop();
+            let ref mut prc = self.processes.find_mut(&name).unwrap();
+            match prc.executor.command().spawn() {
+                Ok(pid) => {
+                    info!("[{:s}] Process {} started with pid {}",
+                        self.myname, prc.name, pid);
+                    prc.current_pid = Some(pid);
+                    prc.start_time = Some(get_time());
+                    self.pids.insert(pid, prc.name.clone());
+                }
+                Err(e) => {
+                    error!("Can't run container {}: {}", prc.name, e);
+                    self.start_queue.push((
+                        -(time + prc.restart_timeout).sec,
+                        name,
+                        ));
+                }
+            }
+        }
     }
     pub fn run(&mut self) -> MonitorResult {
         debug!("[{:s}] Starting with {} processes",
             self.myname, self.processes.len());
-        for (name, prc) in self.processes.iter_mut() {
-            if prc.current_pid.is_some() {
-                continue;
-            }
-            match prc.executor.command().spawn() {
-                Ok(pid) => {
-                    info!("[{:s}] Process {} started with pid {}",
-                        self.myname, name, pid);
-                    prc.current_pid = Some(pid);
-                    self.pids.insert(pid, name.clone());
-                }
-                Err(e) => {
-                    error!("Can't run container {}: {}", name, e);
-                    // TODO(tailhook) add to restart-later list
-                }
-            }
-        }
         // Main loop
         loop {
             let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
+                signal::Timeout => {
+                    self._start_processes();
+                }
                 signal::Terminate(sig) => {
                     for (_name, prc) in self.processes.iter() {
                         match prc.current_pid {
@@ -99,7 +126,7 @@ impl<'a> Monitor<'a> {
                 }
                 signal::Child(pid, status) => {
                     let prc = match self.pids.find(&pid) {
-                        Some(name) => self.processes.find_mut(name).unwrap(),
+                        Some(name) => &self.processes[*name],
                         None => {
                             warn!("[{:s}] Unknown process {} dead with {}",
                                 self.myname, pid, status);
@@ -108,24 +135,17 @@ impl<'a> Monitor<'a> {
                     };
                     warn!("[{:s}] Child {}:{} exited with status {}",
                         self.myname, prc.name, pid, status);
-                    match prc.executor.command().spawn() {
-                        Ok(pid) => {
-                            info!("[{:s}] Process {} started with pid {}",
-                                self.myname, prc.name, pid);
-                            prc.current_pid = Some(pid);
-                            self.pids.insert(pid, prc.name.clone());
-                        }
-                        Err(e) => {
-                            error!("Can't run container {}: {}", prc.name, e);
-                            // TODO(tailhook) add to restart-later list
-                        }
-                    }
+                    self.start_queue.push((
+                        -(prc.start_time.unwrap() + prc.restart_timeout).sec,
+                        prc.name.clone(),
+                        ));
                 }
                 signal::Reboot => {
                     return Reboot;
                 }
             }
         }
+        self.start_queue.clear();
         info!("[{:s}] Shutting down", self.myname);
         // Shut down loop
         let mut processes = TreeMap::new();
@@ -138,6 +158,7 @@ impl<'a> Monitor<'a> {
             let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
+                signal::Timeout => { unreachable!(); }
                 signal::Terminate(sig) => {
                     for (_name, prc) in left.iter() {
                         match prc.current_pid {

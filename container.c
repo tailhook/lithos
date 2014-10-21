@@ -63,15 +63,22 @@ void block_all_signals() {
     sigprocmask(SIG_BLOCK, &mask, NULL);
 }
 
-void wait_any_signal(CSignalInfo *sig) {
+int wait_any_signal(CSignalInfo *sig, struct timespec *ts) {
     sigset_t mask;
     sigfillset(&mask);
     while(1) {
         siginfo_t native_info;
-        int rc = sigwaitinfo(&mask, &native_info);
+        int rc;
+        if(ts) {
+            rc = sigtimedwait(&mask, &native_info, ts);
+        } else {
+            rc = sigwaitinfo(&mask, &native_info);
+        }
         if(rc < 0){
             if(errno == EINTR) {
-                continue;
+                return 1;
+            } else if(errno == EAGAIN) {
+                return 1;
             } else {
                 fprintf(stderr, "Wrong error code for sigwaitinfo: %m\n");
                 abort();
@@ -80,7 +87,7 @@ void wait_any_signal(CSignalInfo *sig) {
         sig->signo = native_info.si_signo;
         sig->pid = native_info.si_pid;
         sig->status = native_info.si_status;
-        return;
+        return 0;
     }
 }
 

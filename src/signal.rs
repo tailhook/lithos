@@ -1,5 +1,10 @@
+use std::ptr::null;
+use std::num::zero;
+use std::time::duration::Duration;
 use std::default::Default;
 use std::io::process::Process;
+use libc::types::os::common::posix01::timespec;
+use time::{Timespec, get_time};
 
 pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT};
 use libc::{c_int, pid_t};
@@ -10,9 +15,10 @@ static WNOHANG: c_int = 1;
 
 #[deriving(Show)]
 pub enum Signal {
-    Terminate(int),
-    Child(pid_t, int),
+    Terminate(int),  // Actual signal for termination: INT, TERM, QUIT...
+    Child(pid_t, int),  //  pid and result code
     Reboot,
+    Timeout,  // Not actually a OS signal, but it's a signal for our app
 }
 
 #[deriving(Default)]
@@ -25,7 +31,8 @@ struct CSignalInfo {
 
 extern {
     fn block_all_signals();
-    fn wait_any_signal(ptr: *mut CSignalInfo);
+    fn wait_any_signal(ptr: *mut CSignalInfo, timeout: *const timespec)
+        -> c_int;
     fn waitpid(pid: pid_t, status: *mut c_int, options: c_int) -> pid_t;
 }
 
@@ -33,7 +40,7 @@ pub fn block_all() {
     unsafe { block_all_signals() };
 }
 
-pub fn wait_next(reboot_supported: bool) -> Signal {
+pub fn wait_next(reboot_supported: bool, timeout: Option<Timespec>) -> Signal {
     let mut status: i32 = 0;
     let pid = unsafe { waitpid(-1, &mut status, WNOHANG) };
     if pid > 0 {
@@ -41,7 +48,30 @@ pub fn wait_next(reboot_supported: bool) -> Signal {
     }
     loop {
         let mut ptr = Default::default();
-        unsafe { wait_any_signal(&mut ptr) }
+        let res = match timeout {
+            Some(tm) => {
+                let dur = tm - get_time();
+                let c_dur = if dur < zero() {
+                    timespec { tv_sec: 0, tv_nsec: 0 }
+                } else {
+                    timespec {
+                        tv_sec: dur.num_seconds(),
+                        tv_nsec: (dur - Duration::seconds(dur.num_seconds()))
+                            .num_nanoseconds().unwrap(),
+                    }
+                };
+                unsafe { wait_any_signal(&mut ptr, &c_dur) }
+            }
+            None => {
+                unsafe { wait_any_signal(&mut ptr, null()) }
+            }
+        };
+        if res != 0 {
+            //  Any error is ok, because application should be always prepared
+            //  for spurious timeouts
+            //  only EAGAIN and EINTR expected
+            return Timeout;
+        }
         match ptr.signo {
             SIGCHLD => {
                 unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
