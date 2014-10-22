@@ -97,7 +97,9 @@ int wait_any_signal(CSignalInfo *sig, struct timespec *ts) {
         }
         sig->signo = native_info.si_signo;
         sig->pid = native_info.si_pid;
-        sig->status = native_info.si_status;
+        sig->status = native_info.si_code == CLD_EXITED
+            ? native_info.si_status
+            : 128 + native_info.si_status;  // Wrapped signal
         return 0;
     }
 }

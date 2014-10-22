@@ -126,7 +126,7 @@ impl<'a> Monitor<'a> {
                 }
                 signal::Child(pid, status) => {
                     let prc = match self.pids.find(&pid) {
-                        Some(name) => &self.processes[*name],
+                        Some(name) => self.processes.find_mut(name).unwrap(),
                         None => {
                             warn!("[{:s}] Unknown process {} dead with {}",
                                 self.myname, pid, status);
@@ -139,6 +139,8 @@ impl<'a> Monitor<'a> {
                         -(prc.start_time.unwrap() + prc.restart_timeout).sec,
                         prc.name.clone(),
                         ));
+                    prc.current_pid = None;
+                    prc.start_time = None;
                 }
                 signal::Reboot => {
                     return Reboot;
