@@ -3,10 +3,11 @@
 use std::c_str::{CString, ToCStr};
 use std::ptr::null;
 use std::io::IoError;
+use std::os::getcwd;
 use std::collections::TreeMap;
 use std::collections::enum_set::{EnumSet, CLike};
 
-use libc::{c_int, pid_t};
+use libc::{c_int, c_char, pid_t};
 
 #[deriving(Show)]
 enum Namespace {
@@ -51,6 +52,7 @@ pub struct Command {
     namespaces: EnumSet<Namespace>,
     restore_sigmask: bool,
     user_id: uint,
+    workdir: CString,
 }
 
 
@@ -59,6 +61,7 @@ impl Command {
         return Command {
             name: name,
             chroot: "/".to_c_str(),
+            workdir: getcwd().to_c_str(),
             executable: cmd.to_c_str(),
             arguments: vec!(cmd.to_c_str()),
             namespaces: EnumSet::empty(),
@@ -72,6 +75,9 @@ impl Command {
     }
     pub fn chroot(&mut self, dir: &Path) {
         self.chroot = dir.to_c_str();
+    }
+    pub fn set_workdir(&mut self, dir: &Path) {
+        self.workdir = dir.to_c_str();
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
@@ -126,6 +132,7 @@ impl Command {
             namespaces: convert_namespaces(self.namespaces),
             user_id: self.user_id as i32,
             restore_sigmask: if self.restore_sigmask { 1 } else { 0 },
+            workdir: self.workdir.as_ptr(),
         }) };
         if pid < 0 {
             return Err(IoError::last_error());
@@ -167,6 +174,7 @@ pub struct CCommand {
     exec_path: *const u8,
     exec_args: *const*const u8,
     exec_environ: *const*const u8,
+    workdir: *const c_char,
 }
 
 #[link(name="container", kind="static")]

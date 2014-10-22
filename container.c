@@ -18,6 +18,7 @@ typedef struct {
     const char *exec_path;
     char ** const exec_args;
     char ** const exec_environ;
+    const char *workdir;
 } CCommand;
 
 typedef struct {
@@ -28,9 +29,19 @@ typedef struct {
 
 static void _run_container(CCommand *cmd) {
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+    if(chdir(cmd->fs_root)) {
+        fprintf(stderr, "%s Error changing workdir to the root %s: %m\n",
+            cmd->logprefix, cmd->fs_root);
+        abort();
+    }
     if(chroot(cmd->fs_root)) {
         fprintf(stderr, "%s Error changing root %s: %m\n",
             cmd->logprefix, cmd->fs_root);
+        abort();
+    }
+    if(chdir(cmd->workdir)) {
+        fprintf(stderr, "%s Error changing workdir %s: %m\n",
+            cmd->logprefix, cmd->workdir);
         abort();
     }
     if(setuid(cmd->user_id)) {

@@ -24,6 +24,7 @@ pub struct ContainerConfig {
     pub hostname: String,
     pub arguments: Vec<String>,
     pub environ: TreeMap<String, String>,
+    pub workdir: Path,
 }
 
 impl ContainerConfig {
@@ -68,6 +69,9 @@ impl ContainerConfig {
                 value_element: box Scalar {
                     .. Default::default() } as Box<Validator>,
             .. Default::default() } as Box<Validator>),
+            ("workdir".to_string(), box Scalar {
+                default: Some("/".to_string()),
+                .. Default::default()} as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
     }
 }

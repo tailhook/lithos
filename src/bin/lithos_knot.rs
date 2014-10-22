@@ -42,6 +42,7 @@ impl Executor for Target {
             self.local.executable.as_slice());
         cmd.set_user_id(self.local.user_id);
         cmd.chroot(&Path::new(self.global.mount_dir.as_slice()));
+        cmd.set_workdir(&self.local.workdir);
 
         // Should we propagate TERM?
         cmd.set_env("TERM".to_string(),
