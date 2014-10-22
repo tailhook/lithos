@@ -184,7 +184,7 @@ fn run(config_file: Path) -> Result<(), String> {
     try!(check_config(&cfg));
 
     let mut children: HashMap<Path, Rc<ContainerConfig>> = HashMap::new();
-    debug!("Checking child dir {}", cfg.config_dir);//.display());
+    debug!("Checking child dir {}", cfg.config_dir);
     let configdir = Path::new(cfg.config_dir.as_slice());
     let dirlist = try_str!(readdir(&configdir));
     for child_fn in dirlist.into_iter() {
