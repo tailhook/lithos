@@ -1,3 +1,4 @@
+use std::io::IoError;
 use std::ptr::null;
 use std::num::zero;
 use std::time::duration::Duration;
@@ -88,7 +89,8 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Timespec>) -> Signal {
                         if rc == EINTR {
                             continue;
                         }
-                        fail!("Failure {} not expected", rc);
+                        fail!("Failure '{}' not expected, on death of {}",
+                            IoError::last_error(), ptr.pid);
                     }
                     assert_eq!(rc, ptr.pid);
                     break;
