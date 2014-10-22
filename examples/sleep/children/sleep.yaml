@@ -5,7 +5,6 @@ volumes:
 memory_limit: 104857600
 cpu_shares: 3
 instances: 2
-hostname: sleep
 executable: /bin/sleep
 arguments: [60]
 

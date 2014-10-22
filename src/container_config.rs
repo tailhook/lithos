@@ -21,7 +21,7 @@ pub struct ContainerConfig {
     pub cpu_shares: uint,
     pub instances: uint,
     pub executable: String,
-    pub hostname: String,
+    pub hostname: Option<String>,
     pub arguments: Vec<String>,
     pub environ: TreeMap<String, String>,
     pub workdir: Path,
@@ -58,6 +58,7 @@ impl ContainerConfig {
             ("executable".to_string(), box Scalar {
                 .. Default::default() } as Box<Validator>),
             ("hostname".to_string(), box Scalar {
+                optional: true,
                 .. Default::default()} as Box<Validator>),
             ("command".to_string(), box Sequence {
                 element: box Scalar {
