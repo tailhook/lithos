@@ -170,7 +170,7 @@ fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
         _ => return None,
     };
 
-    let name_regex = regex!(r"(\w+)\.\d+");
+    let name_regex = regex!(r"^([\w-]+)\.\d+$");
     return name_regex.captures(name.as_slice())
            .map(|captures| {
         (captures.at(0).to_string(), captures.at(1).to_string())
