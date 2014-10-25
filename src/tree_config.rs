@@ -8,7 +8,7 @@ use quire::validate::{Validator, Structure, Mapping, Scalar, Numeric};
 #[deriving(Decodable, Encodable)]
 pub struct TreeConfig {
     pub config_dir: String,
-    pub state_dir: String,
+    pub state_dir: Path,
     pub mount_dir: String,
     //  Update to Path in next rust
     //  in rust0.12 Path has Ord

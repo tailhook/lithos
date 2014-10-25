@@ -20,7 +20,7 @@ use std::io::IoError;
 use std::io::fs::File;
 use std::os::getenv;
 use std::from_str::FromStr;
-use std::io::fs::{readdir, mkdir_recursive, rmdir, rmdir_recursive};
+use std::io::fs::{readdir, mkdir, mkdir_recursive, rmdir, rmdir_recursive};
 use std::os::{set_exit_status, self_exe_path, self_exe_name};
 use std::io::FilePermission;
 use std::ptr::null;
@@ -39,6 +39,7 @@ use quire::parse_config;
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
+use lithos::monitor::{PrepareResult, Run, Error};
 use lithos::container::Command;
 use lithos::mount::{bind_mount, mount_private, unmount};
 use lithos::mount::check_mount_point;
@@ -47,9 +48,19 @@ use lithos::signal;
 
 struct Child {
     name: Rc<String>,
-    global_config: Rc<Path>,
+    global_file: Rc<Path>,
     container_file: Rc<Path>,
+    global_config: Rc<TreeConfig>,
     container_config: Rc<ContainerConfig>,
+}
+
+impl Child {
+    fn _prepare(&self) -> Result<(), String> {
+        try_str!(mkdir(
+            &self.global_config.state_dir.join(self.name.as_slice()),
+            FilePermission::all()));
+        return Ok(());
+    }
 }
 
 impl Executor for Child {
@@ -64,7 +75,7 @@ impl Executor for Child {
         cmd.arg(self.name.as_slice());
 
         cmd.arg("--global-config");
-        cmd.arg(&*self.global_config);
+        cmd.arg(&*self.global_file);
         cmd.arg("--container-config");
         cmd.arg(&*self.container_file);
         cmd.set_env("TERM".to_string(),
@@ -78,6 +89,38 @@ impl Executor for Child {
         cmd.container(false);
         return cmd;
     }
+    fn prepare(&self) -> PrepareResult {
+        match self._prepare() {
+            Ok(()) => Run,
+            Err(x) => Error(x),
+        }
+    }
+    fn finish(&self) -> bool {
+        let st_dir = self.global_config.state_dir.join(self.name.as_slice());
+        rmdir_recursive(&st_dir)
+            .map_err(|e| error!("Error removing dir {}: {}",
+                                 st_dir.display(), e))
+            .ok();
+        return true;
+    }
+}
+struct UnidentifiedChild {
+    name: Rc<String>,
+    global_config: Rc<TreeConfig>,
+}
+
+impl Executor for UnidentifiedChild {
+    fn command(&self) -> Command {
+        unreachable!();
+    }
+    fn finish(&self) -> bool {
+        let st_dir = self.global_config.state_dir.join(self.name.as_slice());
+        rmdir_recursive(&st_dir)
+            .map_err(|e| error!("Error removing dir {}: {}",
+                                 st_dir.display(), e))
+            .ok();
+        return false;
+    }
 }
 
 fn check_config(cfg: &TreeConfig) -> Result<(), String> {
@@ -90,7 +133,7 @@ fn check_config(cfg: &TreeConfig) -> Result<(), String> {
 }
 
 fn global_init(cfg: &TreeConfig) -> Result<(), String> {
-    try_str!(mkdir_recursive(&Path::new(cfg.state_dir.as_slice()),
+    try_str!(mkdir_recursive(&cfg.state_dir,
         FilePermission::from_bits_truncate(0o755)));
 
     let mntdir = Path::new(cfg.mount_dir.as_slice());
@@ -123,8 +166,9 @@ fn global_cleanup(cfg: &TreeConfig) {
     rmdir(&mntdir).unwrap_or_else(
         |e| error!("Error removing mount dir {}: {}", cfg.mount_dir, e));
 
-    rmdir_recursive(&Path::new(cfg.state_dir.as_slice())).unwrap_or_else(
-        |e| error!("Error removing state dir {}: {}", cfg.state_dir, e));
+    rmdir_recursive(&cfg.state_dir).unwrap_or_else(
+        |e| error!("Error removing state dir {}: {}",
+                   cfg.state_dir.display(), e));
 }
 
 fn discard<E>(_: E) { }
@@ -178,10 +222,10 @@ fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
 }
 
 fn run(config_file: Path) -> Result<(), String> {
-    let cfg: TreeConfig = try_str!(parse_config(&config_file,
-        &*TreeConfig::validator(), Default::default()));
+    let cfg: Rc<TreeConfig> = Rc::new(try_str!(parse_config(&config_file,
+        &*TreeConfig::validator(), Default::default())));
 
-    try!(check_config(&cfg));
+    try!(check_config(&*cfg));
 
     let mut children: HashMap<Path, Rc<ContainerConfig>> = HashMap::new();
     debug!("Checking child dir {}", cfg.config_dir);
@@ -199,14 +243,16 @@ fn run(config_file: Path) -> Result<(), String> {
         children.insert(child_fn, Rc::new(child_cfg));
     }
 
-    try!(global_init(&cfg));
+    try!(global_init(&*cfg));
 
     let mut mon = Monitor::new("lithos-tree".to_string());
     let config_file = Rc::new(config_file);
     let mypid = unsafe { getpid() };
 
+    // Recover old workers
     for ppath in readdir(&Path::new("/proc"))
-        .ok().expect("Can't read procfs").iter() {
+        .ok().expect("Can't read procfs").iter()
+    {
         let pid: pid_t;
         pid = match ppath.filename_str().and_then(FromStr::from_str) {
             Some(pid) => pid,
@@ -218,37 +264,62 @@ fn run(config_file: Path) -> Result<(), String> {
         };
         let fullname = Rc::new(fullname);
         let cfg_path = configdir.join(childname + ".yaml");
-        let cfg = match children.find(&cfg_path) {
-            Some(cfg) => cfg,
+        match children.find(&cfg_path) {
+            Some(child_cfg) => {
+                mon.add(fullname.clone(), box Child {
+                    name: fullname,
+                    global_file: config_file.clone(),
+                    global_config: cfg.clone(),
+                    container_file: Rc::new(cfg_path),
+                    container_config: child_cfg.clone(),
+                    }, Duration::seconds(1),
+                    Some((pid, get_time())));
+            }
             None => {
                 warn!("Undefined child name: {}, pid: {}. Sending SIGTERM...",
                       fullname, pid);
+                mon.add(fullname.clone(), box UnidentifiedChild {
+                    name: fullname,
+                    global_config: cfg.clone(),
+                    }, Duration::seconds(0),
+                    Some((pid, get_time())));
                 signal::send_signal(pid, signal::SIGTERM as int);
                 continue;
             }
         };
-        mon.add(fullname.clone(), box Child {
-            name: fullname,
-            global_config: config_file.clone(),
-            container_file: Rc::new(cfg_path),
-            container_config: cfg.clone(),
-            }, Duration::seconds(1),
-            Some((pid, get_time())));
     }
 
-    for (path, cfg) in children.into_iter() {
+    // Remove dangling state dirs
+    for ppath in readdir(&cfg.state_dir)
+        .ok().expect("Can't read state dir").iter()
+    {
+        if let Some(name) = ppath.filename_str() {
+            if mon.has(&Rc::new(name.to_string())) {
+                continue;
+            }
+            warn!("Dangling state dir {}. Deleting...", ppath.display());
+            rmdir_recursive(ppath)
+                .map_err(|e| error!("Can't remove dangling dir {}: {}",
+                    ppath.display(), e))
+                .ok();
+        }
+    }
+
+    // Schedule new workers
+    for (path, child_cfg) in children.into_iter() {
         let path = Rc::new(path);
         let stem = path.filestem_str().unwrap();
-        for i in range(0, cfg.instances) {
+        for i in range(0, child_cfg.instances) {
             let name = Rc::new(format!("{}.{}", stem, i));
             if mon.has(&name) {
                 continue;
             }
             mon.add(name.clone(), box Child {
                 name: name,
-                global_config: config_file.clone(),
+                global_file: config_file.clone(),
+                global_config: cfg.clone(),
                 container_file: path.clone(),
-                container_config: cfg.clone(),
+                container_config: child_cfg.clone(),
             }, Duration::seconds(1),
             None);
         }
@@ -261,7 +332,7 @@ fn run(config_file: Path) -> Result<(), String> {
         }
     }
 
-    global_cleanup(&cfg);
+    global_cleanup(&*cfg);
 
     return Ok(());
 }

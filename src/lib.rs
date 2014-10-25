@@ -1,7 +1,7 @@
 #![crate_name="lithos"]
 #![crate_type="lib"]
 
-#![feature(macro_rules,phase)]
+#![feature(macro_rules,phase,if_let)]
 
 #[phase(plugin, link)] extern crate log;
 extern crate debug;

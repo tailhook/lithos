@@ -15,8 +15,16 @@ pub enum MonitorResult {
     Reboot,
 }
 
+pub enum PrepareResult {
+    Run,
+    Error(String),
+    Shutdown,
+}
+
 pub trait Executor {
+    fn prepare(&self) -> PrepareResult { return Run; }
     fn command(&self) -> Command;
+    fn finish(&self) -> bool { return true; }
 }
 
 pub struct Process<'a> {
@@ -55,9 +63,10 @@ impl<'a> Monitor<'a> {
     pub fn add(&mut self, name: Rc<String>, executor: Box<Executor>,
         timeout: Duration, current: Option<(pid_t, Timespec)>)
     {
-        if current.is_some() {
+        if let Some((pid, _)) = current {
             info!("[{:s}] Registered process pid: {} as name: {}",
-                self.myname, current.map(|(pid, _)| pid).unwrap(), name);
+                self.myname, pid, name);
+            self.pids.insert(pid, name.clone());
         } else {
             self.start_queue.push((0, name.clone()));
         }
@@ -76,6 +85,38 @@ impl<'a> Monitor<'a> {
             self.allow_reboot,
             _top_time(&self.start_queue));
     }
+    fn _start_process(&mut self, name: &Rc<String>) -> PrepareResult {
+        let prc = self.processes.find_mut(name).unwrap();
+        let prepare_result = prc.executor.prepare();
+        match prepare_result {
+            Run => {
+                match prc.executor.command().spawn() {
+                    Ok(pid) => {
+                        info!("[{:s}] Process {} started with pid {}",
+                            self.myname, prc.name, pid);
+                        prc.current_pid = Some(pid);
+                        prc.start_time = Some(get_time());
+                        self.pids.insert(pid, prc.name.clone());
+                    }
+                    Err(e) => {
+                        error!("Can't run container {}: {}", prc.name, e);
+                        self.start_queue.push((
+                            -(get_time() + prc.restart_timeout).sec,
+                            prc.name.clone(),
+                            ));
+                    }
+                }
+            }
+            Error(_) => {
+                self.start_queue.push((
+                    -(get_time() + prc.restart_timeout).sec,
+                    prc.name.clone(),
+                    ));
+            }
+            _ => {}
+        }
+        return prepare_result;
+    }
     fn _start_processes(&mut self) {
         let time = get_time();
         loop {
@@ -85,30 +126,37 @@ impl<'a> Monitor<'a> {
                 _ => { break; }
             };
             self.start_queue.pop();
-            let ref mut prc = self.processes.find_mut(&name).unwrap();
-            match prc.executor.command().spawn() {
-                Ok(pid) => {
-                    info!("[{:s}] Process {} started with pid {}",
-                        self.myname, prc.name, pid);
-                    prc.current_pid = Some(pid);
-                    prc.start_time = Some(get_time());
-                    self.pids.insert(pid, prc.name.clone());
+            match self._start_process(&name) {
+                Run => {}
+                Error(e) => {
+                    error!("Error preparing container {}: {}", name, e);
                 }
-                Err(e) => {
-                    error!("Can't run container {}: {}", prc.name, e);
-                    self.start_queue.push((
-                        -(time + prc.restart_timeout).sec,
-                        name,
-                        ));
-                }
+                Shutdown => { self.processes.remove(&name); }
             }
         }
+    }
+    fn _reap_child(&mut self, name: &Rc<String>, pid: pid_t, status: int)
+        -> bool
+    {
+        let prc = self.processes.find_mut(name).unwrap();
+        warn!("[{:s}] Child {}:{} exited with status {}",
+            self.myname, prc.name, pid, status);
+        if !prc.executor.finish() {
+            return false;
+        }
+        self.start_queue.push((
+            -(prc.start_time.unwrap() + prc.restart_timeout).sec,
+            prc.name.clone(),
+            ));
+        prc.current_pid = None;
+        prc.start_time = None;
+        return true;
     }
     pub fn run(&mut self) -> MonitorResult {
         debug!("[{:s}] Starting with {} processes",
             self.myname, self.processes.len());
         // Main loop
-        loop {
+        while self.processes.len() > 0 || self.start_queue.len() > 0 {
             let sig = self._wait_signal();
             info!("[{:s}] Got signal {}", self.myname, sig);
             match sig {
@@ -125,22 +173,17 @@ impl<'a> Monitor<'a> {
                     break;
                 }
                 signal::Child(pid, status) => {
-                    let prc = match self.pids.find(&pid) {
-                        Some(name) => self.processes.find_mut(name).unwrap(),
+                    let name = match self.pids.pop(&pid) {
+                        Some(name) => name,
                         None => {
                             warn!("[{:s}] Unknown process {} dead with {}",
                                 self.myname, pid, status);
                             continue;
                         },
                     };
-                    warn!("[{:s}] Child {}:{} exited with status {}",
-                        self.myname, prc.name, pid, status);
-                    self.start_queue.push((
-                        -(prc.start_time.unwrap() + prc.restart_timeout).sec,
-                        prc.name.clone(),
-                        ));
-                    prc.current_pid = None;
-                    prc.start_time = None;
+                    if !self._reap_child(&name, pid, status) {
+                        self.processes.remove(&name);
+                    }
                 }
                 signal::Reboot => {
                     return Reboot;
