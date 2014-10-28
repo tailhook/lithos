@@ -22,6 +22,20 @@ containers:
     builder: docker
     parameters:
       image: busybox
+    provision: |
+      set -ex
+      export PATH=/bin
+      mkdir /config
+      cat <<END > /config/sleep.yaml
+      type: long-running
+      user_id: 1
+      volumes:
+        /tmp: tmpfs:size=100m
+      memory_limit: 104857600
+      cpu_shares: 3
+      executable: /bin/sleep
+      arguments: [60]
+      END
 
   ubuntu:
     # The container to build lithos ubuntu package
@@ -30,9 +44,17 @@ containers:
     gids: [0-1000, 65534]
     parameters:
       repos: universe
-      PPAs: hansjorg/rust
-      additional_keys: 37FD5E80BD6B6386  # for rust
-      packages: make checkinstall rust-0.12
+      packages: make checkinstall wget
+    provision: |
+      export PATH=/bin:/usr/bin:/usr/bin/local
+      chown root /var/spool/rsyslog
+      cd /work/run
+      wget https://static.rust-lang.org/dist/rust-0.12.0-x86_64-unknown-linux-gnu.tar.gz
+      tar -xf rust-0.12.0-x86_64-unknown-linux-gnu.tar.gz
+      cd rust-0.12.0-x86_64-unknown-linux-gnu
+      ./install.sh --prefix=/usr
+    environ:
+      LD_LIBRARY_PATH: /usr/lib/rustlib/x86_64-unknown-linux-gnu/lib
     tmpfs-volumes:
       /tmp: size=1m,mode=1777
       /var/tmp: size=100m,mode=1777

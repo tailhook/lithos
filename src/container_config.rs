@@ -19,9 +19,7 @@ pub struct ContainerConfig {
     pub restart_timeout: f32,
     pub memory_limit: u64,
     pub cpu_shares: uint,
-    pub instances: uint,
     pub executable: String,
-    pub hostname: Option<String>,
     pub arguments: Vec<String>,
     pub environ: TreeMap<String, String>,
     pub workdir: Path,
@@ -52,14 +50,8 @@ impl ContainerConfig {
                 max: Some(86400.),
                 default: Some(1f32),
                 .. Default::default()} as Box<Validator>),
-            ("instances".to_string(), box Numeric {
-                default: Some(1u),
-                .. Default::default()} as Box<Validator>),
             ("executable".to_string(), box Scalar {
                 .. Default::default() } as Box<Validator>),
-            ("hostname".to_string(), box Scalar {
-                optional: true,
-                .. Default::default()} as Box<Validator>),
             ("command".to_string(), box Sequence {
                 element: box Scalar {
                     .. Default::default() } as Box<Validator>,

@@ -8,7 +8,6 @@ extern crate argparse;
 extern crate quire;
 #[phase(plugin, link)] extern crate lithos;
 
-
 use std::rc::Rc;
 use std::os::{set_exit_status, getenv};
 use std::io::stderr;
@@ -20,18 +19,21 @@ use argparse::{ArgumentParser, Store};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
+use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
 use lithos::container_config::{parse_volume};
 use lithos::container::{Command};
 use lithos::mount::{bind_mount, mount_ro_recursive, mount_tmpfs, mount_private};
 use lithos::mount::{mount_pseudo};
 use lithos::monitor::{Monitor, Executor};
+use lithos::utils::temporary_change_root;
 use lithos::signal;
 
 
 struct Target {
     name: Rc<String>,
     global: TreeConfig,
+    child: ChildConfig,
     local: ContainerConfig,
 }
 
@@ -41,7 +43,7 @@ impl Executor for Target {
         let mut cmd = Command::new((*self.name).clone(),
             self.local.executable.as_slice());
         cmd.set_user_id(self.local.user_id);
-        cmd.chroot(&Path::new(self.global.mount_dir.as_slice()));
+        cmd.chroot(&self.global.mount_dir);
         cmd.set_workdir(&self.local.workdir);
 
         // Should we propagate TERM?
@@ -76,7 +78,7 @@ fn map_dir(dir: &Path, dirs: &TreeMap<String, String>) -> Option<Path> {
 fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
     -> Result<(), String>
 {
-    let mntdir = Path::new(global.mount_dir.as_slice());
+    let mntdir = global.mount_dir.clone();
     assert!(mntdir.is_absolute());
 
     let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
@@ -128,11 +130,25 @@ fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
     return Ok(());
 }
 
-fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
+fn read_local_config(global_cfg: &TreeConfig, child_cfg: &ChildConfig)
+    -> Result<ContainerConfig, String>
+{
+    let image_path = global_cfg.image_dir.join(&child_cfg.image);
+    try!(bind_mount(&image_path, &global_cfg.mount_dir));
+    try!(mount_ro_recursive(&global_cfg.mount_dir));
+    return temporary_change_root(&global_cfg.mount_dir, || {
+        parse_config(&child_cfg.config,
+            &*ContainerConfig::validator(), Default::default())
+    });
+}
+
+fn run(name: String, global_cfg: Path, config: ChildConfig)
+    -> Result<(), String>
+{
     let global: TreeConfig = try_str!(parse_config(&global_cfg,
         &*TreeConfig::validator(), Default::default()));
-    let local: ContainerConfig = try_str!(parse_config(&local_cfg,
-        &*ContainerConfig::validator(), Default::default()));
+
+    let local: ContainerConfig = try!(read_local_config(&global, &config));
 
     info!("[{:s}] Starting container", name);
 
@@ -144,6 +160,7 @@ fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     mon.add(name.clone(), box Target {
         name: name,
         global: global,
+        child: config,
         local: local,
     }, timeo, None);
     mon.run();
@@ -156,7 +173,11 @@ fn main() {
     signal::block_all();
 
     let mut global_config = Path::new("/etc/lithos.yaml");
-    let mut container_config = Path::new("");
+    let mut config = ChildConfig {
+        instances: 0,
+        image: Path::new(""),
+        config: Path::new(""),
+    };
     let mut name = "".to_string();
     {
         let mut ap = ArgumentParser::new();
@@ -168,11 +189,11 @@ fn main() {
           .add_option(["--global-config"], box Store::<Path>,
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
-        ap.refer(&mut container_config)
-          .add_option(["--container-config"], box Store::<Path>,
-            "Name of the container configuration file")
+        ap.refer(&mut config)
+          .add_option(["--config"], box Store::<ChildConfig>,
+            "JSON-serialized container configuration")
           .required()
-          .metavar("FILE");
+          .metavar("JSON");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
@@ -181,7 +202,7 @@ fn main() {
             }
         }
     }
-    match run(name, global_config, container_config) {
+    match run(name, global_config, config) {
         Ok(()) => {
             set_exit_status(0);
         }

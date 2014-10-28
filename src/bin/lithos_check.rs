@@ -27,6 +27,7 @@ use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
+use lithos::child_config::ChildConfig;
 use lithos::signal;
 
 
@@ -45,7 +46,6 @@ fn check(config_file: Path) -> Result<(), String> {
 
     try!(check_config(&cfg));
 
-    let mut children: HashMap<Path, Rc<ContainerConfig>> = HashMap::new();
     debug!("Checking child dir {}", cfg.config_dir);
     let configdir = Path::new(cfg.config_dir.as_slice());
     let dirlist = try_str!(readdir(&configdir));
@@ -55,10 +55,16 @@ fn check(config_file: Path) -> Result<(), String> {
             (_, Some("yaml")) => {}
             _ => continue,  // Non-yaml, old, whatever, files
         }
-        debug!("Adding {}", child_fn.display());
-        let child_cfg = try_str!(parse_config(&child_fn,
+        debug!("Checking {}", child_fn.display());
+        let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
+            &*ChildConfig::validator(), Default::default()));
+        debug!("Opening config {}", child_fn.display());
+        let config: ContainerConfig = try_str!(parse_config(
+            &cfg.image_dir
+                .join(child_cfg.image)
+                .join(child_cfg.config.path_relative_from(
+                    &Path::new("/")).unwrap()),
             &*ContainerConfig::validator(), Default::default()));
-        children.insert(child_fn, Rc::new(child_cfg));
     }
 
     return Ok(());

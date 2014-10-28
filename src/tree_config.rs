@@ -4,12 +4,14 @@ use std::collections::TreeMap;
 use quire::validate::{Validator, Structure, Mapping, Scalar, Numeric};
 
 
-// Check if Decodable is ok?
 #[deriving(Decodable, Encodable)]
 pub struct TreeConfig {
     pub config_dir: String,
     pub state_dir: Path,
-    pub mount_dir: String,
+    pub mount_dir: Path,
+    pub image_dir: Path,
+    pub image_path_components: uint,
+    pub image_path_symlinks: bool,
     //  Update to Path in next rust
     //  in rust0.12 Path has Ord
     pub readonly_paths: TreeMap<String, String>,
@@ -30,6 +32,17 @@ impl TreeConfig {
                 .. Default::default() } as Box<Validator>),
             ("mount_dir".to_string(), box Scalar {
                 default: Some("/run/lithos/mnt".to_string()),
+                .. Default::default() } as Box<Validator>),
+            ("image_dir".to_string(), box Scalar {
+                default: Some("/var/lib/lithos/containers".to_string()),
+                .. Default::default() } as Box<Validator>),
+            ("image_path_components".to_string(), box Numeric {
+                min: Some(1),
+                max: Some(10),
+                default: Some(1u),
+                .. Default::default() } as Box<Validator>),
+            ("image_path_symlinks".to_string(), box Scalar {
+                default: Some("false".to_string()),
                 .. Default::default() } as Box<Validator>),
             ("readonly_paths".to_string(), box Mapping {
                 key_element: box Scalar { .. Default::default()},

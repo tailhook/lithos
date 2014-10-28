@@ -25,6 +25,7 @@ use std::os::{set_exit_status, self_exe_path, self_exe_name};
 use std::io::FilePermission;
 use std::ptr::null;
 use std::time::Duration;
+use std::path::BytesContainer;
 use std::io::fs::PathExtensions;
 use std::c_str::{ToCStr, CString};
 use std::default::Default;
@@ -32,12 +33,14 @@ use std::collections::HashMap;
 use time::get_time;
 use libc::pid_t;
 use libc::funcs::posix88::unistd::{getpid, execv};
+use serialize::json;
+use serialize::json::Json;
 
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::ContainerConfig;
+use lithos::child_config::ChildConfig;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::monitor::{PrepareResult, Run, Error};
 use lithos::container::Command;
@@ -49,9 +52,8 @@ use lithos::signal;
 struct Child {
     name: Rc<String>,
     global_file: Rc<Path>,
-    container_file: Rc<Path>,
+    child_config_serialized: Rc<String>,
     global_config: Rc<TreeConfig>,
-    container_config: Rc<ContainerConfig>,
 }
 
 impl Child {
@@ -76,8 +78,8 @@ impl Executor for Child {
 
         cmd.arg("--global-config");
         cmd.arg(&*self.global_file);
-        cmd.arg("--container-config");
-        cmd.arg(&*self.container_file);
+        cmd.arg("--config");
+        cmd.arg(self.child_config_serialized.as_slice());
         cmd.set_env("TERM".to_string(),
                     getenv("TERM").unwrap_or("dumb".to_string()));
         if let Some(x) = getenv("RUST_LOG") {
@@ -136,13 +138,13 @@ fn global_init(cfg: &TreeConfig) -> Result<(), String> {
     try_str!(mkdir_recursive(&cfg.state_dir,
         FilePermission::from_bits_truncate(0o755)));
 
-    let mntdir = Path::new(cfg.mount_dir.as_slice());
-    try_str!(mkdir_recursive(&mntdir,
+    try_str!(mkdir_recursive(&cfg.mount_dir,
         FilePermission::from_bits_truncate(0o755)));
 
     let mut bind = true;
     let mut private = true;
-    try!(check_mount_point(cfg.mount_dir.as_slice(), |m| {
+    try!(check_mount_point(
+        cfg.mount_dir.display().as_maybe_owned().as_slice(), |m| {
         bind = false;
         if m.is_private() {
             private = false;
@@ -150,21 +152,22 @@ fn global_init(cfg: &TreeConfig) -> Result<(), String> {
     }));
 
     if bind {
-        try_str!(bind_mount(&mntdir, &mntdir));
+        try_str!(bind_mount(&cfg.mount_dir, &cfg.mount_dir));
     }
     if private {
-        try_str!(mount_private(&mntdir));
+        try_str!(mount_private(&cfg.mount_dir));
     }
 
     return Ok(());
 }
 
 fn global_cleanup(cfg: &TreeConfig) {
-    let mntdir = Path::new(cfg.mount_dir.as_slice());
-    unmount(&mntdir).unwrap_or_else(
-        |e| error!("Error unmouting mount dir {}: {}", cfg.mount_dir, e));
-    rmdir(&mntdir).unwrap_or_else(
-        |e| error!("Error removing mount dir {}: {}", cfg.mount_dir, e));
+    unmount(&cfg.mount_dir).unwrap_or_else(
+        |e| error!("Error unmouting mount dir {}: {}",
+                   cfg.mount_dir.display(), e));
+    rmdir(&cfg.mount_dir).unwrap_or_else(
+        |e| error!("Error removing mount dir {}: {}",
+                   cfg.mount_dir.display(), e));
 
     rmdir_recursive(&cfg.state_dir).unwrap_or_else(
         |e| error!("Error removing state dir {}: {}",
@@ -173,52 +176,60 @@ fn global_cleanup(cfg: &TreeConfig) {
 
 fn discard<E>(_: E) { }
 
-fn _read_args(procfsdir: &Path) -> Result<(String, String, String), ()> {
+fn _read_args(procfsdir: &Path, global_config: &Path)
+    -> Result<(String, Json), ()>
+{
     let mut f = try!(File::open(&procfsdir.join("cmdline")).map_err(discard));
     let line = try!(f.read_to_string().map_err(discard));
-    let mut iter = line.as_slice().splitn(3, '\0');
-    let exe = iter.next();
-    let name_flag = iter.next();
-    let name = iter.next();
-    match (exe, name_flag, name) {
-        (Some(exe), Some(name_flag), Some(name))
-        => Ok((exe.to_string(), name_flag.to_string(), name.to_string())),
-        _ => Err(())
+    let args: Vec<&str> = line.as_slice().splitn(6, '\0').collect();
+    if args.len() != 7
+       || Path::new(args[0]).filename_str() != Some("lithos_knot")
+       || args[1] != "--name"
+       || args[3] != "--global-config"
+       || args[4].as_bytes() != global_config.container_as_bytes()
+       || args[5] != "--config"
+    {
+       return Err(());
     }
+    return Ok((
+        args[2].to_string(),
+        try!(json::from_str(args[6]).map_err(discard)),
+        ));
 }
 
-fn _get_name(procfsdir: &Path, mypid: i32) -> Option<(String, String)> {
+fn _is_child(procfsdir: &Path, mypid: i32) -> bool
+{
     let ppid_regex = regex!(r"^\d+\s+\([^)]*\)\s+\S+\s+(\d+)\s");
     let stat =
         File::open(&procfsdir.join("stat")).ok()
         .and_then(|mut f| f.read_to_string().ok());
     if stat.is_none() {
-        return None;
+        return false;
     }
 
     let ppid = ppid_regex.captures(stat.unwrap().as_slice())
                .and_then(|c| FromStr::from_str(c.at(1)));
     if ppid != Some(mypid) {
-        return None;
+        return false;
     }
+    return true;
+}
 
-    let name = match _read_args(procfsdir) {
-        Ok((exe, name_flag, name)) => {
-            if Path::new(exe.as_slice()).filename_str() == Some("lithos_knot")
-                && name_flag.as_slice() == "--name" {
-                name
-            } else {
-                return None;
-            }
-        }
-        _ => return None,
+
+fn _get_name(procfsdir: &Path, global_config: &Path)
+    -> Option<(String, String, Json)>
+{
+    let (name, cfg) =  match _read_args(procfsdir, global_config) {
+        Ok(tuple) => tuple,
+        Err(_) => { return None; }
     };
 
     let name_regex = regex!(r"^([\w-]+)\.\d+$");
-    return name_regex.captures(name.as_slice())
-           .map(|captures| {
-        (captures.at(0).to_string(), captures.at(1).to_string())
-    });
+    match name_regex.captures(name.as_slice()) {
+        Some(captures)
+        => Some((captures.at(0).to_string(), captures.at(1).to_string(), cfg)),
+        None => None,
+    }
 }
 
 fn run(config_file: Path) -> Result<(), String> {
@@ -227,7 +238,8 @@ fn run(config_file: Path) -> Result<(), String> {
 
     try!(check_config(&*cfg));
 
-    let mut children: HashMap<Path, Rc<ContainerConfig>> = HashMap::new();
+    let mut children: HashMap<Path, (ChildConfig, Json, Rc<String>)>;
+    children = HashMap::new();
     debug!("Checking child dir {}", cfg.config_dir);
     let configdir = Path::new(cfg.config_dir.as_slice());
     let dirlist = try_str!(readdir(&configdir));
@@ -238,9 +250,11 @@ fn run(config_file: Path) -> Result<(), String> {
             _ => continue,  // Non-yaml, old, whatever, files
         }
         debug!("Adding {}", child_fn.display());
-        let child_cfg = try_str!(parse_config(&child_fn,
-            &*ContainerConfig::validator(), Default::default()));
-        children.insert(child_fn, Rc::new(child_cfg));
+        let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
+            &*ChildConfig::validator(), Default::default()));
+        let child_cfg_string = Rc::new(json::encode(&child_cfg));
+        let child_json = json::from_str(child_cfg_string.as_slice()).unwrap();
+        children.insert(child_fn, (child_cfg, child_json, child_cfg_string));
     }
 
     try!(global_init(&*cfg));
@@ -258,22 +272,36 @@ fn run(config_file: Path) -> Result<(), String> {
             Some(pid) => pid,
             None => continue,
         };
-        let (fullname, childname) = match _get_name(ppath, mypid) {
-            Some((fullname, childname)) => (fullname, childname),
-            None => continue,
+        if !_is_child(ppath, mypid) {
+            continue;
+        }
+        let (fullname, childname, current_config) = match _get_name(
+                ppath, &*config_file)
+        {
+            Some(tup) => tup,
+            None => {
+                warn!("Undefined child, pid: {}. Sending SIGTERM...",
+                      pid);
+                //signal::send_signal(pid, signal::SIGTERM as int);
+                continue;
+            }
         };
         let fullname = Rc::new(fullname);
         let cfg_path = configdir.join(childname + ".yaml");
         match children.find(&cfg_path) {
-            Some(child_cfg) => {
+            Some(&(ref child_cfg, ref json, ref config)) => {
                 mon.add(fullname.clone(), box Child {
-                    name: fullname,
+                    name: fullname.clone(),
                     global_file: config_file.clone(),
                     global_config: cfg.clone(),
-                    container_file: Rc::new(cfg_path),
-                    container_config: child_cfg.clone(),
+                    child_config_serialized: config.clone(),
                     }, Duration::seconds(1),
                     Some((pid, get_time())));
+                if *json != current_config {
+                    warn!("Config mismatch: {}, pid: {}. Upgrading...",
+                          fullname, pid);
+                    signal::send_signal(pid, signal::SIGTERM as int);
+                }
             }
             None => {
                 warn!("Undefined child name: {}, pid: {}. Sending SIGTERM...",
@@ -284,7 +312,6 @@ fn run(config_file: Path) -> Result<(), String> {
                     }, Duration::seconds(0),
                     Some((pid, get_time())));
                 signal::send_signal(pid, signal::SIGTERM as int);
-                continue;
             }
         };
     }
@@ -306,7 +333,7 @@ fn run(config_file: Path) -> Result<(), String> {
     }
 
     // Schedule new workers
-    for (path, child_cfg) in children.into_iter() {
+    for (path, (child_cfg, _json, child_cfg_string)) in children.into_iter() {
         let path = Rc::new(path);
         let stem = path.filestem_str().unwrap();
         for i in range(0, child_cfg.instances) {
@@ -318,8 +345,7 @@ fn run(config_file: Path) -> Result<(), String> {
                 name: name,
                 global_file: config_file.clone(),
                 global_config: cfg.clone(),
-                container_file: path.clone(),
-                container_config: child_cfg.clone(),
+                child_config_serialized: child_cfg_string.clone(),
             }, Duration::seconds(1),
             None);
         }
