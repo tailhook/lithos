@@ -1,3 +1,4 @@
+use std::os::errno;
 use std::io::IoError;
 use std::ptr::null;
 use std::num::zero;
@@ -7,7 +8,7 @@ use std::io::process::Process;
 use libc::types::os::common::posix01::timespec;
 use time::{Timespec, get_time};
 
-pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR};
+pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR, ECHILD};
 use libc::{c_int, pid_t};
 
 
@@ -86,16 +87,19 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Timespec>) -> Signal {
                     status = 0;
                     let rc = unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
                     if rc < 0 {
-                        if rc == EINTR {
+                        if errno() == EINTR as int {
                             continue;
                         }
-                        fail!("Failure '{}' not expected, on death of {}",
-                            IoError::last_error(), ptr.pid);
+                        if errno() != ECHILD as int {
+                            fail!("Failure '{}' not expected, on death of {}",
+                                IoError::last_error(), ptr.pid);
+                        }
+                    } else {
+                        assert_eq!(rc, ptr.pid);
+                        assert_eq!(_convert_status(status), ptr.status as int);
                     }
-                    assert_eq!(rc, ptr.pid);
                     break;
                 }
-                assert_eq!(_convert_status(status), ptr.status as int);
                 return Child(ptr.pid, ptr.status as int);
             }
             SIGQUIT if reboot_supported => {
