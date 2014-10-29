@@ -20,7 +20,7 @@ use std::os::{set_exit_status, self_exe_path};
 use std::io::fs::PathExtensions;
 use std::default::Default;
 
-use argparse::{ArgumentParser, Store};
+use argparse::{ArgumentParser, Store, StoreOption};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
@@ -38,15 +38,15 @@ fn check_config(cfg: &TreeConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn check(config_file: Path) -> Result<(), String> {
+fn check(config_file: Path, config_dir: Option<Path>) -> Result<(), String> {
     let cfg: TreeConfig = try_str!(parse_config(&config_file,
         &*TreeConfig::validator(), Default::default()));
 
     try!(check_config(&cfg));
+    let config_dir = config_dir.unwrap_or(cfg.config_dir);
 
-    debug!("Checking child dir {}", cfg.config_dir);
-    let configdir = Path::new(cfg.config_dir.as_slice());
-    let dirlist = try_str!(readdir(&configdir));
+    debug!("Checking child dir {}", config_dir.display());
+    let dirlist = try_str!(readdir(&config_dir));
     for child_fn in dirlist.into_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
@@ -93,6 +93,7 @@ fn main() {
         return;
     }
     let mut config_file = Path::new("/etc/lithos.yaml");
+    let mut config_dir = None;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
@@ -100,6 +101,12 @@ fn main() {
           .add_option(["-C", "--config"], box Store::<Path>,
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
+        ap.refer(&mut config_dir)
+          .add_option(["-D", "--config-dir"], box StoreOption::<Path>,
+            concat!("Name of the alterate directory with configs. ",
+                    "Useful to test configuration directory before ",
+                    "switching it to be primary one"))
+          .metavar("DIR");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
@@ -108,7 +115,7 @@ fn main() {
             }
         }
     }
-    match check(config_file) {
+    match check(config_file, config_dir) {
         Ok(()) => {
             set_exit_status(0);
         }

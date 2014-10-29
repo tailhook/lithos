@@ -241,9 +241,8 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
 
     let mut children: HashMap<Path, (ChildConfig, Json, Rc<String>)>;
     children = HashMap::new();
-    debug!("Checking child dir {}", cfg.config_dir);
-    let configdir = Path::new(cfg.config_dir.as_slice());
-    let dirlist = try_str!(readdir(&configdir));
+    debug!("Checking child dir {}", cfg.config_dir.display());
+    let dirlist = try_str!(readdir(&cfg.config_dir));
     for child_fn in dirlist.into_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
@@ -288,7 +287,7 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
             }
         };
         let fullname = Rc::new(fullname);
-        let cfg_path = configdir.join(childname + ".yaml");
+        let cfg_path = cfg.config_dir.join(childname + ".yaml");
         match children.find(&cfg_path) {
             Some(&(ref child_cfg, ref json, ref config)) => {
                 mon.add(fullname.clone(), box Child {

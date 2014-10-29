@@ -6,7 +6,7 @@ use quire::validate::{Validator, Structure, Mapping, Scalar, Numeric};
 
 #[deriving(Decodable, Encodable)]
 pub struct TreeConfig {
-    pub config_dir: String,
+    pub config_dir: Path,
     pub state_dir: Path,
     pub mount_dir: Path,
     pub image_dir: Path,
