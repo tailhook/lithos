@@ -21,7 +21,7 @@ use std::io::fs::File;
 use std::os::getenv;
 use std::from_str::FromStr;
 use std::io::fs::{readdir, mkdir, mkdir_recursive, rmdir, rmdir_recursive};
-use std::os::{set_exit_status, self_exe_path, self_exe_name};
+use std::os::{set_exit_status, self_exe_path};
 use std::io::FilePermission;
 use std::ptr::null;
 use std::time::Duration;
@@ -54,6 +54,7 @@ struct Child {
     global_file: Rc<Path>,
     child_config_serialized: Rc<String>,
     global_config: Rc<TreeConfig>,
+    root_binary: Rc<Path>,
 }
 
 impl Child {
@@ -68,8 +69,7 @@ impl Child {
 impl Executor for Child {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new((*self.name).clone(),
-            self_exe_path().unwrap().join("lithos_knot"));
+        let mut cmd = Command::new((*self.name).clone(), &*self.root_binary);
         cmd.keep_sigmask();
 
         // Name is first here, so it's easily visible in ps
@@ -181,13 +181,14 @@ fn _read_args(procfsdir: &Path, global_config: &Path)
 {
     let mut f = try!(File::open(&procfsdir.join("cmdline")).map_err(discard));
     let line = try!(f.read_to_string().map_err(discard));
-    let args: Vec<&str> = line.as_slice().splitn(6, '\0').collect();
-    if args.len() != 7
+    let args: Vec<&str> = line.as_slice().splitn(7, '\0').collect();
+    if args.len() != 8
        || Path::new(args[0]).filename_str() != Some("lithos_knot")
        || args[1] != "--name"
        || args[3] != "--global-config"
        || args[4].as_bytes() != global_config.container_as_bytes()
        || args[5] != "--config"
+       || args[7] != ""
     {
        return Err(());
     }
@@ -232,7 +233,7 @@ fn _get_name(procfsdir: &Path, global_config: &Path)
     }
 }
 
-fn run(config_file: Path) -> Result<(), String> {
+fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
     let cfg: Rc<TreeConfig> = Rc::new(try_str!(parse_config(&config_file,
         &*TreeConfig::validator(), Default::default())));
 
@@ -282,7 +283,7 @@ fn run(config_file: Path) -> Result<(), String> {
             None => {
                 warn!("Undefined child, pid: {}. Sending SIGTERM...",
                       pid);
-                //signal::send_signal(pid, signal::SIGTERM as int);
+                signal::send_signal(pid, signal::SIGTERM as int);
                 continue;
             }
         };
@@ -295,6 +296,7 @@ fn run(config_file: Path) -> Result<(), String> {
                     global_file: config_file.clone(),
                     global_config: cfg.clone(),
                     child_config_serialized: config.clone(),
+                    root_binary: bin.lithos_knot.clone()
                     }, Duration::seconds(1),
                     Some((pid, get_time())));
                 if *json != current_config {
@@ -346,6 +348,7 @@ fn run(config_file: Path) -> Result<(), String> {
                 global_file: config_file.clone(),
                 global_config: cfg.clone(),
                 child_config_serialized: child_cfg_string.clone(),
+                root_binary: bin.lithos_knot.clone()
             }, Duration::seconds(1),
             None);
         }
@@ -354,7 +357,7 @@ fn run(config_file: Path) -> Result<(), String> {
     match mon.run() {
         Killed => {}
         Reboot => {
-            reexec_myself();
+            reexec_myself(&*bin.lithos_tree);
         }
     }
 
@@ -363,45 +366,56 @@ fn run(config_file: Path) -> Result<(), String> {
     return Ok(());
 }
 
-fn reexec_myself() -> ! {
+fn reexec_myself(lithos_tree: &Path) -> ! {
     let args = args();
-    let exe = self_exe_name().unwrap();
-    let c_exe = exe.to_c_str();
+    let c_exe = lithos_tree.to_c_str();
     let c_args: Vec<CString> = args.iter().map(|x| x.to_c_str()).collect();
     let mut c_argv: Vec<*const u8>;
     c_argv = c_args.iter().map(|x| x.as_bytes().as_ptr()).collect();
     c_argv.push(null());
-    debug!("Executing {} {}", exe.display(), args);
+    debug!("Executing {} {}", lithos_tree.display(), args);
     unsafe {
         execv(c_exe.as_ptr(), c_argv.as_ptr() as *mut *const i8);
     }
     fail!("Can't reexec myself: {}", IoError::last_error());
 }
 
-fn check_binaries() -> bool {
+struct Binaries {
+    lithos_tree: Rc<Path>,
+    lithos_knot: Rc<Path>,
+}
+
+fn get_binaries() -> Option<Binaries> {
     let dir = match self_exe_path() {
         Some(dir) => dir,
-        None => return false,
+        None => return None,
     };
-    if !dir.join("lithos_tree").exists() {
+    let bin = Binaries {
+        lithos_tree: Rc::new(dir.join("lithos_tree")),
+        lithos_knot: Rc::new(dir.join("lithos_knot")),
+    };
+    if !bin.lithos_tree.is_file() {
         error!("Can't find lithos_tree binary");
-        return false;
+        return None;
     }
-    if !dir.join("lithos_knot").exists() {
+    if !bin.lithos_knot.is_file() {
         error!("Can't find lithos_knot binary");
-        return false;
+        return None;
     }
-    return true;
+    return Some(bin);
 }
 
 fn main() {
 
     signal::block_all();
 
-    if !check_binaries() {
-        set_exit_status(127);
-        return;
-    }
+    let bin = match get_binaries() {
+        Some(bin) => bin,
+        None => {
+            set_exit_status(127);
+            return;
+        }
+    };
     let mut config_file = Path::new("/etc/lithos.yaml");
     {
         let mut ap = ArgumentParser::new();
@@ -418,7 +432,7 @@ fn main() {
             }
         }
     }
-    match run(config_file) {
+    match run(config_file, bin) {
         Ok(()) => {
             set_exit_status(0);
         }

@@ -33,7 +33,6 @@ use lithos::signal;
 struct Target {
     name: Rc<String>,
     global: TreeConfig,
-    child: ChildConfig,
     local: ContainerConfig,
 }
 
@@ -160,7 +159,6 @@ fn run(name: String, global_cfg: Path, config: ChildConfig)
     mon.add(name.clone(), box Target {
         name: name,
         global: global,
-        child: config,
         local: local,
     }, timeo, None);
     mon.run();

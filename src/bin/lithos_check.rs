@@ -14,13 +14,11 @@ extern crate quire;
 
 
 use std::os::args;
-use std::rc::Rc;
 use std::io::stderr;
 use std::io::fs::readdir;
 use std::os::{set_exit_status, self_exe_path};
 use std::io::fs::PathExtensions;
 use std::default::Default;
-use std::collections::HashMap;
 
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
