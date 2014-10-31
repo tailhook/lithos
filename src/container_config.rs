@@ -13,6 +13,17 @@ pub enum Volume {
 }
 
 #[deriving(Decodable, Encodable)]
+pub struct ResolvConf {
+    pub copy_from_host: bool,
+}
+
+#[deriving(Decodable, Encodable)]
+pub struct HostsFile {
+    pub localhost: bool,
+    pub public_hostname: bool,
+}
+
+#[deriving(Decodable, Encodable)]
 pub struct ContainerConfig {
     pub volumes: TreeMap<String, String>,
     pub user_id: uint,
@@ -23,6 +34,8 @@ pub struct ContainerConfig {
     pub arguments: Vec<String>,
     pub environ: TreeMap<String, String>,
     pub workdir: Path,
+    pub resolv_conf: ResolvConf,
+    pub hosts_file: HostsFile,
 }
 
 impl ContainerConfig {
@@ -65,6 +78,19 @@ impl ContainerConfig {
             ("workdir".to_string(), box Scalar {
                 default: Some("/".to_string()),
                 .. Default::default()} as Box<Validator>),
+            ("resolv_conf".to_string(), box Structure { members: vec!(
+                ("copy_from_host".to_string(), box Scalar {
+                    default: Some("true".to_string()),
+                    .. Default::default() } as Box<Validator>),
+                ), .. Default::default()} as Box<Validator>),
+            ("hosts_file".to_string(), box Structure { members: vec!(
+                ("localhost".to_string(), box Scalar {
+                    default: Some("true".to_string()),
+                    .. Default::default() } as Box<Validator>),
+                ("public_hostname".to_string(), box Scalar {
+                    default: Some("true".to_string()),
+                    .. Default::default() } as Box<Validator>),
+                ), .. Default::default()} as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
     }
 }
