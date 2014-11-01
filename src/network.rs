@@ -11,9 +11,7 @@ extern {
 
 pub fn get_host_ip() -> IoResult<IpAddr> {
     let host = try!(get_host_name());
-    println!("NAME {}", host);
     let addr = try!(get_host_addresses(host.as_slice()));
-    println!("ADDR {}", addr);
     return Ok(addr[0]);
 }
 
