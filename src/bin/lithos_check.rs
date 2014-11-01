@@ -27,9 +27,14 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::signal;
+use lithos::network::{get_host_name, get_host_ip};
 
 
 fn check_config(cfg: &TreeConfig) -> Result<(), String> {
+    // TODO(tailhook) maybe check host only if we need it for hosts file
+    try_str!(get_host_name());
+    try_str!(get_host_ip());
+
     if !Path::new(cfg.devfs_dir.as_slice()).exists() {
         return Err(format!(
             "Devfs dir ({}) must exist and contain device nodes",
