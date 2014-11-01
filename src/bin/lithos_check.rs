@@ -20,7 +20,7 @@ use std::os::{set_exit_status, self_exe_path};
 use std::io::fs::PathExtensions;
 use std::default::Default;
 
-use argparse::{ArgumentParser, Store, StoreOption};
+use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
@@ -30,10 +30,16 @@ use lithos::signal;
 use lithos::network::{get_host_name, get_host_ip};
 
 
-fn check_config(cfg: &TreeConfig) -> Result<(), String> {
+fn check_config(cfg: &TreeConfig, verbose: bool) -> Result<(), String> {
     // TODO(tailhook) maybe check host only if we need it for hosts file
-    try_str!(get_host_name());
-    try_str!(get_host_ip());
+    let hostname = try_str!(get_host_name());
+    if verbose {
+        println!("Hostname is {}", hostname);
+    }
+    let ipaddr = try_str!(get_host_ip());
+    if verbose {
+        println!("IPAddr is {}", ipaddr);
+    }
 
     if !Path::new(cfg.devfs_dir.as_slice()).exists() {
         return Err(format!(
@@ -43,11 +49,13 @@ fn check_config(cfg: &TreeConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn check(config_file: Path, config_dir: Option<Path>) -> Result<(), String> {
+fn check(config_file: Path, config_dir: Option<Path>, verbose: bool)
+    -> Result<(), String>
+{
     let cfg: TreeConfig = try_str!(parse_config(&config_file,
         &*TreeConfig::validator(), Default::default()));
 
-    try!(check_config(&cfg));
+    try!(check_config(&cfg, verbose));
     let config_dir = config_dir.unwrap_or(cfg.config_dir);
 
     debug!("Checking child dir {}", config_dir.display());
@@ -98,6 +106,7 @@ fn main() {
         return;
     }
     let mut config_file = Path::new("/etc/lithos.yaml");
+    let mut verbose = false;
     let mut config_dir = None;
     {
         let mut ap = ArgumentParser::new();
@@ -106,6 +115,9 @@ fn main() {
           .add_option(["-C", "--config"], box Store::<Path>,
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
+        ap.refer(&mut verbose)
+          .add_option(["-v", "--verbose"], box StoreTrue,
+            "Verbose configuration");
         ap.refer(&mut config_dir)
           .add_option(["-D", "--config-dir"], box StoreOption::<Path>,
             concat!("Name of the alterate directory with configs. ",
@@ -120,7 +132,7 @@ fn main() {
             }
         }
     }
-    match check(config_file, config_dir) {
+    match check(config_file, config_dir, verbose) {
         Ok(()) => {
             set_exit_status(0);
         }
