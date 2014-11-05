@@ -10,6 +10,7 @@ pub enum Volume {
     Readonly(Path),
     Persistent(Path),
     Tmpfs(String),
+    Statedir(Path),
 }
 
 #[deriving(Decodable, Encodable)]
@@ -110,6 +111,13 @@ pub fn parse_volume(val: &str) -> Result<Volume, String> {
                                p.display()));
         }
         return Ok(Persistent(p));
+    } else if val.starts_with("state:") {
+        let p = Path::new(val.slice_from(6));
+        if !p.is_absolute() {
+            return Err(format!("Volume path must be absolute: \"{}\"",
+                               p.display()));
+        }
+        return Ok(Statedir(p));
     } else if val.starts_with("tmpfs:") {
         // TODO(tailhook) validate parameters
         return Ok(Tmpfs(val.slice_from(6).to_string()));
