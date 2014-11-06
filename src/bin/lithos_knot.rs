@@ -11,7 +11,7 @@ extern crate quire;
 use std::rc::Rc;
 use std::os::{set_exit_status, getenv};
 use std::io::stderr;
-use std::io::fs::{File, copy, mkdir};
+use std::io::fs::{File, copy, mkdir, chmod};
 use std::io::fs::PathExtensions;
 use std::io::FilePermission;
 use std::time::Duration;
@@ -154,7 +154,8 @@ fn prepare_state_dir(dir: &Path, _global: &TreeConfig, local: &ContainerConfig)
                       &dir.join("resolv.conf")));
     }
     if local.hosts_file.localhost || local.hosts_file.public_hostname {
-        let mut file = try_str!(File::create(&dir.join("hosts")));
+        let fname = dir.join("hosts");
+        let mut file = try_str!(File::create(&fname));
         if local.hosts_file.localhost {
             try_str!(file.write_str(
                 "127.0.0.1 localhost.localdomain localhost\n"));
@@ -164,6 +165,7 @@ fn prepare_state_dir(dir: &Path, _global: &TreeConfig, local: &ContainerConfig)
                 try_str!(get_host_ip()),
                 try_str!(get_host_name())));
         }
+        try_str!(chmod(&fname, FilePermission::from_bits_truncate(0o644)));
     }
     return Ok(());
 }
