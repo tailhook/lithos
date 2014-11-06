@@ -7,6 +7,8 @@ extern crate libc;
 extern crate argparse;
 extern crate quire;
 #[phase(plugin, link)] extern crate lithos;
+#[phase(plugin)] extern crate regex_macros;
+extern crate regex;
 
 
 use std::rc::Rc;
@@ -14,25 +16,25 @@ use std::os::{set_exit_status, getenv};
 use std::io::stderr;
 use std::time::Duration;
 use std::default::Default;
-use std::collections::TreeMap;
+use libc::funcs::posix88::unistd::getpid;
 
-use argparse::{ArgumentParser, Store};
+use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
-use lithos::container_config::{parse_volume};
+use lithos::container_config::ContainerConfig;
+use lithos::child_config::ChildConfig;
 use lithos::container::{Command};
-use lithos::mount::{bind_mount, mount_ro_recursive, mount_tmpfs, mount_private};
-use lithos::mount::{mount_pseudo};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
+use lithos::setup::{read_local_config, setup_filesystem, prepare_state_dir};
 
 
 struct Target {
     name: Rc<String>,
     global: TreeConfig,
     local: ContainerConfig,
+    args: Vec<String>,
 }
 
 impl Executor for Target {
@@ -41,110 +43,55 @@ impl Executor for Target {
         let mut cmd = Command::new((*self.name).clone(),
             self.local.executable.as_slice());
         cmd.set_user_id(self.local.user_id);
-        cmd.chroot(&Path::new(self.global.mount_dir.as_slice()));
+        cmd.chroot(&self.global.mount_dir);
         cmd.set_workdir(&self.local.workdir);
 
         // Should we propagate TERM?
         cmd.set_env("TERM".to_string(),
                     getenv("TERM").unwrap_or("dumb".to_string()));
         cmd.update_env(self.local.environ.iter());
-        cmd.set_env("LITHOS_NAME".to_string(), (*self.name).clone());
+        cmd.set_env("LITHOS_COMMAND".to_string(), (*self.name).clone());
 
         cmd.args(self.local.arguments.as_slice());
+        cmd.args(self.args.as_slice());
 
         return cmd;
     }
-}
-
-fn map_dir(dir: &Path, dirs: &TreeMap<String, String>) -> Option<Path> {
-    assert!(dir.is_absolute());
-    for (prefix, real_dir) in dirs.iter() {
-        let dir_prefix = Path::new(prefix.as_slice());
-        if dir_prefix.is_ancestor_of(dir) {
-            match dir.path_relative_from(&dir_prefix) {
-                Some(tail) => {
-                    assert!(!tail.is_absolute());
-                    return Some(Path::new(real_dir.as_slice()).join(tail));
-                }
-                None => continue,
-            }
-        }
+    fn finish(&self) -> bool {
+        return false;  // Do not restart
     }
-    return None;
 }
 
-fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig)
+fn run(global_cfg: Path, name: String, args: Vec<String>)
     -> Result<(), String>
 {
-    let mntdir = Path::new(global.mount_dir.as_slice());
-    assert!(mntdir.is_absolute());
-
-    let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
-    volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
-
-    for &(mp_str, volume_str) in volumes.iter() {
-        let tmp_mp = Path::new(mp_str.as_slice());
-        assert!(tmp_mp.is_absolute());  // should be checked earlier
-
-        let dest = mntdir.join(
-            tmp_mp.path_relative_from(&Path::new("/")).unwrap());
-        match try_str!(parse_volume(volume_str.as_slice())) {
-            Readonly(dir) => {
-                let path = match map_dir(&dir, &global.readonly_paths).or_else(
-                                 || map_dir(&dir, &global.writable_paths)) {
-                    None => {
-                        return Err(format!(concat!("Can't find volume for {},",
-                            " probably missing entry in readonly-paths"),
-                            dir.display()));
-                    }
-                    Some(path) => path,
-                };
-                try!(bind_mount(&path, &dest));
-                try!(mount_ro_recursive(&dest));
-            }
-            Persistent(dir) => {
-                let path = match map_dir(&dir, &global.writable_paths) {
-                    None => {
-                        return Err(format!(concat!("Can't find volume for {},",
-                            " probably missing entry in writable-paths"),
-                            dir.display()));
-                    }
-                    Some(path) => path,
-                };
-                try!(bind_mount(&path, &dest));
-                try_str!(mount_private(&dest));
-            }
-            Tmpfs(opt) => {
-                try!(mount_tmpfs(&dest, opt.as_slice()));
-            }
-        }
-    }
-    let devdir = mntdir.join("dev");
-    try!(bind_mount(&Path::new(global.devfs_dir.as_slice()), &devdir));
-    try!(mount_ro_recursive(&devdir));
-    try!(mount_pseudo(&mntdir.join("sys"), "sysfs", "", true));
-    try!(mount_pseudo(&mntdir.join("proc"), "proc", "", false));
-
-    return Ok(());
-}
-
-fn run(name: String, global_cfg: Path, local_cfg: Path) -> Result<(), String> {
     let global: TreeConfig = try_str!(parse_config(&global_cfg,
         &*TreeConfig::validator(), Default::default()));
-    let local: ContainerConfig = try_str!(parse_config(&local_cfg,
-        &*ContainerConfig::validator(), Default::default()));
 
-    info!("[{:s}] Starting container", name);
+    assert!(regex!("^[a-zA-Z0-9][a-zA-Z0-9_.-]+$").is_match(name.as_slice()));
+    let child_fn = global.config_dir.join(name + ".yaml".to_string());
+    let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
+        &*ChildConfig::validator(), Default::default()));
 
-    try!(setup_filesystem(&global, &local));
+    // TODO(tailhook) clarify it: root is mounted in read_local_config
+    let local: ContainerConfig = try!(read_local_config(
+        &global, &child_cfg));
+
+    info!("[{:s}] Running command with args {}", name, args);
+
+    let state_dir = &global.state_dir.join(
+        format!(".cmd.{}.{}", name, unsafe { getpid() }));
+    try!(prepare_state_dir(state_dir, &global, &local));
+    try!(setup_filesystem(&global, &local, state_dir));
 
     let mut mon = Monitor::new(name.clone());
-    let name = Rc::new(name + ".main");
-    let timeo = Duration::milliseconds((local.restart_timeout*1000.) as i64);
+    let name = Rc::new(name + ".cmd");
+    let timeo = Duration::milliseconds(0);
     mon.add(name.clone(), box Target {
         name: name,
         global: global,
         local: local,
+        args: args,
     }, timeo, None);
     mon.run();
 
@@ -156,23 +103,22 @@ fn main() {
     signal::block_all();
 
     let mut global_config = Path::new("/etc/lithos.yaml");
-    let mut container_config = Path::new("");
-    let mut name = "".to_string();
+    let mut command_name = "".to_string();
+    let mut args = vec!();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
-        ap.refer(&mut name)
-          .add_option(["--name"], box Store::<String>,
-            "The process name");
         ap.refer(&mut global_config)
           .add_option(["--global-config"], box Store::<Path>,
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
-        ap.refer(&mut container_name)
-          .add_option(["--container-config"], box Store::<Path>,
-            "Name of the container configuration file")
-          .required()
-          .metavar("FILE");
+        ap.refer(&mut command_name)
+          .add_argument("name", box Store::<String>,
+            "Name of the command to run")
+          .required();
+        ap.refer(&mut args)
+          .add_argument("argument", box List::<String>,
+            "Arguments for the command");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
@@ -181,7 +127,7 @@ fn main() {
             }
         }
     }
-    match run(name, global_config, container_config) {
+    match run(global_config, command_name, args) {
         Ok(()) => {
             set_exit_status(0);
         }
