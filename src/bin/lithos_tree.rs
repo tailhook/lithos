@@ -41,6 +41,7 @@ use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
+use lithos::container_config::Daemon;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::monitor::{PrepareResult, Run, Error};
 use lithos::container::Command;
@@ -250,8 +251,19 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
             _ => continue,  // Non-yaml, old, whatever, files
         }
         debug!("Adding {}", child_fn.display());
-        let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
-            &*ChildConfig::validator(), Default::default()));
+        let child_cfg: ChildConfig = match parse_config(&child_fn,
+            &*ChildConfig::validator(), Default::default())
+        {
+            Ok(conf) => conf,
+            Err(e) => {
+                error!("Error parsing {}: {}", child_fn.display(), e);
+                continue;
+            }
+        };
+        if child_cfg.kind != Daemon {
+            debug!("Skipping non-daemon {}", child_fn.display());
+            continue;
+        }
         let child_cfg_string = Rc::new(json::encode(&child_cfg));
         let child_json = json::from_str(child_cfg_string.as_slice()).unwrap();
         children.insert(child_fn, (child_cfg, child_json, child_cfg_string));

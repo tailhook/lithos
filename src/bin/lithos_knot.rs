@@ -19,7 +19,7 @@ use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
-use lithos::container_config::ContainerConfig;
+use lithos::container_config::{ContainerConfig, Daemon};
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
@@ -61,6 +61,10 @@ fn run(name: String, global_cfg: Path, config: ChildConfig)
 
     // TODO(tailhook) clarify it: root is mounted in read_local_config
     let local: ContainerConfig = try!(read_local_config(&global, &config));
+    if local.kind != config.kind {
+        return Err(format!("Container type mismatch {} != {}",
+              local.kind, config.kind));
+    }
 
     info!("[{:s}] Starting container", name);
 
@@ -90,6 +94,7 @@ fn main() {
         instances: 0,
         image: Path::new(""),
         config: Path::new(""),
+        kind: Daemon,
     };
     let mut name = "".to_string();
     {

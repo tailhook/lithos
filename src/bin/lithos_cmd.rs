@@ -22,7 +22,7 @@ use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::ContainerConfig;
+use lithos::container_config::{ContainerConfig, Command};
 use lithos::child_config::ChildConfig;
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
@@ -72,6 +72,10 @@ fn run(global_cfg: Path, name: String, args: Vec<String>)
     let child_fn = global.config_dir.join(name + ".yaml".to_string());
     let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
         &*ChildConfig::validator(), Default::default()));
+
+    if child_cfg.kind != Command {
+        return Err(format!("The target container is: {}", child_cfg.kind));
+    }
 
     // TODO(tailhook) clarify it: root is mounted in read_local_config
     let local: ContainerConfig = try!(read_local_config(

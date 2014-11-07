@@ -13,6 +13,12 @@ pub enum Volume {
     Statedir(Path),
 }
 
+#[deriving(Decodable, Encodable, Show, PartialEq, Eq)]
+pub enum ContainerKind {
+    Daemon,
+    Command,
+}
+
 #[deriving(Decodable, Encodable)]
 pub struct ResolvConf {
     pub copy_from_host: bool,
@@ -26,6 +32,7 @@ pub struct HostsFile {
 
 #[deriving(Decodable, Encodable)]
 pub struct ContainerConfig {
+    pub kind: ContainerKind,
     pub volumes: TreeMap<String, String>,
     pub user_id: uint,
     pub restart_timeout: f32,
@@ -42,6 +49,9 @@ pub struct ContainerConfig {
 impl ContainerConfig {
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return box Structure { members: vec!(
+            ("kind".to_string(), box Scalar {
+                default: Some("Daemon".to_string()),
+                .. Default::default() } as Box<Validator>),
             ("volumes".to_string(), box Mapping {
                 key_element: box Scalar {
                     .. Default::default() } as Box<Validator>,

@@ -6,11 +6,14 @@ use serialize::Decodable;
 use quire::validate::{Validator, Structure, Scalar, Numeric};
 use quire;
 
+use super::container_config::ContainerKind;
+
 #[deriving(Decodable, Encodable)]
 pub struct ChildConfig {
     pub instances: uint,
     pub image: Path,
     pub config: Path,
+    pub kind: ContainerKind,
 }
 
 impl ChildConfig {
@@ -23,6 +26,9 @@ impl ChildConfig {
                 .. Default::default() } as Box<Validator>),
             ("config".to_string(), box Scalar {
                 .. Default::default()} as Box<Validator>),
+            ("kind".to_string(), box Scalar {
+                default: Some("Daemon".to_string()),
+                .. Default::default() } as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
     }
 }
