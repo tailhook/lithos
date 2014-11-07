@@ -55,6 +55,7 @@ install:
 	install -m 755 lithos_tree $(DESTDIR)$(PREFIX)/bin/lithos_tree
 	install -m 755 lithos_knot $(DESTDIR)$(PREFIX)/bin/lithos_knot
 	install -m 755 lithos_check $(DESTDIR)$(PREFIX)/bin/lithos_check
+	install -m 755 lithos_cmd $(DESTDIR)$(PREFIX)/bin/lithos_cmd
 	install -m 755 bin/lithos_mkdev $(DESTDIR)$(PREFIX)/bin/lithos_mkdev
 
 
