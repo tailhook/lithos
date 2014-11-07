@@ -14,7 +14,7 @@ use std::io::stderr;
 use std::time::Duration;
 use std::default::Default;
 
-use argparse::{ArgumentParser, Store};
+use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
@@ -30,6 +30,7 @@ struct Target {
     name: Rc<String>,
     global: TreeConfig,
     local: ContainerConfig,
+    args: Vec<String>,
 }
 
 impl Executor for Target {
@@ -48,12 +49,16 @@ impl Executor for Target {
         cmd.set_env("LITHOS_NAME".to_string(), (*self.name).clone());
 
         cmd.args(self.local.arguments.as_slice());
+        cmd.args(self.args.as_slice());
 
         return cmd;
     }
+    fn finish(&self) -> bool {
+        return self.local.kind == Daemon;
+    }
 }
 
-fn run(name: String, global_cfg: Path, config: ChildConfig)
+fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
     -> Result<(), String>
 {
     let global: TreeConfig = try_str!(parse_config(&global_cfg,
@@ -79,6 +84,7 @@ fn run(name: String, global_cfg: Path, config: ChildConfig)
         name: name,
         global: global,
         local: local,
+        args: args,
     }, timeo, None);
     mon.run();
 
@@ -97,6 +103,7 @@ fn main() {
         kind: Daemon,
     };
     let mut name = "".to_string();
+    let mut args = vec!();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
@@ -112,6 +119,9 @@ fn main() {
             "JSON-serialized container configuration")
           .required()
           .metavar("JSON");
+        ap.refer(&mut args)
+          .add_argument("argument", box List::<String>,
+            "Additional arguments for the command");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
@@ -120,7 +130,7 @@ fn main() {
             }
         }
     }
-    match run(name, global_config, config) {
+    match run(name, global_config, config, args) {
         Ok(()) => {
             set_exit_status(0);
         }

@@ -1,4 +1,4 @@
-#![feature(phase, macro_rules)]
+#![feature(phase, macro_rules, if_let)]
 
 extern crate serialize;
 extern crate libc;
@@ -12,49 +12,56 @@ extern crate regex;
 
 
 use std::rc::Rc;
-use std::os::{set_exit_status, getenv};
+use std::os::{set_exit_status, self_exe_path, getenv};
 use std::io::stderr;
 use std::time::Duration;
 use std::default::Default;
+use serialize::json;
 use libc::funcs::posix88::unistd::getpid;
 
 use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::{ContainerConfig, Command};
+use lithos::container_config::{Command};
 use lithos::child_config::ChildConfig;
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
-use lithos::setup::{read_local_config, setup_filesystem, prepare_state_dir};
 
 
-struct Target {
+struct Child {
     name: Rc<String>,
-    global: TreeConfig,
-    local: ContainerConfig,
+    global_file: Path,
+    child_config_serialized: String,
+    root_binary: Path,
     args: Vec<String>,
 }
 
-impl Executor for Target {
+impl Executor for Child {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new((*self.name).clone(),
-            self.local.executable.as_slice());
-        cmd.set_user_id(self.local.user_id);
-        cmd.chroot(&self.global.mount_dir);
-        cmd.set_workdir(&self.local.workdir);
+        let mut cmd = Command::new((*self.name).clone(), &self.root_binary);
+        cmd.keep_sigmask();
 
-        // Should we propagate TERM?
+        // Name is first here, so it's easily visible in ps
+        cmd.arg("--name");
+        cmd.arg(self.name.as_slice());
+
+        cmd.arg("--global-config");
+        cmd.arg(&self.global_file);
+        cmd.arg("--config");
+        cmd.arg(self.child_config_serialized.as_slice());
         cmd.set_env("TERM".to_string(),
                     getenv("TERM").unwrap_or("dumb".to_string()));
-        cmd.update_env(self.local.environ.iter());
-        cmd.set_env("LITHOS_COMMAND".to_string(), (*self.name).clone());
-
-        cmd.args(self.local.arguments.as_slice());
+        if let Some(x) = getenv("RUST_LOG") {
+            cmd.set_env("RUST_LOG".to_string(), x);
+        }
+        if let Some(x) = getenv("RUST_BACKTRACE") {
+            cmd.set_env("RUST_BACKTRACE".to_string(), x);
+        }
         cmd.args(self.args.as_slice());
-
+        cmd.container(false);
         return cmd;
     }
     fn finish(&self) -> bool {
@@ -77,24 +84,16 @@ fn run(global_cfg: Path, name: String, args: Vec<String>)
         return Err(format!("The target container is: {}", child_cfg.kind));
     }
 
-    // TODO(tailhook) clarify it: root is mounted in read_local_config
-    let local: ContainerConfig = try!(read_local_config(
-        &global, &child_cfg));
-
     info!("[{:s}] Running command with args {}", name, args);
 
-    let state_dir = &global.state_dir.join(
-        format!(".cmd.{}.{}", name, unsafe { getpid() }));
-    try!(prepare_state_dir(state_dir, &global, &local));
-    try!(setup_filesystem(&global, &local, state_dir));
-
     let mut mon = Monitor::new(name.clone());
-    let name = Rc::new(name + ".cmd");
+    let name = Rc::new(format!("cmd.{}.{}", name, unsafe { getpid() }));
     let timeo = Duration::milliseconds(0);
-    mon.add(name.clone(), box Target {
+    mon.add(name.clone(), box Child {
         name: name,
-        global: global,
-        local: local,
+        global_file: global_cfg,
+        child_config_serialized: json::encode(&child_cfg),
+        root_binary: self_exe_path().unwrap().join("lithos_knot"),
         args: args,
     }, timeo, None);
     mon.run();

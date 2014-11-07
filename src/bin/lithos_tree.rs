@@ -336,6 +336,15 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
         if let Some(name) = ppath.filename_str() {
             if mon.has(&Rc::new(name.to_string())) {
                 continue;
+            } else if name.starts_with("cmd.") {
+                let pid = regex!(r"^\.\(\d+\)$")
+                    .captures(name.as_slice())
+                    .and_then(|c| FromStr::from_str(c.at(1)));
+                if let Some(pid) = pid {
+                    if signal::is_process_alive(pid) {
+                        continue;
+                    }
+                }
             }
             warn!("Dangling state dir {}. Deleting...", ppath.display());
             rmdir_recursive(ppath)

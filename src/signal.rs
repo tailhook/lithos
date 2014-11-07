@@ -116,3 +116,7 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Timespec>) -> Signal {
 pub fn send_signal(pid: pid_t, sig: int) {
     Process::kill(pid, sig).ok();
 }
+
+pub fn is_process_alive(pid: pid_t) -> bool {
+    return Process::kill(pid, 0).is_ok();
+}
