@@ -1,5 +1,5 @@
 use std::io::FilePermission;
-use std::io::fs::{File, copy, mkdir, chmod};
+use std::io::fs::{File, copy, mkdir, chmod, mkdir_recursive, chown};
 use std::io::fs::PathExtensions;
 use std::default::Default;
 use std::collections::TreeMap;
@@ -73,6 +73,12 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
                     }
                     Some(path) => path,
                 };
+                // TODO(tailhook) make it parametrized
+                if !path.exists() {
+                    try_str!(mkdir_recursive(&path,
+                        FilePermission::from_bits_truncate(0o755)));
+                    try_str!(chown(&path, local.user_id as int, -1));
+                }
                 try!(bind_mount(&path, &dest));
                 try_str!(mount_private(&dest));
             }
