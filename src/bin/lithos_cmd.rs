@@ -89,6 +89,8 @@ fn run(global_cfg: Path, name: String, args: Vec<String>)
     let mut mon = Monitor::new(name.clone());
     let name = Rc::new(format!("cmd.{}.{}", name, unsafe { getpid() }));
     let timeo = Duration::milliseconds(0);
+    let mut args = args;
+    args.insert(0, "--".to_string());
     mon.add(name.clone(), box Child {
         name: name,
         global_file: global_cfg,
@@ -122,6 +124,7 @@ fn main() {
         ap.refer(&mut args)
           .add_argument("argument", box List::<String>,
             "Arguments for the command");
+        ap.stop_on_first_argument(true);
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {

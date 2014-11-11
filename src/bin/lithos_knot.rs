@@ -122,6 +122,7 @@ fn main() {
         ap.refer(&mut args)
           .add_argument("argument", box List::<String>,
             "Additional arguments for the command");
+        ap.stop_on_first_argument(true);
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
