@@ -38,7 +38,7 @@ impl Executor for Target {
     {
         let mut cmd = Command::new((*self.name).clone(),
             self.local.executable.as_slice());
-        cmd.set_user_id(self.local.user_id);
+        cmd.set_user(self.local.user_id, self.local.group_id);
         cmd.chroot(&self.global.mount_dir);
         cmd.set_workdir(&self.local.workdir);
 

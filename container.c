@@ -1,5 +1,6 @@
 #include <sys/prctl.h>
 #include <sys/mount.h>
+#include <sys/types.h>
 #include <alloca.h>
 #include <unistd.h>
 #include <signal.h>
@@ -8,6 +9,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <grp.h>
 
 // Glibc has a function, but doesn't declare any header for it
 int pivot_root(const char *new_root, const char *put_old);
@@ -15,6 +17,7 @@ int pivot_root(const char *new_root, const char *put_old);
 typedef struct {
     int namespaces;
     int user_id;
+    int group_id;
     int restore_sigmask;
     const char *logprefix;
     const char *fs_root;
@@ -69,6 +72,17 @@ static void _run_container(CCommand *cmd) {
     if(chdir(cmd->workdir)) {
         fprintf(stderr, "%s Error changing workdir %s: %m\n",
             cmd->logprefix, cmd->workdir);
+        abort();
+    }
+    if(setgid(cmd->group_id)) {
+        fprintf(stderr, "%s Error setting group id %d: %m\n",
+            cmd->logprefix, cmd->group_id);
+        abort();
+    }
+    // Shouldn't we set zero supplemental groups
+    if(setgroups(1, &cmd->group_id)) {
+        fprintf(stderr, "%s Error setting groups: %m\n",
+            cmd->logprefix);
         abort();
     }
     if(setuid(cmd->user_id)) {

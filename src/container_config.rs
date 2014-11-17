@@ -35,6 +35,7 @@ pub struct ContainerConfig {
     pub kind: ContainerKind,
     pub volumes: TreeMap<String, String>,
     pub user_id: uint,
+    pub group_id: uint,
     pub restart_timeout: f32,
     pub memory_limit: u64,
     pub cpu_shares: uint,
@@ -62,6 +63,11 @@ impl ContainerConfig {
                 min: Some(1),
                 max: Some(65534),
                 default: None::<uint>,
+                .. Default::default()} as Box<Validator>),
+            ("group_id".to_string(), box Numeric {
+                min: Some(0),
+                max: Some(65534),
+                default: Some(0u),
                 .. Default::default()} as Box<Validator>),
             ("memory_limit".to_string(), box Numeric {
                 default: Some(0xffffffffffffffffu64),

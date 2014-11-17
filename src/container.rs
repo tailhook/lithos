@@ -54,6 +54,7 @@ pub struct Command {
     namespaces: EnumSet<Namespace>,
     restore_sigmask: bool,
     user_id: uint,
+    group_id: uint,
     workdir: CString,
 }
 
@@ -72,10 +73,12 @@ impl Command {
             environment: TreeMap::new(),
             restore_sigmask: true,
             user_id: 0,
+            group_id: 0,
         };
     }
-    pub fn set_user_id(&mut self, uid: uint) {
+    pub fn set_user(&mut self, uid: uint, gid: uint) {
         self.user_id = uid;
+        self.group_id = gid;
     }
     pub fn chroot(&mut self, dir: &Path) {
         self.chroot = Some(dir.to_c_str());
@@ -151,6 +154,7 @@ impl Command {
             exec_environ: exec_environ.as_slice().as_ptr(),
             namespaces: convert_namespaces(self.namespaces),
             user_id: self.user_id as i32,
+            group_id: self.group_id as i32,
             restore_sigmask: if self.restore_sigmask { 1 } else { 0 },
             workdir: self.workdir.as_ptr(),
         }) };
@@ -188,6 +192,7 @@ static CLONE_NEWNET: c_int = 0x40000000;  /* New network namespace.  */
 pub struct CCommand {
     namespaces: c_int,
     user_id: c_int,
+    group_id: c_int,
     restore_sigmask: c_int,
     logprefix: *const u8,
     fs_root: *const u8,
