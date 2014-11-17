@@ -50,6 +50,7 @@ impl Executor for Target {
 
         cmd.args(self.local.arguments.as_slice());
         cmd.args(self.args.as_slice());
+        cmd.mount_ns();
 
         return cmd;
     }

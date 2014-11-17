@@ -1,4 +1,5 @@
 #include <sys/prctl.h>
+#include <sys/mount.h>
 #include <alloca.h>
 #include <unistd.h>
 #include <signal.h>
@@ -8,6 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Glibc has a function, but doesn't declare any header for it
+int pivot_root(const char *new_root, const char *put_old);
 
 typedef struct {
     int namespaces;
@@ -15,6 +18,8 @@ typedef struct {
     int restore_sigmask;
     const char *logprefix;
     const char *fs_root;
+    const char *tmp_old_root;
+    const char *old_root_relative;
     const char *exec_path;
     char ** const exec_args;
     char ** const exec_environ;
@@ -29,15 +34,37 @@ typedef struct {
 
 static void _run_container(CCommand *cmd) {
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
-    if(chdir(cmd->fs_root)) {
-        fprintf(stderr, "%s Error changing workdir to the root %s: %m\n",
-            cmd->logprefix, cmd->fs_root);
-        abort();
-    }
-    if(chroot(cmd->fs_root)) {
-        fprintf(stderr, "%s Error changing root %s: %m\n",
-            cmd->logprefix, cmd->fs_root);
-        abort();
+    if(cmd->fs_root) {
+        if(chdir(cmd->fs_root)) {
+            fprintf(stderr, "%s Error changing workdir to the root %s: %m\n",
+                cmd->logprefix, cmd->fs_root);
+            abort();
+        }
+        if(cmd->tmp_old_root) {
+            if(pivot_root(cmd->fs_root, cmd->tmp_old_root)) {
+                fprintf(stderr, "%s Error changing root %s(%s): %m\n",
+                    cmd->logprefix, cmd->fs_root, cmd->tmp_old_root);
+                abort();
+            }
+            if(mount("none", cmd->old_root_relative, NULL,
+                MS_REC|MS_PRIVATE, NULL))
+            {
+                fprintf(stderr, "%s Can't make mountpoint private: %m\n",
+                    cmd->logprefix);
+                abort();
+            }
+            if(umount2(cmd->old_root_relative, MNT_DETACH)) {
+                fprintf(stderr, "%s Can't unmount old root: %m\n",
+                    cmd->logprefix);
+                abort();
+            }
+        } else {
+            if(chroot(cmd->fs_root)) {
+                fprintf(stderr, "%s Error changing root %s: %m\n",
+                    cmd->logprefix, cmd->fs_root);
+                abort();
+            }
+        }
     }
     if(chdir(cmd->workdir)) {
         fprintf(stderr, "%s Error changing workdir %s: %m\n",

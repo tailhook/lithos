@@ -45,7 +45,9 @@ impl CLike for Namespace {
 
 pub struct Command {
     name: String,
-    chroot: CString,
+    chroot: Option<CString>,
+    tmp_old_root: Option<CString>,
+    old_root_relative: Option<CString>,
     executable: CString,
     arguments: Vec<CString>,
     environment: TreeMap<String, String>,
@@ -60,7 +62,9 @@ impl Command {
     pub fn new<T:ToCStr>(name: String, cmd: T) -> Command {
         return Command {
             name: name,
-            chroot: "/".to_c_str(),
+            chroot: None,
+            tmp_old_root: None,
+            old_root_relative: None,
             workdir: getcwd().to_c_str(),
             executable: cmd.to_c_str(),
             arguments: vec!(cmd.to_c_str()),
@@ -74,7 +78,9 @@ impl Command {
         self.user_id = uid;
     }
     pub fn chroot(&mut self, dir: &Path) {
-        self.chroot = dir.to_c_str();
+        self.chroot = Some(dir.to_c_str());
+        self.tmp_old_root = Some(dir.join("tmp").to_c_str());
+        self.old_root_relative = Some("/tmp".to_c_str());
     }
     pub fn set_workdir(&mut self, dir: &Path) {
         self.workdir = dir.to_c_str();
@@ -109,6 +115,9 @@ impl Command {
             self.namespaces.add(NewNet);
         }
     }
+    pub fn mount_ns(&mut self) {
+        self.namespaces.add(NewMount);
+    }
     pub fn spawn(&self) -> Result<pid_t, IoError> {
         let mut exec_args: Vec<*const u8> = self.arguments.iter()
             .map(|a| a.as_bytes().as_ptr()).collect();
@@ -125,7 +134,18 @@ impl Command {
             ).to_c_str();
         let pid = unsafe { execute_command(&CCommand {
             logprefix: logprefix.as_bytes().as_ptr(),
-            fs_root: self.chroot.as_bytes().as_ptr(),
+            fs_root: match self.chroot {
+                Some(ref path) => path.as_bytes().as_ptr(),
+                None => null(),
+            },
+            tmp_old_root: match self.tmp_old_root {
+                Some(ref path) => path.as_bytes().as_ptr(),
+                None => null(),
+            },
+            old_root_relative: match self.old_root_relative {
+                Some(ref path) => path.as_bytes().as_ptr(),
+                None => null(),
+            },
             exec_path: self.executable.as_bytes().as_ptr(),
             exec_args: exec_args.as_slice().as_ptr(),
             exec_environ: exec_environ.as_slice().as_ptr(),
@@ -171,6 +191,8 @@ pub struct CCommand {
     restore_sigmask: c_int,
     logprefix: *const u8,
     fs_root: *const u8,
+    tmp_old_root: *const u8,
+    old_root_relative: *const u8,
     exec_path: *const u8,
     exec_args: *const*const u8,
     exec_environ: *const*const u8,
