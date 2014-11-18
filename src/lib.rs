@@ -9,6 +9,8 @@ extern crate libc;
 extern crate quire;
 extern crate serialize;
 extern crate time;
+extern crate regex;
+#[phase(plugin)] extern crate regex_macros;
 
 pub mod tree_config;
 pub mod container_config;

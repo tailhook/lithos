@@ -17,7 +17,7 @@ use std::default::Default;
 use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
-use lithos::tree_config::TreeConfig;
+use lithos::tree_config::{TreeConfig, Range};
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, Daemon};
 use lithos::container::{Command};
@@ -59,6 +59,18 @@ impl Executor for Target {
     }
 }
 
+fn in_range(ranges: &Vec<Range>, value: uint) -> bool {
+    if ranges.len() == 0 {  // no limit on the value
+        return true;
+    }
+    for rng in ranges.iter() {
+        if rng.start <= value && rng.end >= value {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
     -> Result<(), String>
 {
@@ -70,6 +82,12 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
     if local.kind != config.kind {
         return Err(format!("Container type mismatch {} != {}",
               local.kind, config.kind));
+    }
+    if !in_range(&global.allow_users, local.user_id) {
+        return Err(format!("User {} is not allowed", local.user_id));
+    }
+    if !in_range(&global.allow_groups, local.group_id) {
+        return Err(format!("Group {} is not allowed", local.user_id));
     }
 
     info!("[{:s}] Starting container", name);

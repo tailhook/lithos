@@ -13,8 +13,8 @@ extern crate quire;
 #[phase(plugin, link)] extern crate lithos;
 
 
+use std::os::{getenv, setenv};
 use std::os::args;
-use std::io::stderr;
 use std::io::fs::readdir;
 use std::os::{set_exit_status, self_exe_path};
 use std::io::fs::PathExtensions;
@@ -23,43 +23,87 @@ use std::default::Default;
 use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
 
-use lithos::tree_config::TreeConfig;
+use lithos::tree_config::{TreeConfig, Range};
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::signal;
 use lithos::network::{get_host_name, get_host_ip};
 
 
-fn check_config(cfg: &TreeConfig, verbose: bool) -> Result<(), String> {
+fn check_config(cfg: &TreeConfig, verbose: bool) {
     // TODO(tailhook) maybe check host only if we need it for hosts file
-    let hostname = try_str!(get_host_name());
-    if verbose {
-        println!("Hostname is {}", hostname);
+    match get_host_name() {
+        Ok(hostname) => {
+            if verbose {
+                println!("Hostname is {}", hostname);
+            }
+        }
+        Err(e) => {
+            warn!("Can't get hostname: {}", e);
+            set_exit_status(1);
+        }
     }
-    let ipaddr = try_str!(get_host_ip());
-    if verbose {
-        println!("IPAddr is {}", ipaddr);
+    match get_host_ip() {
+        Ok(ipaddr) => {
+            if verbose {
+                println!("IPAddr is {}", ipaddr);
+            }
+        }
+        Err(e) => {
+            warn!("Can't get IPAddress: {}", e);
+            set_exit_status(1);
+        }
     }
 
     if !Path::new(cfg.devfs_dir.as_slice()).exists() {
-        return Err(format!(
-            "Devfs dir ({}) must exist and contain device nodes",
-            cfg.devfs_dir));
+        error!("Devfs dir ({}) must exist and contain device nodes",
+            cfg.devfs_dir);
+        set_exit_status(1);
     }
-    return Ok(());
+    if cfg.allow_users.len() == 0 {
+        warn!("No allowed users range. Please add `allow-users: [1-1000]`");
+    }
+    if cfg.allow_groups.len() == 0 {
+        warn!("No allowed groups range. Please add `allow-groups: [1-1000]`");
+    }
 }
 
-fn check(config_file: Path, config_dir: Option<Path>, verbose: bool)
-    -> Result<(), String>
-{
-    let cfg: TreeConfig = try_str!(parse_config(&config_file,
-        &*TreeConfig::validator(), Default::default()));
+fn in_range(ranges: &Vec<Range>, value: uint) -> bool {
+    if ranges.len() == 0 {  // no limit on the value
+        return true;
+    }
+    for rng in ranges.iter() {
+        if rng.start <= value && rng.end >= value {
+            return true;
+        }
+    }
+    return false;
+}
 
-    try!(check_config(&cfg, verbose));
+fn check(config_file: Path, config_dir: Option<Path>, verbose: bool) {
+    let cfg: TreeConfig = match parse_config(&config_file,
+        &*TreeConfig::validator(), Default::default()) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            error!("Can't parse config: {}", e);
+            set_exit_status(1);
+            return;
+        }
+    };
+
+    check_config(&cfg, verbose);
     let config_dir = config_dir.unwrap_or(cfg.config_dir);
 
     debug!("Checking child dir {}", config_dir.display());
-    let dirlist = try_str!(readdir(&config_dir));
+    let dirlist = match readdir(&config_dir) {
+        Ok(dirlist) => dirlist,
+        Err(e) => {
+            error!("Can't open config directory {}: {}",
+                config_dir.display(), e);
+            set_exit_status(1);
+            return;
+        }
+    };
     for child_fn in dirlist.into_iter() {
         match (child_fn.filestem_str(), child_fn.extension_str()) {
             (Some(""), _) => continue,  // Hidden files
@@ -67,44 +111,70 @@ fn check(config_file: Path, config_dir: Option<Path>, verbose: bool)
             _ => continue,  // Non-yaml, old, whatever, files
         }
         debug!("Checking {}", child_fn.display());
-        let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
-            &*ChildConfig::validator(), Default::default()));
+        let child_cfg: ChildConfig = match parse_config(&child_fn,
+            &*ChildConfig::validator(), Default::default()) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                error!("Can't read child config {}: {}",
+                    child_fn.display(), e);
+                set_exit_status(1);
+                continue;
+            }
+        };
         debug!("Opening config {}", child_fn.display());
-        let config: ContainerConfig = try_str!(parse_config(
+        let config: ContainerConfig = match parse_config(
             &cfg.image_dir
                 .join(child_cfg.image)
                 .join(child_cfg.config.path_relative_from(
                     &Path::new("/")).unwrap()),
-            &*ContainerConfig::validator(), Default::default()));
+            &*ContainerConfig::validator(), Default::default()) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                error!(concat!("Can't read child config {}: {}.",
+                    "Sometimes the reason is absolute symlinks for config, ",
+                    "in that case it may work in real daemon, but better ",
+                    "fix it."), child_fn.display(), e);
+                set_exit_status(1);
+                continue;
+            }
+        };
+        if !in_range(&cfg.allow_users, config.user_id) {
+            error!("User is not in allowed range (uid: {})", config.user_id);
+            set_exit_status(1);
+        }
+        if !in_range(&cfg.allow_groups, config.group_id) {
+            error!("Group is not in allowed range (gid: {})", config.group_id);
+            set_exit_status(1);
+        }
     }
-
-    return Ok(());
 }
 
-fn check_binaries() -> bool {
+fn check_binaries() {
     let dir = match self_exe_path() {
         Some(dir) => dir,
-        None => return false,
+        None => {
+            error!("Can't find out exe path");
+            set_exit_status(1);
+            return;
+        }
     };
     if !dir.join("lithos_tree").exists() {
         error!("Can't find lithos_tree binary");
-        return false;
+        set_exit_status(1);
     }
     if !dir.join("lithos_knot").exists() {
         error!("Can't find lithos_knot binary");
-        return false;
+        set_exit_status(1);
     }
-    return true;
 }
 
 fn main() {
 
     signal::block_all();
-
-    if !check_binaries() {
-        set_exit_status(127);
-        return;
+    if getenv("RUST_LOG").is_none() {
+        setenv("RUST_LOG", "warn");
     }
+
     let mut config_file = Path::new("/etc/lithos.yaml");
     let mut verbose = false;
     let mut config_dir = None;
@@ -132,13 +202,6 @@ fn main() {
             }
         }
     }
-    match check(config_file, config_dir, verbose) {
-        Ok(()) => {
-            set_exit_status(0);
-        }
-        Err(e) => {
-            (write!(stderr(), "Fatal error: {}\n", e)).ok();
-            set_exit_status(1);
-        }
-    }
+    check_binaries();
+    check(config_file, config_dir, verbose);
 }

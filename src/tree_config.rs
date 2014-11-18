@@ -1,10 +1,54 @@
 use std::default::Default;
 use std::collections::TreeMap;
+use std::from_str::FromStr;
+use serialize::{Decoder, Decodable};
 
-use quire::validate::{Validator, Structure, Mapping, Scalar, Numeric};
+use quire::validate::{Validator, Structure};
+use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 
+#[deriving(Clone, Show)]
+pub struct Range {
+    pub start: uint,
+    pub end: uint,
+}
 
-#[deriving(Decodable, Encodable)]
+impl Range {
+    pub fn new(start: uint, end: uint) -> Range {
+        return Range { start: start, end: end };
+    }
+    pub fn len(&self) -> uint {
+        return self.end - self.start + 1;
+    }
+    pub fn shift(&self, val: uint) -> Range {
+        assert!(self.end - self.start + 1 >= val);
+        return Range::new(self.start + val, self.end);
+    }
+}
+
+impl<E, D:Decoder<E>> Decodable<D, E> for Range {
+    fn decode(d: &mut D) -> Result<Range, E> {
+        match d.read_str() {
+            Ok(val) => {
+                let num:Option<uint> = FromStr::from_str(val.as_slice());
+                match num {
+                    Some(num) => return Ok(Range::new(num, num)),
+                    None => {}
+                }
+                match regex!(r"^(\d+)-(\d+)$").captures(val.as_slice()) {
+                    Some(caps) => {
+                        return Ok(Range::new(
+                            from_str(caps.at(1)).unwrap(),
+                            from_str(caps.at(2)).unwrap()));
+                    }
+                    None => unimplemented!(),
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+#[deriving(Decodable)]
 pub struct TreeConfig {
     pub config_dir: Path,
     pub state_dir: Path,
@@ -17,8 +61,9 @@ pub struct TreeConfig {
     pub readonly_paths: TreeMap<String, String>,
     pub writable_paths: TreeMap<String, String>,
     pub devfs_dir: String,
-    pub min_port: u16,
-    pub max_port: u16,
+    pub allow_ports: Vec<Range>,
+    pub allow_users: Vec<Range>,
+    pub allow_groups: Vec<Range>,
 }
 
 impl TreeConfig {
@@ -55,11 +100,17 @@ impl TreeConfig {
             ("devfs_dir".to_string(), box Scalar {
                 default: Some("/var/lib/lithos/dev".to_string()),
                 .. Default::default() } as Box<Validator>),
-            ("min_port".to_string(), box Numeric {
-                default: Some(1024u16),
+            ("allow_ports".to_string(), box Sequence {
+                element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
                 .. Default::default() } as Box<Validator>),
-            ("max_port".to_string(), box Numeric {
-                default: Some(29999u16),
+            ("allow_users".to_string(), box Sequence {
+                element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+                .. Default::default() } as Box<Validator>),
+            ("allow_groups".to_string(), box Sequence {
+                element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
                 .. Default::default() } as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
     }
