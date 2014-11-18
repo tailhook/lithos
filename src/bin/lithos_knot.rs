@@ -17,12 +17,13 @@ use std::default::Default;
 use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
-use lithos::tree_config::{TreeConfig, Range};
+use lithos::signal;
+use lithos::utils::{in_range, check_mapping};
+use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, Daemon};
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
-use lithos::signal;
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 
 
@@ -50,6 +51,9 @@ impl Executor for Target {
 
         cmd.args(self.local.arguments.as_slice());
         cmd.args(self.args.as_slice());
+        if self.local.uid_map.len() > 0 || self.local.gid_map.len() > 0 {
+            cmd.user_ns(&self.local.uid_map, &self.local.gid_map);
+        }
         cmd.mount_ns();
 
         return cmd;
@@ -57,18 +61,6 @@ impl Executor for Target {
     fn finish(&self) -> bool {
         return self.local.kind == Daemon;
     }
-}
-
-fn in_range(ranges: &Vec<Range>, value: uint) -> bool {
-    if ranges.len() == 0 {  // no limit on the value
-        return true;
-    }
-    for rng in ranges.iter() {
-        if rng.start <= value && rng.end >= value {
-            return true;
-        }
-    }
-    return false;
 }
 
 fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
@@ -87,7 +79,15 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
         return Err(format!("User {} is not allowed", local.user_id));
     }
     if !in_range(&global.allow_groups, local.group_id) {
-        return Err(format!("Group {} is not allowed", local.user_id));
+        return Err(format!("Group {} is not allowed", local.group_id));
+    }
+    if !check_mapping(&global.allow_users, &local.uid_map) {
+        return Err("Bad uid mapping (probably doesn't match allow_users)"
+            .to_string());
+    }
+    if !check_mapping(&global.allow_groups, &local.gid_map) {
+        return Err("Bad gid mapping (probably doesn't match allow_groups)"
+            .to_string());
     }
 
     info!("[{:s}] Starting container", name);

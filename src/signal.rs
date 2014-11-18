@@ -9,6 +9,7 @@ use libc::types::os::common::posix01::timespec;
 use time::{Timespec, get_time};
 
 pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR, ECHILD};
+pub use libc::consts::os::posix88::{SIGKILL};
 use libc::{c_int, pid_t};
 
 

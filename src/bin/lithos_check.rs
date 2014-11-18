@@ -23,10 +23,11 @@ use std::default::Default;
 use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
 
-use lithos::tree_config::{TreeConfig, Range};
+use lithos::signal;
+use lithos::utils::{in_range, check_mapping};
+use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
-use lithos::signal;
 use lithos::network::{get_host_name, get_host_ip};
 
 
@@ -66,18 +67,6 @@ fn check_config(cfg: &TreeConfig, verbose: bool) {
     if cfg.allow_groups.len() == 0 {
         warn!("No allowed groups range. Please add `allow-groups: [1-1000]`");
     }
-}
-
-fn in_range(ranges: &Vec<Range>, value: uint) -> bool {
-    if ranges.len() == 0 {  // no limit on the value
-        return true;
-    }
-    for rng in ranges.iter() {
-        if rng.start <= value && rng.end >= value {
-            return true;
-        }
-    }
-    return false;
 }
 
 fn check(config_file: Path, config_dir: Option<Path>, verbose: bool) {
@@ -144,6 +133,14 @@ fn check(config_file: Path, config_dir: Option<Path>, verbose: bool) {
         }
         if !in_range(&cfg.allow_groups, config.group_id) {
             error!("Group is not in allowed range (gid: {})", config.group_id);
+            set_exit_status(1);
+        }
+        if !check_mapping(&cfg.allow_users, &config.uid_map) {
+            error!("Bad uid mapping (probably doesn't match allow_users)");
+            set_exit_status(1);
+        }
+        if !check_mapping(&cfg.allow_groups, &config.gid_map) {
+            error!("Bad gid mapping (probably doesn't match allow_groups)");
             set_exit_status(1);
         }
     }

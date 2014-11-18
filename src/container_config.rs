@@ -31,11 +31,18 @@ pub struct HostsFile {
 }
 
 #[deriving(Decodable, Encodable)]
+pub struct IdMap {
+    pub inside: u32,
+    pub outside: u32,
+    pub count: u32,
+}
+
+#[deriving(Decodable, Encodable)]
 pub struct ContainerConfig {
     pub kind: ContainerKind,
     pub volumes: TreeMap<String, String>,
-    pub user_id: uint,
-    pub group_id: uint,
+    pub user_id: u32,
+    pub group_id: u32,
     pub restart_timeout: f32,
     pub memory_limit: u64,
     pub cpu_shares: uint,
@@ -45,6 +52,24 @@ pub struct ContainerConfig {
     pub workdir: Path,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
+    pub uid_map: Vec<IdMap>,
+    pub gid_map: Vec<IdMap>,
+}
+
+fn mapping_validator<'x>() -> Box<Validator + 'x> {
+    return box Sequence {
+        element: box Structure { members: vec!(
+            ("inside".to_string(), box Numeric {
+                default: None::<u32>,
+                .. Default::default() } as Box<Validator>),
+            ("outside".to_string(), box Numeric {
+                default: None::<u32>,
+                .. Default::default() } as Box<Validator>),
+            ("count".to_string(), box Numeric {
+                default: None::<u32>,
+                .. Default::default() } as Box<Validator>),
+            ), .. Default::default() } as Box<Validator>,
+        .. Default::default() } as Box<Validator>;
 }
 
 impl ContainerConfig {
@@ -108,6 +133,8 @@ impl ContainerConfig {
                     default: Some("true".to_string()),
                     .. Default::default() } as Box<Validator>),
                 ), .. Default::default()} as Box<Validator>),
+            ("uid_map".to_string(), mapping_validator()),
+            ("gid_map".to_string(), mapping_validator()),
         ), .. Default::default() } as Box<Validator>;
     }
 }

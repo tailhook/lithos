@@ -16,6 +16,7 @@ int pivot_root(const char *new_root, const char *put_old);
 
 typedef struct {
     int namespaces;
+    int pipe_reader;
     int user_id;
     int group_id;
     int restore_sigmask;
@@ -37,6 +38,20 @@ typedef struct {
 
 static void _run_container(CCommand *cmd) {
     prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0);
+
+    //  Wait for user namespace to be set up
+    int rc;
+    char val[1];
+    do {
+        rc = read(cmd->pipe_reader, val, 1);
+    } while(rc < 0 && (errno == EINTR || errno == EAGAIN));
+    if(rc < 0) {
+        fprintf(stderr, "%s Error reading from parent's pipe: %m\n",
+            cmd->logprefix);
+        abort();
+    }
+    close(cmd->pipe_reader);
+
     if(cmd->fs_root) {
         if(chdir(cmd->fs_root)) {
             fprintf(stderr, "%s Error changing workdir to the root %s: %m\n",

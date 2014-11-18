@@ -8,18 +8,18 @@ use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 
 #[deriving(Clone, Show)]
 pub struct Range {
-    pub start: uint,
-    pub end: uint,
+    pub start: u32,
+    pub end: u32,
 }
 
 impl Range {
-    pub fn new(start: uint, end: uint) -> Range {
+    pub fn new(start: u32, end: u32) -> Range {
         return Range { start: start, end: end };
     }
-    pub fn len(&self) -> uint {
+    pub fn len(&self) -> u32 {
         return self.end - self.start + 1;
     }
-    pub fn shift(&self, val: uint) -> Range {
+    pub fn shift(&self, val: u32) -> Range {
         assert!(self.end - self.start + 1 >= val);
         return Range::new(self.start + val, self.end);
     }
@@ -29,7 +29,7 @@ impl<E, D:Decoder<E>> Decodable<D, E> for Range {
     fn decode(d: &mut D) -> Result<Range, E> {
         match d.read_str() {
             Ok(val) => {
-                let num:Option<uint> = FromStr::from_str(val.as_slice());
+                let num:Option<u32> = FromStr::from_str(val.as_slice());
                 match num {
                     Some(num) => return Ok(Range::new(num, num)),
                     None => {}

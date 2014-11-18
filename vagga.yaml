@@ -35,6 +35,11 @@ containers:
       cpu_shares: 3
       executable: /bin/sleep
       arguments: [60]
+      uid-map:
+      - {inside: 0, outside: 1000, count: 1}
+      - {inside: 1, outside: 1, count: 1}
+      gid-map:
+      - {inside: 0, outside: 100, count: 1}
       END
 
   ubuntu:
