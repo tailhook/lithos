@@ -53,6 +53,11 @@ static void _run_container(CCommand *cmd) {
     close(cmd->pipe_reader);
 
     if(cmd->fs_root) {
+        if(setuid(0)) {
+            fprintf(stderr, "%s Can't become root, to apply chroot: %m\n",
+                cmd->logprefix);
+            abort();
+        }
         if(chdir(cmd->fs_root)) {
             fprintf(stderr, "%s Error changing workdir to the root %s: %m\n",
                 cmd->logprefix, cmd->fs_root);

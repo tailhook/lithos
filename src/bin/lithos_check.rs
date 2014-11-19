@@ -24,7 +24,7 @@ use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
 
 use lithos::signal;
-use lithos::utils::{in_range, check_mapping};
+use lithos::utils::{in_range, in_mapping, check_mapping};
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
@@ -127,13 +127,31 @@ fn check(config_file: Path, config_dir: Option<Path>, verbose: bool) {
                 continue;
             }
         };
-        if !in_range(&cfg.allow_users, config.user_id) {
-            error!("User is not in allowed range (uid: {})", config.user_id);
-            set_exit_status(1);
+        if config.uid_map.len() > 0 {
+            if !in_mapping(&config.uid_map, config.user_id) {
+                error!("User is not in mapped range (uid: {})",
+                    config.user_id);
+                set_exit_status(1);
+            }
+        } else {
+            if !in_range(&cfg.allow_users, config.user_id) {
+                error!("User is not in allowed range (uid: {})",
+                    config.user_id);
+                set_exit_status(1);
+            }
         }
-        if !in_range(&cfg.allow_groups, config.group_id) {
-            error!("Group is not in allowed range (gid: {})", config.group_id);
-            set_exit_status(1);
+        if config.gid_map.len() > 0 {
+            if !in_mapping(&config.gid_map, config.group_id) {
+                error!("Group is not in mapped range (gid: {})",
+                    config.user_id);
+                set_exit_status(1);
+            }
+        } else {
+            if !in_range(&cfg.allow_groups, config.group_id) {
+                error!("Group is not in allowed range (gid: {})",
+                    config.group_id);
+                set_exit_status(1);
+            }
         }
         if !check_mapping(&cfg.allow_users, &config.uid_map) {
             error!("Bad uid mapping (probably doesn't match allow_users)");

@@ -43,6 +43,15 @@ pub fn in_range(ranges: &Vec<Range>, value: u32) -> bool {
     return false;
 }
 
+pub fn in_mapping(mapping: &Vec<IdMap>, value: u32) -> bool {
+    for mp in mapping.iter() {
+        if value >= mp.inside && value < mp.inside + mp.count {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn check_mapping(ranges: &Vec<Range>, map: &Vec<IdMap>) -> bool {
     // TODO(tailhook) do more comprehensive algo
     'map: for item in map.iter() {

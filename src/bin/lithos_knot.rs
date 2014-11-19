@@ -18,7 +18,7 @@ use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::signal;
-use lithos::utils::{in_range, check_mapping, change_root};
+use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, Daemon};
@@ -74,11 +74,27 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
         return Err(format!("Container type mismatch {} != {}",
               local.kind, config.kind));
     }
-    if !in_range(&global.allow_users, local.user_id) {
-        return Err(format!("User {} is not allowed", local.user_id));
+    if local.uid_map.len() > 0 {
+        if !in_mapping(&local.uid_map, local.user_id) {
+            return Err(format!("User is not in mapped range (uid: {})",
+                local.user_id));
+        }
+    } else {
+        if !in_range(&global.allow_users, local.user_id) {
+            return Err(format!("User is not in allowed range (uid: {})",
+                local.user_id));
+        }
     }
-    if !in_range(&global.allow_groups, local.group_id) {
-        return Err(format!("Group {} is not allowed", local.group_id));
+    if local.gid_map.len() > 0 {
+        if !in_mapping(&local.gid_map, local.group_id) {
+            return Err(format!("Group is not in mapped range (gid: {})",
+                local.user_id));
+        }
+    } else {
+        if !in_range(&global.allow_groups, local.group_id) {
+            return Err(format!("Group is not in allowed range (gid: {})",
+                local.group_id));
+        }
     }
     if !check_mapping(&global.allow_users, &local.uid_map) {
         return Err("Bad uid mapping (probably doesn't match allow_users)"

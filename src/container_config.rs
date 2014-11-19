@@ -85,14 +85,10 @@ impl ContainerConfig {
                     .. Default::default() } as Box<Validator>,
             .. Default::default() } as Box<Validator>),
             ("user_id".to_string(), box Numeric {
-                min: Some(1),
-                max: Some(65534),
-                default: None::<uint>,
+                default: None::<u32>,
                 .. Default::default()} as Box<Validator>),
             ("group_id".to_string(), box Numeric {
-                min: Some(0),
-                max: Some(65534),
-                default: Some(0u),
+                default: Some(0u32),
                 .. Default::default()} as Box<Validator>),
             ("memory_limit".to_string(), box Numeric {
                 default: Some(0xffffffffffffffffu64),
