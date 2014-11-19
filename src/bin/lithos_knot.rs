@@ -18,13 +18,14 @@ use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::signal;
-use lithos::utils::{in_range, check_mapping};
+use lithos::utils::{in_range, check_mapping, change_root};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, Daemon};
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
+use lithos::mount::{unmount};
 
 
 struct Target {
@@ -40,7 +41,6 @@ impl Executor for Target {
         let mut cmd = Command::new((*self.name).clone(),
             self.local.executable.as_slice());
         cmd.set_user(self.local.user_id, self.local.group_id);
-        cmd.chroot(&self.global.mount_dir);
         cmd.set_workdir(&self.local.workdir);
 
         // Should we propagate TERM?
@@ -54,7 +54,6 @@ impl Executor for Target {
         if self.local.uid_map.len() > 0 || self.local.gid_map.len() > 0 {
             cmd.user_ns(&self.local.uid_map, &self.local.gid_map);
         }
-        cmd.mount_ns();
 
         return cmd;
     }
@@ -95,6 +94,9 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
     let state_dir = &global.state_dir.join(name.as_slice());
     try!(prepare_state_dir(state_dir, &global, &local));
     try!(setup_filesystem(&global, &local, state_dir));
+
+    try!(change_root(&global.mount_dir, &global.mount_dir.join("tmp")));
+    try!(unmount(&Path::new("/tmp")));
 
     let mut mon = Monitor::new(name.clone());
     let name = Rc::new(name + ".main");

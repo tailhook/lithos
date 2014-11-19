@@ -45,6 +45,8 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
     let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
     volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
 
+    try!(mount_private(&root));
+
     for &(mp_str, volume_str) in volumes.iter() {
         let tmp_mp = Path::new(mp_str.as_slice());
         assert!(tmp_mp.is_absolute());  // should be checked earlier
@@ -80,7 +82,6 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
                     try_str!(chown(&path, local.user_id as int, -1));
                 }
                 try!(bind_mount(&path, &dest));
-                try_str!(mount_private(&dest));
             }
             Tmpfs(opt) => {
                 try!(mount_tmpfs(&dest, opt.as_slice()));
@@ -90,7 +91,6 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
                 try!(bind_mount(
                     &state_dir.join(relative_dir),
                     &dest));
-                try_str!(mount_private(&dest));
             }
         }
     }

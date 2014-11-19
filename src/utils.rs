@@ -8,6 +8,7 @@ use super::container_config::IdMap;
 
 extern {
     fn chroot(dir: *const c_char) -> c_int;
+    fn pivot_root(new_root: *const c_char, put_old: *const c_char) -> c_int;
 }
 
 
@@ -55,4 +56,18 @@ pub fn check_mapping(ranges: &Vec<Range>, map: &Vec<IdMap>) -> bool {
         return false;
     }
     return true;
+}
+
+pub fn change_root(new_root: &Path, put_old: &Path) -> Result<(), String>
+{
+    if unsafe { pivot_root(new_root.to_c_str().as_ptr(),
+                           put_old.to_c_str().as_ptr()) } != 0 {
+        return Err(format!("Error pivot_root to {}: {}", new_root.display(),
+                           IoError::last_error()));
+    }
+    if unsafe { chdir("/".to_c_str().as_ptr()) } != 0 {
+        return Err(format!("Error chdir to root: {}",
+                           IoError::last_error()));
+    }
+    return Ok(());
 }

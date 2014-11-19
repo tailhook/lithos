@@ -33,12 +33,18 @@ static MS_STRICTATIME: c_ulong = 1 << 24;     /* Always perform atime updates.  
 static MS_ACTIVE: c_ulong = 1 << 30;
 static MS_NOUSER: c_ulong = 1 << 31;
 
+static MNT_FORCE: c_int = 1;           /* Force unmounting.  */
+static MNT_DETACH: c_int = 2;          /* Just detach from the tree.  */
+static MNT_EXPIRE: c_int = 4;          /* Mark for expiry.  */
+static UMOUNT_NOFOLLOW: c_int = 8;     /* Don't follow symlink on umount.  */
+
 
 extern {
     fn mount(source: *const u8, target: *const u8,
         filesystemtype: *const u8, flags: c_ulong,
         data: *const u8) -> c_int;
     fn umount(target: *const u8) -> c_int;
+    fn umount2(target: *const u8, flags: c_int) -> c_int;
 }
 
 
@@ -203,7 +209,7 @@ pub fn mount_private(target: &Path) -> Result<(), String> {
     let rc = unsafe { mount(
         none.as_bytes().as_ptr(),
         c_target.as_bytes().as_ptr(),
-        null(), MS_PRIVATE, null()) };
+        null(), MS_REC|MS_PRIVATE, null()) };
     if rc == 0 {
         return Ok(());
     } else {
@@ -277,7 +283,7 @@ pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
 
 pub fn unmount(target: &Path) -> Result<(), String> {
     let c_target = target.to_c_str();
-    let rc = unsafe { umount(c_target.as_bytes().as_ptr()) };
+    let rc = unsafe { umount2(c_target.as_bytes().as_ptr(), MNT_DETACH) };
     if rc == 0 {
         return Ok(());
     } else {
