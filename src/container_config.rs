@@ -45,6 +45,7 @@ pub struct ContainerConfig {
     pub group_id: u32,
     pub restart_timeout: f32,
     pub memory_limit: u64,
+    pub fileno_limit: u64,
     pub cpu_shares: uint,
     pub executable: String,
     pub arguments: Vec<String>,
@@ -92,6 +93,9 @@ impl ContainerConfig {
                 .. Default::default()} as Box<Validator>),
             ("memory_limit".to_string(), box Numeric {
                 default: Some(0xffffffffffffffffu64),
+                .. Default::default()} as Box<Validator>),
+            ("fileno_limit".to_string(), box Numeric {
+                default: Some(1024u64),
                 .. Default::default()} as Box<Validator>),
             ("cpu_shares".to_string(), box Numeric {
                 default: Some(1024u),

@@ -26,6 +26,7 @@ use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 use lithos::mount::{unmount};
+use lithos::limits::{set_fileno_limit};
 
 
 struct Target {
@@ -113,6 +114,8 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
 
     try!(change_root(&global.mount_dir, &global.mount_dir.join("tmp")));
     try!(unmount(&Path::new("/tmp")));
+
+    try_str!(set_fileno_limit(local.fileno_limit));
 
     let mut mon = Monitor::new(name.clone());
     let name = Rc::new(name + ".main");
