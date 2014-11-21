@@ -1,4 +1,7 @@
-use std::io::IoError;
+use std::io::{IoError, PathAlreadyExists};
+use std::io::ALL_PERMISSIONS;
+use std::io::fs::{mkdir, readdir, rmdir_recursive, rmdir};
+use std::io::fs::PathExtensions;
 use libc::funcs::posix88::unistd::chdir;
 use libc::{c_int, c_char};
 
@@ -77,6 +80,54 @@ pub fn change_root(new_root: &Path, put_old: &Path) -> Result<(), String>
     if unsafe { chdir("/".to_c_str().as_ptr()) } != 0 {
         return Err(format!("Error chdir to root: {}",
                            IoError::last_error()));
+    }
+    return Ok(());
+}
+
+pub fn ensure_dir(dir: &Path) -> Result<(), String> {
+    if dir.exists() {
+        if !dir.is_dir() {
+            return Err(format!(concat!("Can't create dir {}, ",
+                "path already exists but not a directory"),
+                dir.display()));
+        }
+    }
+    match mkdir(dir, ALL_PERMISSIONS) {
+        Ok(()) => return Ok(()),
+        Err(ref e) if e.kind == PathAlreadyExists => {
+            if dir.is_dir() {
+                return Ok(());
+            } else {
+                return Err(format!(concat!("Can't create dir {}, ",
+                    "path already exists but not a directory"),
+                    dir.display()));
+            }
+        }
+        Err(ref e) => {
+            return Err(format!(concat!("Can't create dir {}: {} ",
+                "path already exists but not a directory"),
+                dir.display(), e));
+        }
+    }
+}
+
+pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
+    // We temporarily change root, so that symlinks inside the dir
+    // would do no harm. But note that dir itself can be a symlink
+    try!(temporary_change_root(dir, || {
+        let dirlist = try!(readdir(&Path::new("/"))
+             .map_err(|e| format!("Can't read directory {}: {}",
+                                  dir.display(), e)));
+        for path in dirlist.into_iter() {
+            try!(rmdir_recursive(&path)
+                .map_err(|e| format!("Can't remove directory {}{}: {}",
+                    dir.display(), path.display(), e)));
+        }
+        Ok(())
+    }));
+    if remove_dir_itself {
+        try!(rmdir(dir).map_err(|e| format!("Can't remove dir {}: {}",
+                                            dir.display(), e)));
     }
     return Ok(());
 }

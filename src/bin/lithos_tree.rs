@@ -39,6 +39,7 @@ use serialize::json::Json;
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
 
+use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::Daemon;
@@ -47,6 +48,7 @@ use lithos::monitor::{PrepareResult, Run, Error};
 use lithos::container::Command;
 use lithos::mount::{bind_mount, mount_private, unmount};
 use lithos::mount::check_mount_point;
+use lithos::utils::clean_dir;
 use lithos::signal;
 
 
@@ -135,44 +137,16 @@ fn check_config(cfg: &TreeConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn global_init(cfg: &TreeConfig) -> Result<(), String> {
-    try_str!(mkdir_recursive(&cfg.state_dir,
-        FilePermission::from_bits_truncate(0o755)));
-
-    try_str!(mkdir_recursive(&cfg.mount_dir,
-        FilePermission::from_bits_truncate(0o755)));
-
-    let mut bind = true;
-    let mut private = true;
-    try!(check_mount_point(
-        cfg.mount_dir.display().as_maybe_owned().as_slice(), |m| {
-        bind = false;
-        if m.is_private() {
-            private = false;
-        }
-    }));
-
-    if bind {
-        try_str!(bind_mount(&cfg.mount_dir, &cfg.mount_dir));
-    }
-    if private {
-        try_str!(mount_private(&cfg.mount_dir));
-    }
-
+fn global_init(master: &MasterConfig) -> Result<(), String> {
+    try!(create_master_dirs(&*master));
+    try!(check_process(&*master));
     return Ok(());
 }
 
-fn global_cleanup(cfg: &TreeConfig) {
-    unmount(&cfg.mount_dir).unwrap_or_else(
-        |e| error!("Error unmouting mount dir {}: {}",
-                   cfg.mount_dir.display(), e));
-    rmdir(&cfg.mount_dir).unwrap_or_else(
-        |e| error!("Error removing mount dir {}: {}",
-                   cfg.mount_dir.display(), e));
-
-    rmdir_recursive(&cfg.state_dir).unwrap_or_else(
+fn global_cleanup(master: &MasterConfig) {
+    clean_dir(&master.state_dir, false).unwrap_or_else(
         |e| error!("Error removing state dir {}: {}",
-                   cfg.state_dir.display(), e));
+                   master.state_dir.display(), e));
 }
 
 fn discard<E>(_: E) { }
@@ -234,45 +208,33 @@ fn _get_name(procfsdir: &Path, global_config: &Path)
     }
 }
 
-fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
-    let cfg: Rc<TreeConfig> = Rc::new(try_str!(parse_config(&config_file,
-        &*TreeConfig::validator(), Default::default())));
-
-    try!(check_config(&*cfg));
-
-    let mut children: HashMap<Path, (ChildConfig, Json, Rc<String>)>;
-    children = HashMap::new();
-    debug!("Checking child dir {}", cfg.config_dir.display());
-    let dirlist = try_str!(readdir(&cfg.config_dir));
-    for child_fn in dirlist.into_iter() {
-        match (child_fn.filestem_str(), child_fn.extension_str()) {
-            (Some(""), _) => continue,  // Hidden files
-            (_, Some("yaml")) => {}
-            _ => continue,  // Non-yaml, old, whatever, files
-        }
-        debug!("Adding {}", child_fn.display());
-        let child_cfg: ChildConfig = match parse_config(&child_fn,
-            &*ChildConfig::validator(), Default::default())
+fn check_process(cfg: &MasterConfig) -> Result<(), String> {
+    let pid_file = cfg.runtime_dir.join("master.pid");
+    if pid_file.exists() {
+        match File::open(pid_file)
+            .and_then(|mut f| f.read_to_str())
+            .map(|s| FromStr::from_str(s))
         {
-            Ok(conf) => conf,
-            Err(e) => {
-                error!("Error parsing {}: {}", child_fn.display(), e);
-                continue;
+            Ok(Some(pid)) => {
+                if signal::is_process_alive(pid) {
+                    return Err(format!(concat!("Master pid is {}. ",
+                        "And there is alive process with",
+                        "that pid."), pid));
+
+                }
             }
-        };
-        if child_cfg.kind != Daemon {
-            debug!("Skipping non-daemon {}", child_fn.display());
-            continue;
+            _ => {
+                warn!("Pid file exists, but cannot be read");
+            }
         }
-        let child_cfg_string = Rc::new(json::encode(&child_cfg));
-        let child_json = json::from_str(child_cfg_string.as_slice()).unwrap();
-        children.insert(child_fn, (child_cfg, child_json, child_cfg_string));
     }
+    try!(File::create(pid_file)
+    .and_then(|mut f| f.write_uint(unsafe { getpid() }))
+    .map_err(|e| format!("Can't write file {}: {}", pid_file.display(), e)));
+    return Ok(());
+}
 
-    try!(global_init(&*cfg));
-
-    let mut mon = Monitor::new("lithos-tree".to_string());
-    let config_file = Rc::new(config_file);
+fn recover_processes() {
     let mypid = unsafe { getpid() };
 
     // Recover old workers
@@ -328,6 +290,70 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
             }
         };
     }
+}
+
+fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
+    let master: Rc<MasterConfig> = Rc::new(try_str!(parse_config(&config_file,
+        &*MasterConfig::validator(), Default::default())));
+    try!(global_init(&*master));
+
+    let mut mon = Monitor::new("lithos-tree".to_string());
+
+    info!("Recovering Processes");
+
+    info!("Reading configs from {}", master.config_dir.display());
+
+    mon.allow_reboot();
+    match mon.run() {
+        Killed => {}
+        Reboot => {
+            reexec_myself(&*bin.lithos_tree);
+        }
+    }
+
+    global_cleanup(&*cfg);
+
+    return Ok(());
+}
+
+fn read_subtree(master: &MasterConfig) {
+    let cfg: Rc<TreeConfig> = Rc::new(try_str!(parse_config(&config_file,
+        &*TreeConfig::validator(), Default::default())));
+
+    try!(check_config(&*cfg));
+
+    let mut children: HashMap<Path, (ChildConfig, Json, Rc<String>)>;
+    children = HashMap::new();
+    debug!("Checking child dir {}", cfg.config_dir.display());
+    let dirlist = try_str!(readdir(&cfg.config_dir));
+    for child_fn in dirlist.into_iter() {
+        match (child_fn.filestem_str(), child_fn.extension_str()) {
+            (Some(""), _) => continue,  // Hidden files
+            (_, Some("yaml")) => {}
+            _ => continue,  // Non-yaml, old, whatever, files
+        }
+        debug!("Adding {}", child_fn.display());
+        let child_cfg: ChildConfig = match parse_config(&child_fn,
+            &*ChildConfig::validator(), Default::default())
+        {
+            Ok(conf) => conf,
+            Err(e) => {
+                error!("Error parsing {}: {}", child_fn.display(), e);
+                continue;
+            }
+        };
+        if child_cfg.kind != Daemon {
+            debug!("Skipping non-daemon {}", child_fn.display());
+            continue;
+        }
+        let child_cfg_string = Rc::new(json::encode(&child_cfg));
+        let child_json = json::from_str(child_cfg_string.as_slice()).unwrap();
+        children.insert(child_fn, (child_cfg, child_json, child_cfg_string));
+    }
+
+
+    let mut mon = Monitor::new("lithos-tree".to_string());
+    let config_file = Rc::new(config_file);
 
     // Remove dangling state dirs
     for ppath in readdir(&cfg.state_dir)
@@ -373,17 +399,6 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
             None);
         }
     }
-    mon.allow_reboot();
-    match mon.run() {
-        Killed => {}
-        Reboot => {
-            reexec_myself(&*bin.lithos_tree);
-        }
-    }
-
-    global_cleanup(&*cfg);
-
-    return Ok(());
 }
 
 fn reexec_myself(lithos_tree: &Path) -> ! {
