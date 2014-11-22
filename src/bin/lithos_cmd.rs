@@ -48,7 +48,7 @@ impl Executor for Child {
         cmd.arg("--name");
         cmd.arg(self.name.as_slice());
 
-        cmd.arg("--global-config");
+        cmd.arg("--master");
         cmd.arg(&self.global_file);
         cmd.arg("--config");
         cmd.arg(self.child_config_serialized.as_slice());
@@ -114,7 +114,7 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
         ap.refer(&mut global_config)
-          .add_option(["--global-config"], box Store::<Path>,
+          .add_option(["--master"], box Store::<Path>,
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut command_name)

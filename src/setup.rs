@@ -9,6 +9,7 @@ use quire::parse_config;
 use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs, mount_private};
 use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
+use super::master_config::MasterConfig;
 use super::tree_config::TreeConfig;
 use super::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
 use super::container_config::{Statedir};
@@ -17,15 +18,14 @@ use super::child_config::ChildConfig;
 use super::utils::temporary_change_root;
 
 
-fn map_dir(dir: &Path, dirs: &TreeMap<String, String>) -> Option<Path> {
+fn map_dir(dir: &Path, dirs: &TreeMap<Path, Path>) -> Option<Path> {
     assert!(dir.is_absolute());
     for (prefix, real_dir) in dirs.iter() {
-        let dir_prefix = Path::new(prefix.as_slice());
-        if dir_prefix.is_ancestor_of(dir) {
-            match dir.path_relative_from(&dir_prefix) {
+        if prefix.is_ancestor_of(dir) {
+            match dir.path_relative_from(prefix) {
                 Some(tail) => {
                     assert!(!tail.is_absolute());
-                    return Some(Path::new(real_dir.as_slice()).join(tail));
+                    return Some(real_dir.join(tail));
                 }
                 None => continue,
             }
@@ -34,12 +34,12 @@ fn map_dir(dir: &Path, dirs: &TreeMap<String, String>) -> Option<Path> {
     return None;
 }
 
-pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
-    state_dir: &Path)
+pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
+    local: &ContainerConfig, state_dir: &Path)
     -> Result<(), String>
 {
     let root = Path::new("/");
-    let mntdir = global.mount_dir.clone();
+    let mntdir = master.mount_dir.clone();
     assert!(mntdir.is_absolute());
 
     let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
@@ -54,8 +54,8 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
         let dest = mntdir.join(tmp_mp.path_relative_from(&root).unwrap());
         match try_str!(parse_volume(volume_str.as_slice())) {
             Readonly(dir) => {
-                let path = match map_dir(&dir, &global.readonly_paths).or_else(
-                                 || map_dir(&dir, &global.writable_paths)) {
+                let path = match map_dir(&dir, &tree.readonly_paths).or_else(
+                                 || map_dir(&dir, &tree.writable_paths)) {
                     None => {
                         return Err(format!(concat!("Can't find volume for {},",
                             " probably missing entry in readonly-paths"),
@@ -67,7 +67,7 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
                 try!(mount_ro_recursive(&dest));
             }
             Persistent(dir) => {
-                let path = match map_dir(&dir, &global.writable_paths) {
+                let path = match map_dir(&dir, &tree.writable_paths) {
                     None => {
                         return Err(format!(concat!("Can't find volume for {},",
                             " probably missing entry in writable-paths"),
@@ -95,7 +95,7 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
         }
     }
     let devdir = mntdir.join("dev");
-    try!(bind_mount(&Path::new(global.devfs_dir.as_slice()), &devdir));
+    try!(bind_mount(&master.devfs_dir, &devdir));
     try!(mount_ro_recursive(&devdir));
     try!(mount_pseudo(&mntdir.join("sys"), "sysfs", "", true));
     try!(mount_pseudo(&mntdir.join("proc"), "proc", "", false));
@@ -103,8 +103,7 @@ pub fn setup_filesystem(global: &TreeConfig, local: &ContainerConfig,
     return Ok(());
 }
 
-pub fn prepare_state_dir(dir: &Path, _global: &TreeConfig,
-                         local: &ContainerConfig)
+pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig)
     -> Result<(), String>
 {
     // TODO(tailhook) chown files
@@ -132,13 +131,14 @@ pub fn prepare_state_dir(dir: &Path, _global: &TreeConfig,
     return Ok(());
 }
 
-pub fn read_local_config(global_cfg: &TreeConfig, child_cfg: &ChildConfig)
+pub fn read_local_config(master: &MasterConfig, tree: &TreeConfig,
+    child_cfg: &ChildConfig)
     -> Result<ContainerConfig, String>
 {
-    let image_path = global_cfg.image_dir.join(&child_cfg.image);
-    try!(bind_mount(&image_path, &global_cfg.mount_dir));
-    try!(mount_ro_recursive(&global_cfg.mount_dir));
-    return temporary_change_root(&global_cfg.mount_dir, || {
+    let image_path = tree.image_dir.join(&child_cfg.image);
+    try!(bind_mount(&image_path, &master.mount_dir));
+    try!(mount_ro_recursive(&master.mount_dir));
+    return temporary_change_root(&master.mount_dir, || {
         parse_config(&child_cfg.config,
             &*ContainerConfig::validator(), Default::default())
     });

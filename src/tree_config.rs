@@ -4,7 +4,7 @@ use std::from_str::FromStr;
 use serialize::{Decoder, Decodable};
 
 use quire::validate::{Validator, Structure};
-use quire::validate::{Sequence, Mapping, Scalar, Numeric};
+use quire::validate::{Sequence, Mapping, Scalar};
 
 #[deriving(Clone, Show)]
 pub struct Range {
@@ -51,17 +51,9 @@ impl<E, D:Decoder<E>> Decodable<D, E> for Range {
 #[deriving(Decodable)]
 pub struct TreeConfig {
     pub config_dir: Path,
-    pub state_dir: Path,
-    pub mount_dir: Path,
     pub image_dir: Path,
-    pub image_path_components: uint,
-    pub image_path_symlinks: bool,
-    //  Update to Path in next rust
-    //  in rust0.12 Path has Ord
-    pub readonly_paths: TreeMap<String, String>,
-    pub writable_paths: TreeMap<String, String>,
-    pub devfs_dir: String,
-    pub allow_ports: Vec<Range>,
+    pub readonly_paths: TreeMap<Path, Path>,
+    pub writable_paths: TreeMap<Path, Path>,
     pub allow_users: Vec<Range>,
     pub allow_groups: Vec<Range>,
 }
@@ -72,22 +64,8 @@ impl TreeConfig {
             ("config_dir".to_string(), box Scalar {
                 default: Some("/etc/lithos/current".to_string()),
                 .. Default::default() } as Box<Validator>),
-            ("state_dir".to_string(), box Scalar {
-                default: Some("/run/lithos/state".to_string()),
-                .. Default::default() } as Box<Validator>),
-            ("mount_dir".to_string(), box Scalar {
-                default: Some("/run/lithos/mnt".to_string()),
-                .. Default::default() } as Box<Validator>),
             ("image_dir".to_string(), box Scalar {
                 default: Some("/var/lib/lithos/containers".to_string()),
-                .. Default::default() } as Box<Validator>),
-            ("image_path_components".to_string(), box Numeric {
-                min: Some(1),
-                max: Some(10),
-                default: Some(1u),
-                .. Default::default() } as Box<Validator>),
-            ("image_path_symlinks".to_string(), box Scalar {
-                default: Some("false".to_string()),
                 .. Default::default() } as Box<Validator>),
             ("readonly_paths".to_string(), box Mapping {
                 key_element: box Scalar { .. Default::default()},
@@ -96,13 +74,6 @@ impl TreeConfig {
             ("writable_paths".to_string(), box Mapping {
                 key_element: box Scalar { .. Default::default()},
                 value_element: box Scalar { .. Default::default()},
-                .. Default::default() } as Box<Validator>),
-            ("devfs_dir".to_string(), box Scalar {
-                default: Some("/var/lib/lithos/dev".to_string()),
-                .. Default::default() } as Box<Validator>),
-            ("allow_ports".to_string(), box Sequence {
-                element: box Scalar {
-                    .. Default::default() } as Box<Validator>,
                 .. Default::default() } as Box<Validator>),
             ("allow_users".to_string(), box Sequence {
                 element: box Scalar {

@@ -20,7 +20,7 @@ use std::io::IoError;
 use std::io::fs::File;
 use std::os::getenv;
 use std::from_str::FromStr;
-use std::io::fs::{readdir, mkdir, mkdir_recursive, rmdir, rmdir_recursive};
+use std::io::fs::{readdir, mkdir};
 use std::os::{set_exit_status, self_exe_path};
 use std::io::FilePermission;
 use std::ptr::null;
@@ -34,7 +34,6 @@ use time::get_time;
 use libc::pid_t;
 use libc::funcs::posix88::unistd::{getpid, execv};
 use serialize::json;
-use serialize::json::Json;
 
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
@@ -42,28 +41,26 @@ use quire::parse_config;
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
-use lithos::container_config::Daemon;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::monitor::{PrepareResult, Run, Error};
 use lithos::container::Command;
-use lithos::mount::{bind_mount, mount_private, unmount};
-use lithos::mount::check_mount_point;
-use lithos::utils::clean_dir;
+use lithos::utils::{clean_dir, join};
 use lithos::signal;
 
 
 struct Child {
     name: Rc<String>,
-    global_file: Rc<Path>,
+    master_file: Rc<Path>,
     child_config_serialized: Rc<String>,
-    global_config: Rc<TreeConfig>,
+    master_config: Rc<MasterConfig>,
+    child_config: Rc<ChildConfig>,
     root_binary: Rc<Path>,
 }
 
 impl Child {
     fn _prepare(&self) -> Result<(), String> {
         try_str!(mkdir(
-            &self.global_config.state_dir.join(self.name.as_slice()),
+            &self.master_config.state_dir.join(self.name.as_slice()),
             FilePermission::all()));
         return Ok(());
     }
@@ -79,8 +76,8 @@ impl Executor for Child {
         cmd.arg("--name");
         cmd.arg(self.name.as_slice());
 
-        cmd.arg("--global-config");
-        cmd.arg(&*self.global_file);
+        cmd.arg("--master");
+        cmd.arg(&*self.master_file);
         cmd.arg("--config");
         cmd.arg(self.child_config_serialized.as_slice());
         cmd.set_env("TERM".to_string(),
@@ -101,17 +98,18 @@ impl Executor for Child {
         }
     }
     fn finish(&self) -> bool {
-        let st_dir = self.global_config.state_dir.join(self.name.as_slice());
-        rmdir_recursive(&st_dir)
-            .map_err(|e| error!("Error removing dir {}: {}",
-                                 st_dir.display(), e))
+        let st_dir = self.master_config.state_dir.join(self.name.as_slice());
+        clean_dir(&st_dir, true)
+            .map_err(|e| error!("Error removing state dir {}: {}",
+                                 self.name, e))
             .ok();
         return true;
     }
 }
+
 struct UnidentifiedChild {
     name: Rc<String>,
-    global_config: Rc<TreeConfig>,
+    master_config: Rc<MasterConfig>,
 }
 
 impl Executor for UnidentifiedChild {
@@ -119,20 +117,20 @@ impl Executor for UnidentifiedChild {
         unreachable!();
     }
     fn finish(&self) -> bool {
-        let st_dir = self.global_config.state_dir.join(self.name.as_slice());
-        rmdir_recursive(&st_dir)
-            .map_err(|e| error!("Error removing dir {}: {}",
-                                 st_dir.display(), e))
+        let st_dir = self.master_config.state_dir.join(self.name.as_slice());
+        clean_dir(&st_dir, true)
+            .map_err(|e| error!("Error removing state dir for {}: {}",
+                                 self.name, e))
             .ok();
         return false;
     }
 }
 
-fn check_config(cfg: &TreeConfig) -> Result<(), String> {
-    if !Path::new(cfg.devfs_dir.as_slice()).exists() {
+fn check_master_config(cfg: &MasterConfig) -> Result<(), String> {
+    if !cfg.devfs_dir.exists() {
         return Err(format!(
             "Devfs dir ({}) must exist and contain device nodes",
-            cfg.devfs_dir));
+            cfg.devfs_dir.display()));
     }
     return Ok(());
 }
@@ -151,69 +149,45 @@ fn global_cleanup(master: &MasterConfig) {
 
 fn discard<E>(_: E) { }
 
-fn _read_args(procfsdir: &Path, global_config: &Path)
-    -> Result<(String, Json), ()>
+fn _read_args(pid: pid_t, global_config: &Path)
+    -> Result<(String, String), ()>
 {
-    let mut f = try!(File::open(&procfsdir.join("cmdline")).map_err(discard));
-    let line = try!(f.read_to_string().map_err(discard));
+    let line = try!(File::open(&Path::new(format!("/proc/{}/cmdline", pid)))
+                    .and_then(|mut f| f.read_to_string())
+                    .map_err(discard));
     let args: Vec<&str> = line.as_slice().splitn(7, '\0').collect();
     if args.len() != 8
        || Path::new(args[0]).filename_str() != Some("lithos_knot")
        || args[1] != "--name"
-       || args[3] != "--global-config"
+       || args[3] != "--master"
        || args[4].as_bytes() != global_config.container_as_bytes()
        || args[5] != "--config"
        || args[7] != ""
     {
        return Err(());
     }
-    return Ok((
-        args[2].to_string(),
-        try!(json::from_str(args[6]).map_err(discard)),
-        ));
+    return Ok((args[2].to_string(), args[6].to_string()));
 }
 
-fn _is_child(procfsdir: &Path, mypid: i32) -> bool
-{
+fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
     let ppid_regex = regex!(r"^\d+\s+\([^)]*\)\s+\S+\s+(\d+)\s");
-    let stat =
-        File::open(&procfsdir.join("stat")).ok()
-        .and_then(|mut f| f.read_to_string().ok());
-    if stat.is_none() {
+    let stat = File::open(&Path::new(format!("/proc/{}/stat", pid)))
+               .and_then(|mut f| f.read_to_string());
+    if stat.is_err() {
         return false;
     }
-
-    let ppid = ppid_regex.captures(stat.unwrap().as_slice())
-               .and_then(|c| FromStr::from_str(c.at(1)));
-    if ppid != Some(mypid) {
-        return false;
-    }
-    return true;
+    let stat = stat.unwrap();
+    return Some(ppid) == ppid_regex.captures(stat.as_slice())
+                         .and_then(|c| FromStr::from_str(c.at(1)));
 }
 
-
-fn _get_name(procfsdir: &Path, global_config: &Path)
-    -> Option<(String, String, Json)>
-{
-    let (name, cfg) =  match _read_args(procfsdir, global_config) {
-        Ok(tuple) => tuple,
-        Err(_) => { return None; }
-    };
-
-    let name_regex = regex!(r"^([\w-]+)\.\d+$");
-    match name_regex.captures(name.as_slice()) {
-        Some(captures)
-        => Some((captures.at(0).to_string(), captures.at(1).to_string(), cfg)),
-        None => None,
-    }
-}
 
 fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     let pid_file = cfg.runtime_dir.join("master.pid");
     if pid_file.exists() {
-        match File::open(pid_file)
-            .and_then(|mut f| f.read_to_str())
-            .map(|s| FromStr::from_str(s))
+        match File::open(&pid_file)
+            .and_then(|mut f| f.read_to_string())
+            .map(|s| FromStr::from_str(s.as_slice()))
         {
             Ok(Some(pid)) => {
                 if signal::is_process_alive(pid) {
@@ -228,80 +202,118 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
             }
         }
     }
-    try!(File::create(pid_file)
-    .and_then(|mut f| f.write_uint(unsafe { getpid() }))
-    .map_err(|e| format!("Can't write file {}: {}", pid_file.display(), e)));
+    try!(File::create(&pid_file)
+        .and_then(|mut f| f.write_uint(unsafe { getpid() } as uint))
+        .map_err(|e| format!("Can't write file {}: {}",
+                             pid_file.display(), e)));
     return Ok(());
 }
 
-fn recover_processes() {
+fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
+    configs: &mut HashMap<Rc<String>, Child>, config_file: &Rc<Path>)
+{
     let mypid = unsafe { getpid() };
 
     // Recover old workers
-    for ppath in readdir(&Path::new("/proc"))
-        .ok().expect("Can't read procfs").iter()
+    for pid in readdir(&Path::new("/proc"))
+        .map_err(|e| format!("Can't read procfs: {}", e))
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .filter_map(|p| p.filename_str().and_then(FromStr::from_str))
     {
-        let pid: pid_t;
-        pid = match ppath.filename_str().and_then(FromStr::from_str) {
-            Some(pid) => pid,
-            None => continue,
-        };
-        if !_is_child(ppath, mypid) {
+        if !_is_child(pid, mypid) {
             continue;
         }
-        let (fullname, childname, current_config) = match _get_name(
-                ppath, &*config_file)
-        {
-            Some(tup) => tup,
-            None => {
-                warn!("Undefined child, pid: {}. Sending SIGTERM...",
-                      pid);
-                signal::send_signal(pid, signal::SIGTERM as int);
-                continue;
-            }
-        };
-        let fullname = Rc::new(fullname);
-        let cfg_path = cfg.config_dir.join(childname + ".yaml");
-        match children.find(&cfg_path) {
-            Some(&(ref child_cfg, ref json, ref config)) => {
-                mon.add(fullname.clone(), box Child {
-                    name: fullname.clone(),
-                    global_file: config_file.clone(),
-                    global_config: cfg.clone(),
-                    child_config_serialized: config.clone(),
-                    root_binary: bin.lithos_knot.clone()
-                    }, Duration::seconds(1),
-                    Some((pid, get_time())));
-                if *json != current_config {
-                    warn!("Config mismatch: {}, pid: {}. Upgrading...",
-                          fullname, pid);
+        if let Ok((name, cfg_text)) = _read_args(pid, &**config_file) {
+            let cfg = json::decode(cfg_text.as_slice())
+                .map_err(|e| warn!(
+                    "Error parsing recover config, pid {}, name {}: {}",
+                    pid, name, e))
+                .ok();
+            let name = Rc::new(name);
+            match configs.pop(&name) {
+                Some(child) => {
+                    if Some(&*child.child_config) != cfg.as_ref() {
+                        warn!("Config mismatch: {}, pid: {}. Upgrading...",
+                              name, pid);
+                        signal::send_signal(pid, signal::SIGTERM as int);
+                    }
+                    mon.add(name.clone(), box child, Duration::seconds(1),
+                        Some((pid, get_time())));
+                }
+                None => {
+                    warn!("Undefined child name: {}, pid: {}. Sending SIGTERM...",
+                          name, pid);
+                    mon.add(name.clone(), box UnidentifiedChild {
+                        name: name,
+                        master_config: master.clone(),
+                        }, Duration::seconds(0),
+                        Some((pid, get_time())));
                     signal::send_signal(pid, signal::SIGTERM as int);
                 }
-            }
-            None => {
-                warn!("Undefined child name: {}, pid: {}. Sending SIGTERM...",
-                      fullname, pid);
-                mon.add(fullname.clone(), box UnidentifiedChild {
-                    name: fullname,
-                    global_config: cfg.clone(),
-                    }, Duration::seconds(0),
-                    Some((pid, get_time())));
-                signal::send_signal(pid, signal::SIGTERM as int);
-            }
-        };
+            };
+        } else {
+            warn!("Undefined child, pid: {}. Sending SIGTERM...",
+                  pid);
+            signal::send_signal(pid, signal::SIGTERM as int);
+            continue;
+        }
     }
 }
 
-fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
+fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
+    for ppath in readdir(&master.state_dir)
+        .map_err(|e| format!("Can't read state dir: {}", e))
+        .unwrap_or(Vec::new())
+        .into_iter()
+    {
+        let components = 2;
+        let pieces: Vec<Option<&str>>;
+        pieces = ppath.str_components().rev().take(components).collect();
+        if pieces.iter().all(|x| x.is_some()) {
+            let name = Rc::new(join(pieces.iter().map(|x| x.unwrap()), "/"));
+            let lastname = pieces.last().unwrap().unwrap();
+            if mon.has(&name) {
+                continue;
+            } else if lastname.starts_with("cmd.") {
+                let pid = regex!(r"^\.\(\d+\)$")
+                    .captures(lastname)
+                    .and_then(|c| FromStr::from_str(c.at(1)));
+                if let Some(pid) = pid {
+                    if signal::is_process_alive(pid) {
+                        continue;
+                    }
+                }
+            }
+        }
+        warn!("Dangling state dir {}. Deleting...", ppath.display());
+        clean_dir(&ppath, true)
+            .map_err(|e| error!("Can't remove dangling state dir {}: {}",
+                ppath.display(), e))
+            .ok();
+    }
+}
+
+fn run(config_file: Path, bin: &Binaries) -> Result<(), String> {
     let master: Rc<MasterConfig> = Rc::new(try_str!(parse_config(&config_file,
         &*MasterConfig::validator(), Default::default())));
+    try!(check_master_config(&*master));
     try!(global_init(&*master));
 
+    let config_file = Rc::new(config_file);
     let mut mon = Monitor::new("lithos-tree".to_string());
 
-    info!("Recovering Processes");
-
     info!("Reading configs from {}", master.config_dir.display());
+    let mut configs = read_configs(&master, bin, &config_file);
+
+    info!("Recovering Processes");
+    recover_processes(&master, &mut mon, &mut configs, &config_file);
+
+    info!("Removing Dangling State Dirs");
+    remove_dangling_state_dirs(&mon, &*master);
+
+    info!("Starting Processes");
+    schedule_new_workers(&mut mon, configs);
 
     mon.allow_reboot();
     match mon.run() {
@@ -311,93 +323,91 @@ fn run(config_file: Path, bin: Binaries) -> Result<(), String> {
         }
     }
 
-    global_cleanup(&*cfg);
+    global_cleanup(&*master);
 
     return Ok(());
 }
 
-fn read_subtree(master: &MasterConfig) {
-    let cfg: Rc<TreeConfig> = Rc::new(try_str!(parse_config(&config_file,
-        &*TreeConfig::validator(), Default::default())));
+fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
+    master_file: &Rc<Path>)
+    -> HashMap<Rc<String>, Child>
+{
+    let tree_validator = TreeConfig::validator();
+    let name_re = regex!(r"^[\w+]\.yaml$");
+    readdir(&master.config_dir)
+        .map_err(|e| { error!("Can't read config dir: {}", e); e })
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .filter_map(|f| {
+            let name = match f.filestem_str().and_then(|s| name_re.captures(s))
+            {
+                Some(capt) => capt.at(1),
+                None => return None,
+            };
+            parse_config(&f, &*tree_validator, Default::default())
+                .map_err(|e| warn!("Can't read config {}: {}", f.display(), e))
+                .map(|cfg: TreeConfig| (name.to_string(), cfg))
+                .ok()
+        })
+        .flat_map(|(name, tree)| {
+            read_subtree(master, bin, master_file, &name, Rc::new(tree))
+            .into_iter()
+        })
+        .collect()
+}
 
-    try!(check_config(&*cfg));
+fn read_subtree<'x>(master: &Rc<MasterConfig>,
+    bin: &Binaries, master_file: &Rc<Path>,
+    tree_name: &String, tree: Rc<TreeConfig>)
+    -> Vec<(Rc<String>, Child)>
+{
+    let name_re = regex!(r"^[\w+]\.yaml$");
+    let child_validator = ChildConfig::validator();
+    debug!("Checking child dir {}", tree.config_dir.display());
+    readdir(&tree.config_dir)
+        .map_err(|e| { error!("Can't read config dir: {}", e); e })
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .filter_map(|f| {
+            let name = match f.filestem_str().and_then(|s| name_re.captures(s))
+            {
+                Some(capt) => capt.at(1),
+                None => return None,
+            };
+            parse_config(&f, &*child_validator, Default::default())
+                .map_err(|e| warn!("Can't read config {}: {}", f.display(), e))
+                .map(|cfg: ChildConfig| (name.to_string(), cfg))
+                .ok()
+        })
+        .flat_map(|(child_name, child)| {
+            let child_string = Rc::new(json::encode(&child));
+            let child = Rc::new(child);
+            let items: Vec<(Rc<String>, Child)> = range(0, child.instances)
+                .map(|i| {
+                    let name = format!("{}/{}.{}", tree_name, child_name, i);
+                    let name = Rc::new(name);
+                    (name.clone(), Child {
+                        name: name,
+                        master_file: master_file.clone(),
+                        child_config_serialized: child_string.clone(),
+                        master_config: master.clone(),
+                        child_config: child.clone(),
+                        root_binary: bin.lithos_knot.clone(),
+                    })
+                })
+                .collect();
+            items.into_iter()
+        }).collect()
+}
 
-    let mut children: HashMap<Path, (ChildConfig, Json, Rc<String>)>;
-    children = HashMap::new();
-    debug!("Checking child dir {}", cfg.config_dir.display());
-    let dirlist = try_str!(readdir(&cfg.config_dir));
-    for child_fn in dirlist.into_iter() {
-        match (child_fn.filestem_str(), child_fn.extension_str()) {
-            (Some(""), _) => continue,  // Hidden files
-            (_, Some("yaml")) => {}
-            _ => continue,  // Non-yaml, old, whatever, files
-        }
-        debug!("Adding {}", child_fn.display());
-        let child_cfg: ChildConfig = match parse_config(&child_fn,
-            &*ChildConfig::validator(), Default::default())
-        {
-            Ok(conf) => conf,
-            Err(e) => {
-                error!("Error parsing {}: {}", child_fn.display(), e);
-                continue;
-            }
-        };
-        if child_cfg.kind != Daemon {
-            debug!("Skipping non-daemon {}", child_fn.display());
+fn schedule_new_workers(mon: &mut Monitor,
+    children: HashMap<Rc<String>, Child>)
+{
+    for (name, child) in children.into_iter() {
+        if mon.has(&name) {
             continue;
         }
-        let child_cfg_string = Rc::new(json::encode(&child_cfg));
-        let child_json = json::from_str(child_cfg_string.as_slice()).unwrap();
-        children.insert(child_fn, (child_cfg, child_json, child_cfg_string));
-    }
-
-
-    let mut mon = Monitor::new("lithos-tree".to_string());
-    let config_file = Rc::new(config_file);
-
-    // Remove dangling state dirs
-    for ppath in readdir(&cfg.state_dir)
-        .ok().expect("Can't read state dir").iter()
-    {
-        if let Some(name) = ppath.filename_str() {
-            if mon.has(&Rc::new(name.to_string())) {
-                continue;
-            } else if name.starts_with("cmd.") {
-                let pid = regex!(r"^\.\(\d+\)$")
-                    .captures(name.as_slice())
-                    .and_then(|c| FromStr::from_str(c.at(1)));
-                if let Some(pid) = pid {
-                    if signal::is_process_alive(pid) {
-                        continue;
-                    }
-                }
-            }
-            warn!("Dangling state dir {}. Deleting...", ppath.display());
-            rmdir_recursive(ppath)
-                .map_err(|e| error!("Can't remove dangling dir {}: {}",
-                    ppath.display(), e))
-                .ok();
-        }
-    }
-
-    // Schedule new workers
-    for (path, (child_cfg, _json, child_cfg_string)) in children.into_iter() {
-        let path = Rc::new(path);
-        let stem = path.filestem_str().unwrap();
-        for i in range(0, child_cfg.instances) {
-            let name = Rc::new(format!("{}.{}", stem, i));
-            if mon.has(&name) {
-                continue;
-            }
-            mon.add(name.clone(), box Child {
-                name: name,
-                global_file: config_file.clone(),
-                global_config: cfg.clone(),
-                child_config_serialized: child_cfg_string.clone(),
-                root_binary: bin.lithos_knot.clone()
-            }, Duration::seconds(1),
-            None);
-        }
+        mon.add(name.clone(), box child, Duration::seconds(2), None);
     }
 }
 
@@ -467,7 +477,7 @@ fn main() {
             }
         }
     }
-    match run(config_file, bin) {
+    match run(config_file, &bin) {
         Ok(()) => {
             set_exit_status(0);
         }

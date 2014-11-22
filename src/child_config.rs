@@ -8,7 +8,7 @@ use quire;
 
 use super::container_config::ContainerKind;
 
-#[deriving(Decodable, Encodable)]
+#[deriving(Decodable, Encodable, PartialEq)]
 pub struct ChildConfig {
     pub instances: uint,
     pub image: Path,

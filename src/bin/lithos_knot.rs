@@ -19,6 +19,7 @@ use quire::parse_config;
 
 use lithos::signal;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
+use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, Daemon};
@@ -31,7 +32,6 @@ use lithos::limits::{set_fileno_limit};
 
 struct Target {
     name: Rc<String>,
-    global: TreeConfig,
     local: ContainerConfig,
     args: Vec<String>,
 }
@@ -63,14 +63,19 @@ impl Executor for Target {
     }
 }
 
-fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
+fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     -> Result<(), String>
 {
-    let global: TreeConfig = try_str!(parse_config(&global_cfg,
+    let master: MasterConfig = try_str!(parse_config(&master_file,
+        &*MasterConfig::validator(), Default::default()));
+    let tree_name = name.as_slice().rsplitn(1, '/').next().unwrap();
+    let tree: TreeConfig = try_str!(parse_config(
+        &master.config_dir.join(tree_name),
         &*TreeConfig::validator(), Default::default()));
 
     // TODO(tailhook) clarify it: root is mounted in read_local_config
-    let local: ContainerConfig = try!(read_local_config(&global, &config));
+    let local: ContainerConfig;
+    local = try!(read_local_config(&master, &tree, &config));
     if local.kind != config.kind {
         return Err(format!("Container type mismatch {} != {}",
               local.kind, config.kind));
@@ -81,7 +86,7 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
                 local.user_id));
         }
     } else {
-        if !in_range(&global.allow_users, local.user_id) {
+        if !in_range(&tree.allow_users, local.user_id) {
             return Err(format!("User is not in allowed range (uid: {})",
                 local.user_id));
         }
@@ -92,27 +97,27 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
                 local.user_id));
         }
     } else {
-        if !in_range(&global.allow_groups, local.group_id) {
+        if !in_range(&tree.allow_groups, local.group_id) {
             return Err(format!("Group is not in allowed range (gid: {})",
                 local.group_id));
         }
     }
-    if !check_mapping(&global.allow_users, &local.uid_map) {
+    if !check_mapping(&tree.allow_users, &local.uid_map) {
         return Err("Bad uid mapping (probably doesn't match allow_users)"
             .to_string());
     }
-    if !check_mapping(&global.allow_groups, &local.gid_map) {
+    if !check_mapping(&tree.allow_groups, &local.gid_map) {
         return Err("Bad gid mapping (probably doesn't match allow_groups)"
             .to_string());
     }
 
     info!("[{:s}] Starting container", name);
 
-    let state_dir = &global.state_dir.join(name.as_slice());
-    try!(prepare_state_dir(state_dir, &global, &local));
-    try!(setup_filesystem(&global, &local, state_dir));
+    let state_dir = &master.state_dir.join(name.as_slice());
+    try!(prepare_state_dir(state_dir, &local));
+    try!(setup_filesystem(&master, &tree, &local, state_dir));
 
-    try!(change_root(&global.mount_dir, &global.mount_dir.join("tmp")));
+    try!(change_root(&master.mount_dir, &master.mount_dir.join("tmp")));
     try!(unmount(&Path::new("/tmp")));
 
     try_str!(set_fileno_limit(local.fileno_limit));
@@ -122,7 +127,6 @@ fn run(name: String, global_cfg: Path, config: ChildConfig, args: Vec<String>)
     let timeo = Duration::milliseconds((local.restart_timeout*1000.) as i64);
     mon.add(name.clone(), box Target {
         name: name,
-        global: global,
         local: local,
         args: args,
     }, timeo, None);
@@ -135,7 +139,7 @@ fn main() {
 
     signal::block_all();
 
-    let mut global_config = Path::new("/etc/lithos.yaml");
+    let mut master_config = Path::new("/etc/lithos.yaml");
     let mut config = ChildConfig {
         instances: 0,
         image: Path::new(""),
@@ -150,9 +154,9 @@ fn main() {
         ap.refer(&mut name)
           .add_option(["--name"], box Store::<String>,
             "The process name");
-        ap.refer(&mut global_config)
-          .add_option(["--global-config"], box Store::<Path>,
-            "Name of the global configuration file (default /etc/lithos.yaml)")
+        ap.refer(&mut master_config)
+          .add_option(["--master"], box Store::<Path>,
+            "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut config)
           .add_option(["--config"], box Store::<ChildConfig>,
@@ -171,7 +175,7 @@ fn main() {
             }
         }
     }
-    match run(name, global_config, config, args) {
+    match run(name, master_config, config, args) {
         Ok(()) => {
             set_exit_status(0);
         }

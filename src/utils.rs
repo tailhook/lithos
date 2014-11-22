@@ -35,9 +35,6 @@ pub fn temporary_change_root<T>(path: &Path, fun: || -> Result<T, String>)
 }
 
 pub fn in_range(ranges: &Vec<Range>, value: u32) -> bool {
-    if ranges.len() == 0 {  // no limit on the value
-        return true;
-    }
     for rng in ranges.iter() {
         if rng.start <= value && rng.end >= value {
             return true;
@@ -130,4 +127,20 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
                                             dir.display(), e)));
     }
     return Ok(());
+}
+
+pub fn join<T: Str, I: Iterator<T>>(array: I, delimiter: &str) -> String {
+    let mut array = array;
+    let mut res = "".to_string();
+    match array.next() {
+        Some(x) => {
+            res.push_str(x.as_slice());
+            for name in array {
+                res.push_str(delimiter);
+                res.push_str(name.as_slice());
+            }
+        }
+        None => {}
+    }
+    return res;
 }

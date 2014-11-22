@@ -25,13 +25,14 @@ use quire::parse_config;
 
 use lithos::signal;
 use lithos::utils::{in_range, in_mapping, check_mapping};
+use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::network::{get_host_name, get_host_ip};
 
 
-fn check_config(cfg: &TreeConfig, verbose: bool) {
+fn check_master_config(master: &MasterConfig, verbose: bool) {
     // TODO(tailhook) maybe check host only if we need it for hosts file
     match get_host_name() {
         Ok(hostname) => {
@@ -56,22 +57,27 @@ fn check_config(cfg: &TreeConfig, verbose: bool) {
         }
     }
 
-    if !Path::new(cfg.devfs_dir.as_slice()).exists() {
+    if !master.devfs_dir.exists() {
         error!("Devfs dir ({}) must exist and contain device nodes",
-            cfg.devfs_dir);
+            master.devfs_dir.display());
         set_exit_status(1);
-    }
-    if cfg.allow_users.len() == 0 {
-        warn!("No allowed users range. Please add `allow-users: [1-1000]`");
-    }
-    if cfg.allow_groups.len() == 0 {
-        warn!("No allowed groups range. Please add `allow-groups: [1-1000]`");
     }
 }
 
-fn check(config_file: Path, config_dir: Option<Path>, verbose: bool) {
-    let cfg: TreeConfig = match parse_config(&config_file,
-        &*TreeConfig::validator(), Default::default()) {
+fn check_tree_config(tree: &TreeConfig) {
+    if tree.allow_users.len() == 0 {
+        error!("No allowed users range. Please add `allow-users: [1-1000]`");
+        set_exit_status(1);
+    }
+    if tree.allow_groups.len() == 0 {
+        error!("No allowed groups range. Please add `allow-groups: [1-1000]`");
+        set_exit_status(1);
+    }
+}
+
+fn check(config_file: Path, verbose: bool) {
+    let master: MasterConfig = match parse_config(&config_file,
+        &*MasterConfig::validator(), Default::default()) {
         Ok(cfg) => cfg,
         Err(e) => {
             error!("Can't parse config: {}", e);
@@ -80,86 +86,110 @@ fn check(config_file: Path, config_dir: Option<Path>, verbose: bool) {
         }
     };
 
-    check_config(&cfg, verbose);
-    let config_dir = config_dir.unwrap_or(cfg.config_dir);
+    check_master_config(&master, verbose);
 
-    debug!("Checking child dir {}", config_dir.display());
-    let dirlist = match readdir(&config_dir) {
-        Ok(dirlist) => dirlist,
+    let master_list = match readdir(&master.config_dir) {
+        Ok(list) => list,
         Err(e) => {
             error!("Can't open config directory {}: {}",
-                config_dir.display(), e);
+                master.config_dir.display(), e);
             set_exit_status(1);
             return;
         }
     };
-    for child_fn in dirlist.into_iter() {
-        match (child_fn.filestem_str(), child_fn.extension_str()) {
-            (Some(""), _) => continue,  // Hidden files
-            (_, Some("yaml")) => {}
-            _ => continue,  // Non-yaml, old, whatever, files
-        }
-        debug!("Checking {}", child_fn.display());
-        let child_cfg: ChildConfig = match parse_config(&child_fn,
-            &*ChildConfig::validator(), Default::default()) {
+
+    for tree_fn in master_list.into_iter() {
+        let tree: TreeConfig = match parse_config(&tree_fn,
+            &*TreeConfig::validator(), Default::default()) {
             Ok(cfg) => cfg,
             Err(e) => {
-                error!("Can't read child config {}: {}",
-                    child_fn.display(), e);
+                error!("Can't parse config: {}", e);
                 set_exit_status(1);
                 continue;
             }
         };
-        debug!("Opening config {}", child_fn.display());
-        let config: ContainerConfig = match parse_config(
-            &cfg.image_dir
-                .join(child_cfg.image)
-                .join(child_cfg.config.path_relative_from(
-                    &Path::new("/")).unwrap()),
-            &*ContainerConfig::validator(), Default::default()) {
-            Ok(cfg) => cfg,
+        check_tree_config(&tree);
+
+        let config_dir = tree.config_dir;
+
+        debug!("Checking child dir {}", config_dir.display());
+        let dirlist = match readdir(&config_dir) {
+            Ok(dirlist) => dirlist,
             Err(e) => {
-                error!(concat!("Can't read child config {}: {}.",
-                    "Sometimes the reason is absolute symlinks for config, ",
-                    "in that case it may work in real daemon, but better ",
-                    "fix it."), child_fn.display(), e);
+                error!("Can't open config directory {}: {}",
+                    config_dir.display(), e);
                 set_exit_status(1);
-                continue;
+                return;
             }
         };
-        if config.uid_map.len() > 0 {
-            if !in_mapping(&config.uid_map, config.user_id) {
-                error!("User is not in mapped range (uid: {})",
-                    config.user_id);
+        for child_fn in dirlist.into_iter() {
+            match (child_fn.filestem_str(), child_fn.extension_str()) {
+                (Some(""), _) => continue,  // Hidden files
+                (_, Some("yaml")) => {}
+                _ => continue,  // Non-yaml, old, whatever, files
+            }
+            debug!("Checking {}", child_fn.display());
+            let child_cfg: ChildConfig = match parse_config(&child_fn,
+                &*ChildConfig::validator(), Default::default()) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    error!("Can't read child config {}: {}",
+                        child_fn.display(), e);
+                    set_exit_status(1);
+                    continue;
+                }
+            };
+            debug!("Opening config {}", child_fn.display());
+            let config: ContainerConfig = match parse_config(
+                &tree.image_dir
+                    .join(child_cfg.image)
+                    .join(child_cfg.config.path_relative_from(
+                        &Path::new("/")).unwrap()),
+                &*ContainerConfig::validator(), Default::default()) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    error!(concat!("Can't read child config {}: {}.",
+                        "Sometimes the reason is absolute symlinks for config, ",
+                        "in that case it may work in real daemon, but better ",
+                        "fix it."), child_fn.display(), e);
+                    set_exit_status(1);
+                    continue;
+                }
+            };
+            if config.uid_map.len() > 0 {
+                if !in_mapping(&config.uid_map, config.user_id) {
+                    error!("User is not in mapped range (uid: {})",
+                        config.user_id);
+                    set_exit_status(1);
+                }
+            } else {
+                if !in_range(&tree.allow_users, config.user_id) {
+                    error!("User is not in allowed range (uid: {})",
+                        config.user_id);
+                    set_exit_status(1);
+                }
+            }
+            if config.gid_map.len() > 0 {
+                if !in_mapping(&config.gid_map, config.group_id) {
+                    error!("Group is not in mapped range (gid: {})",
+                        config.user_id);
+                    set_exit_status(1);
+                }
+            } else {
+                if !in_range(&tree.allow_groups, config.group_id) {
+                    error!("Group is not in allowed range (gid: {})",
+                        config.group_id);
+                    set_exit_status(1);
+                }
+            }
+            if !check_mapping(&tree.allow_users, &config.uid_map) {
+                error!("Bad uid mapping (probably doesn't match allow_users)");
                 set_exit_status(1);
             }
-        } else {
-            if !in_range(&cfg.allow_users, config.user_id) {
-                error!("User is not in allowed range (uid: {})",
-                    config.user_id);
+            if !check_mapping(&tree.allow_groups, &config.gid_map) {
+                error!("Bad gid mapping (probably doesn't match allow_groups)");
                 set_exit_status(1);
             }
-        }
-        if config.gid_map.len() > 0 {
-            if !in_mapping(&config.gid_map, config.group_id) {
-                error!("Group is not in mapped range (gid: {})",
-                    config.user_id);
-                set_exit_status(1);
-            }
-        } else {
-            if !in_range(&cfg.allow_groups, config.group_id) {
-                error!("Group is not in allowed range (gid: {})",
-                    config.group_id);
-                set_exit_status(1);
-            }
-        }
-        if !check_mapping(&cfg.allow_users, &config.uid_map) {
-            error!("Bad uid mapping (probably doesn't match allow_users)");
-            set_exit_status(1);
-        }
-        if !check_mapping(&cfg.allow_groups, &config.gid_map) {
-            error!("Bad gid mapping (probably doesn't match allow_groups)");
-            set_exit_status(1);
         }
     }
 }
@@ -218,5 +248,5 @@ fn main() {
         }
     }
     check_binaries();
-    check(config_file, config_dir, verbose);
+    check(config_file, verbose);
 }
