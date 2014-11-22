@@ -139,11 +139,17 @@ fn check(config_file: Path, verbose: bool) {
                     continue;
                 }
             };
+            let cfg_path = Path::new(child_cfg.config);
+            if !cfg_path.is_absolute() {
+                error!("Config path must be absolute");
+                set_exit_status(1);
+                continue;
+            }
             debug!("Opening config {}", child_fn.display());
             let config: ContainerConfig = match parse_config(
                 &tree.image_dir
                     .join(child_cfg.image)
-                    .join(child_cfg.config.path_relative_from(
+                    .join(cfg_path.path_relative_from(
                         &Path::new("/")).unwrap()),
                 &*ContainerConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,

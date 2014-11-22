@@ -11,8 +11,8 @@ use super::container_config::ContainerKind;
 #[deriving(Decodable, Encodable, PartialEq)]
 pub struct ChildConfig {
     pub instances: uint,
-    pub image: Path,
-    pub config: Path,
+    pub image: String,
+    pub config: String,
     pub kind: ContainerKind,
 }
 

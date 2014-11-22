@@ -126,14 +126,11 @@ impl Command {
         }
     }
 
-    pub fn container(&mut self, network: bool) {
+    pub fn container(&mut self) {
         self.namespaces.add(NewMount);
         self.namespaces.add(NewUts);
         self.namespaces.add(NewIpc);
         self.namespaces.add(NewPid);
-        if network {
-            self.namespaces.add(NewNet);
-        }
     }
     pub fn mount_ns(&mut self) {
         self.namespaces.add(NewMount);

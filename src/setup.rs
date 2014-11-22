@@ -1,12 +1,12 @@
-use std::io::FilePermission;
-use std::io::fs::{File, copy, mkdir, chmod, mkdir_recursive, chown};
+use std::io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
+use std::io::fs::{File, copy, chmod, mkdir_recursive, chown};
 use std::io::fs::PathExtensions;
 use std::default::Default;
 use std::collections::TreeMap;
 
 use quire::parse_config;
 
-use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs, mount_private};
+use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
 use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
@@ -39,13 +39,11 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     -> Result<(), String>
 {
     let root = Path::new("/");
-    let mntdir = master.mount_dir.clone();
+    let mntdir = master.runtime_dir.join(&master.mount_dir);
     assert!(mntdir.is_absolute());
 
     let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
     volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
-
-    try!(mount_private(&root));
 
     for &(mp_str, volume_str) in volumes.iter() {
         let tmp_mp = Path::new(mp_str.as_slice());
@@ -77,8 +75,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 };
                 // TODO(tailhook) make it parametrized
                 if !path.exists() {
-                    try_str!(mkdir_recursive(&path,
-                        FilePermission::from_bits_truncate(0o755)));
+                    try_str!(mkdir_recursive(&path, ALL_PERMISSIONS));
+                    // TODO(tailhook) map actual user
                     try_str!(chown(&path, local.user_id as int, -1));
                 }
                 try!(bind_mount(&path, &dest));
@@ -108,7 +106,8 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig)
 {
     // TODO(tailhook) chown files
     if !dir.exists() {
-        try_str!(mkdir(dir, FilePermission::from_bits_truncate(0o755)));
+        try!(mkdir_recursive(dir, ALL_PERMISSIONS)
+            .map_err(|e| format!("Couldn't create state directory: {}", e)));
     }
     if local.resolv_conf.copy_from_host {
         try_str!(copy(&Path::new("/etc/resolv.conf"),
@@ -126,20 +125,16 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig)
                 try_str!(get_host_ip()),
                 try_str!(get_host_name())));
         }
-        try_str!(chmod(&fname, FilePermission::from_bits_truncate(0o644)));
+        try_str!(chmod(&fname, USER_RWX|GROUP_READ|OTHER_READ));
     }
     return Ok(());
 }
 
-pub fn read_local_config(master: &MasterConfig, tree: &TreeConfig,
-    child_cfg: &ChildConfig)
+pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
     -> Result<ContainerConfig, String>
 {
-    let image_path = tree.image_dir.join(&child_cfg.image);
-    try!(bind_mount(&image_path, &master.mount_dir));
-    try!(mount_ro_recursive(&master.mount_dir));
-    return temporary_change_root(&master.mount_dir, || {
-        parse_config(&child_cfg.config,
+    return temporary_change_root(root, || {
+        parse_config(&Path::new(child_cfg.config.as_slice()),
             &*ContainerConfig::validator(), Default::default())
     });
 }

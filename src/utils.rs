@@ -88,6 +88,7 @@ pub fn ensure_dir(dir: &Path) -> Result<(), String> {
                 "path already exists but not a directory"),
                 dir.display()));
         }
+        return Ok(());
     }
     match mkdir(dir, ALL_PERMISSIONS) {
         Ok(()) => return Ok(()),
@@ -109,6 +110,9 @@ pub fn ensure_dir(dir: &Path) -> Result<(), String> {
 }
 
 pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
     // We temporarily change root, so that symlinks inside the dir
     // would do no harm. But note that dir itself can be a symlink
     try!(temporary_change_root(dir, || {

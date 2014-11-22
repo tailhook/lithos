@@ -26,7 +26,7 @@ use lithos::container_config::{ContainerConfig, Daemon};
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
-use lithos::mount::{unmount};
+use lithos::mount::{unmount, mount_private, bind_mount, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
 
 
@@ -68,14 +68,19 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
 {
     let master: MasterConfig = try_str!(parse_config(&master_file,
         &*MasterConfig::validator(), Default::default()));
-    let tree_name = name.as_slice().rsplitn(1, '/').next().unwrap();
+    let tree_name = name.as_slice().splitn(1, '/').next().unwrap();
     let tree: TreeConfig = try_str!(parse_config(
-        &master.config_dir.join(tree_name),
+        &master.config_dir.join(tree_name.to_string() + ".yaml"),
         &*TreeConfig::validator(), Default::default()));
 
-    // TODO(tailhook) clarify it: root is mounted in read_local_config
+    try!(mount_private(&Path::new("/")));
+    let image_path = tree.image_dir.join(config.image.as_slice());
+    let mount_dir = master.runtime_dir.join(&master.mount_dir);
+    try!(bind_mount(&image_path, &mount_dir));
+    try!(mount_ro_recursive(&mount_dir));
+
     let local: ContainerConfig;
-    local = try!(read_local_config(&master, &tree, &config));
+    local = try!(read_local_config(&mount_dir, &config));
     if local.kind != config.kind {
         return Err(format!("Container type mismatch {} != {}",
               local.kind, config.kind));
@@ -113,11 +118,13 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
 
     info!("[{:s}] Starting container", name);
 
-    let state_dir = &master.state_dir.join(name.as_slice());
+    let state_dir = &master.runtime_dir.join(&master.state_dir)
+        .join(name.as_slice());
     try!(prepare_state_dir(state_dir, &local));
     try!(setup_filesystem(&master, &tree, &local, state_dir));
 
-    try!(change_root(&master.mount_dir, &master.mount_dir.join("tmp")));
+    let mount_dir = master.runtime_dir.join(&master.mount_dir);
+    try!(change_root(&mount_dir, &mount_dir.join("tmp")));
     try!(unmount(&Path::new("/tmp")));
 
     try_str!(set_fileno_limit(local.fileno_limit));
@@ -142,8 +149,8 @@ fn main() {
     let mut master_config = Path::new("/etc/lithos.yaml");
     let mut config = ChildConfig {
         instances: 0,
-        image: Path::new(""),
-        config: Path::new(""),
+        image: "".to_string(),
+        config: "".to_string(),
         kind: Daemon,
     };
     let mut name = "".to_string();

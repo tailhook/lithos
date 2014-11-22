@@ -61,7 +61,7 @@ impl Executor for Child {
             cmd.set_env("RUST_BACKTRACE".to_string(), x);
         }
         cmd.args(self.args.as_slice());
-        cmd.container(false);
+        cmd.container();
         return cmd;
     }
     fn finish(&self) -> bool {

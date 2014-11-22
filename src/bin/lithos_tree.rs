@@ -20,9 +20,8 @@ use std::io::IoError;
 use std::io::fs::File;
 use std::os::getenv;
 use std::from_str::FromStr;
-use std::io::fs::{readdir, mkdir};
+use std::io::fs::{readdir};
 use std::os::{set_exit_status, self_exe_path};
-use std::io::FilePermission;
 use std::ptr::null;
 use std::time::Duration;
 use std::path::BytesContainer;
@@ -42,7 +41,6 @@ use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
-use lithos::monitor::{PrepareResult, Run, Error};
 use lithos::container::Command;
 use lithos::utils::{clean_dir, join};
 use lithos::signal;
@@ -55,15 +53,6 @@ struct Child {
     master_config: Rc<MasterConfig>,
     child_config: Rc<ChildConfig>,
     root_binary: Rc<Path>,
-}
-
-impl Child {
-    fn _prepare(&self) -> Result<(), String> {
-        try_str!(mkdir(
-            &self.master_config.state_dir.join(self.name.as_slice()),
-            FilePermission::all()));
-        return Ok(());
-    }
 }
 
 impl Executor for Child {
@@ -88,17 +77,12 @@ impl Executor for Child {
         if let Some(x) = getenv("RUST_BACKTRACE") {
             cmd.set_env("RUST_BACKTRACE".to_string(), x);
         }
-        cmd.container(false);
+        cmd.container();
         return cmd;
     }
-    fn prepare(&self) -> PrepareResult {
-        match self._prepare() {
-            Ok(()) => Run,
-            Err(x) => Error(x),
-        }
-    }
     fn finish(&self) -> bool {
-        let st_dir = self.master_config.state_dir.join(self.name.as_slice());
+        let st_dir = self.master_config.runtime_dir
+            .join(&self.master_config.state_dir).join(self.name.as_slice());
         clean_dir(&st_dir, true)
             .map_err(|e| error!("Error removing state dir {}: {}",
                                  self.name, e))
@@ -117,7 +101,8 @@ impl Executor for UnidentifiedChild {
         unreachable!();
     }
     fn finish(&self) -> bool {
-        let st_dir = self.master_config.state_dir.join(self.name.as_slice());
+        let st_dir = self.master_config.runtime_dir
+            .join(&self.master_config.state_dir).join(self.name.as_slice());
         clean_dir(&st_dir, true)
             .map_err(|e| error!("Error removing state dir for {}: {}",
                                  self.name, e))
@@ -142,9 +127,8 @@ fn global_init(master: &MasterConfig) -> Result<(), String> {
 }
 
 fn global_cleanup(master: &MasterConfig) {
-    clean_dir(&master.state_dir, false).unwrap_or_else(
-        |e| error!("Error removing state dir {}: {}",
-                   master.state_dir.display(), e));
+    clean_dir(&master.runtime_dir.join(&master.state_dir), false)
+        .unwrap_or_else(|e| error!("Error removing state dir: {}", e));
 }
 
 fn discard<E>(_: E) { }
@@ -303,7 +287,7 @@ fn run(config_file: Path, bin: &Binaries) -> Result<(), String> {
     let config_file = Rc::new(config_file);
     let mut mon = Monitor::new("lithos-tree".to_string());
 
-    info!("Reading configs from {}", master.config_dir.display());
+    info!("Reading tree configs from {}", master.config_dir.display());
     let mut configs = read_configs(&master, bin, &config_file);
 
     info!("Recovering Processes");
@@ -333,17 +317,19 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
     -> HashMap<Rc<String>, Child>
 {
     let tree_validator = TreeConfig::validator();
-    let name_re = regex!(r"^[\w+]\.yaml$");
+    let name_re = regex!(r"^(\w+)\.yaml$");
     readdir(&master.config_dir)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
         .unwrap_or(Vec::new())
         .into_iter()
         .filter_map(|f| {
-            let name = match f.filestem_str().and_then(|s| name_re.captures(s))
+            debug!("Git config: {}", f.display());
+            let name = match f.filename_str().and_then(|s| name_re.captures(s))
             {
                 Some(capt) => capt.at(1),
                 None => return None,
             };
+            debug!("Reading config: {}", f.display());
             parse_config(&f, &*tree_validator, Default::default())
                 .map_err(|e| warn!("Can't read config {}: {}", f.display(), e))
                 .map(|cfg: TreeConfig| (name.to_string(), cfg))
@@ -361,15 +347,15 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     tree_name: &String, tree: Rc<TreeConfig>)
     -> Vec<(Rc<String>, Child)>
 {
-    let name_re = regex!(r"^[\w+]\.yaml$");
+    let name_re = regex!(r"^(\w+)\.yaml$");
     let child_validator = ChildConfig::validator();
-    debug!("Checking child dir {}", tree.config_dir.display());
+    debug!("Reading child dir {}", tree.config_dir.display());
     readdir(&tree.config_dir)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
         .unwrap_or(Vec::new())
         .into_iter()
         .filter_map(|f| {
-            let name = match f.filestem_str().and_then(|s| name_re.captures(s))
+            let name = match f.filename_str().and_then(|s| name_re.captures(s))
             {
                 Some(capt) => capt.at(1),
                 None => return None,

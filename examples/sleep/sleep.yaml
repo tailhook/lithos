@@ -1,8 +1,5 @@
-min-port: 7000
-max-port: 7100
 config-dir: examples/sleep/children
 readonly-paths:
   /src: /var/lib/lithos/containers
 allow-users: [1, 1000, 100000-110000]
 allow-groups: [0, 100, 2000-12000]
-
