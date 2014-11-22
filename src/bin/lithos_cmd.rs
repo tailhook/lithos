@@ -22,6 +22,7 @@ use libc::funcs::posix88::unistd::getpid;
 use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
+use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::{Command};
 use lithos::child_config::ChildConfig;
@@ -32,7 +33,7 @@ use lithos::signal;
 
 struct Child {
     name: Rc<String>,
-    global_file: Path,
+    master_file: Path,
     child_config_serialized: String,
     root_binary: Path,
     args: Vec<String>,
@@ -49,7 +50,7 @@ impl Executor for Child {
         cmd.arg(self.name.as_slice());
 
         cmd.arg("--master");
-        cmd.arg(&self.global_file);
+        cmd.arg(&self.master_file);
         cmd.arg("--config");
         cmd.arg(self.child_config_serialized.as_slice());
         cmd.set_env("TERM".to_string(),
@@ -69,31 +70,46 @@ impl Executor for Child {
     }
 }
 
-fn run(global_cfg: Path, name: String, args: Vec<String>)
+fn run(master_cfg: Path, tree_name: String,
+    command_name: String, args: Vec<String>)
     -> Result<(), String>
 {
-    let global: TreeConfig = try_str!(parse_config(&global_cfg,
+    let master: MasterConfig = try_str!(parse_config(&master_cfg,
+        &*MasterConfig::validator(), Default::default()));
+    try!(create_master_dirs(&master));
+
+    if !regex!(r"^\w+$").is_match(tree_name.as_slice()) {
+        return Err(format!("Wrong tree name: {}", tree_name));
+    }
+    if !regex!(r"^\w+$").is_match(command_name.as_slice()) {
+        return Err(format!("Wrong tree name: {}", command_name));
+    }
+
+    let tree: TreeConfig = try_str!(parse_config(
+        &master.config_dir.join(tree_name + ".yaml"),
         &*TreeConfig::validator(), Default::default()));
 
-    assert!(regex!("^[a-zA-Z0-9][a-zA-Z0-9_.-]+$").is_match(name.as_slice()));
-    let child_fn = global.config_dir.join(name + ".yaml".to_string());
+    let child_fn = tree.config_dir.join(command_name + ".yaml".to_string());
     let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
         &*ChildConfig::validator(), Default::default()));
+
+    debug!("Child fn: {}", child_fn.display());
 
     if child_cfg.kind != Command {
         return Err(format!("The target container is: {}", child_cfg.kind));
     }
 
-    info!("[{:s}] Running command with args {}", name, args);
 
-    let mut mon = Monitor::new(name.clone());
-    let name = Rc::new(format!("cmd.{}.{}", name, unsafe { getpid() }));
+    let name = Rc::new(format!("{}/cmd.{}.{}", tree_name,
+        command_name, unsafe { getpid() }));
+    info!("[{}] Running command with args {}", name, args);
+    let mut mon = Monitor::new((*name).clone());
     let timeo = Duration::milliseconds(0);
     let mut args = args;
     args.insert(0, "--".to_string());
     mon.add(name.clone(), box Child {
         name: name,
-        global_file: global_cfg,
+        master_file: master_cfg,
         child_config_serialized: json::encode(&child_cfg),
         root_binary: self_exe_path().unwrap().join("lithos_knot"),
         args: args,
@@ -107,16 +123,21 @@ fn main() {
 
     signal::block_all();
 
-    let mut global_config = Path::new("/etc/lithos.yaml");
+    let mut master_config = Path::new("/etc/lithos.yaml");
     let mut command_name = "".to_string();
+    let mut tree_name = "".to_string();
     let mut args = vec!();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
-        ap.refer(&mut global_config)
+        ap.refer(&mut master_config)
           .add_option(["--master"], box Store::<Path>,
-            "Name of the global configuration file (default /etc/lithos.yaml)")
+            "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
+        ap.refer(&mut tree_name)
+          .add_argument("subtree", box Store::<String>,
+            "Name of the tree to run command for")
+          .required();
         ap.refer(&mut command_name)
           .add_argument("name", box Store::<String>,
             "Name of the command to run")
@@ -133,7 +154,7 @@ fn main() {
             }
         }
     }
-    match run(global_config, command_name, args) {
+    match run(master_config, tree_name, command_name, args) {
         Ok(()) => {
             set_exit_status(0);
         }

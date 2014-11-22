@@ -1,0 +1,4 @@
+kind: Command
+instances: 2
+image: busybox.0b98e52
+config: /config/busybox.yaml

@@ -40,6 +40,7 @@ use quire::parse_config;
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
+use lithos::container_config::Daemon;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::container::Command;
 use lithos::utils::{clean_dir};
@@ -388,6 +389,7 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
                 .map(|cfg: ChildConfig| (name.to_string(), cfg))
                 .ok()
         })
+        .filter(|&(_, ref child)| child.kind == Daemon)
         .flat_map(|(child_name, child)| {
             let child_string = Rc::new(json::encode(&child));
             let child = Rc::new(child);
