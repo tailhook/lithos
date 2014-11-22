@@ -1,7 +1,8 @@
 use std::io::{IoError, PathAlreadyExists};
 use std::io::ALL_PERMISSIONS;
-use std::io::fs::{mkdir, readdir, rmdir_recursive, rmdir};
+use std::io::fs::{mkdir, readdir, rmdir_recursive, rmdir, unlink};
 use std::io::fs::PathExtensions;
+use std::os::getcwd;
 use libc::funcs::posix88::unistd::chdir;
 use libc::{c_int, c_char};
 
@@ -18,6 +19,7 @@ extern {
 pub fn temporary_change_root<T>(path: &Path, fun: || -> Result<T, String>)
     -> Result<T, String>
 {
+    let cwd = getcwd();
     if unsafe { chdir("/".to_c_str().as_ptr()) } != 0 {
         return Err(format!("Error chdir to root: {}",
                            IoError::last_error()));
@@ -29,6 +31,10 @@ pub fn temporary_change_root<T>(path: &Path, fun: || -> Result<T, String>)
     let res = fun();
     if unsafe { chroot(".".to_c_str().as_ptr()) } != 0 {
         return Err(format!("Error chroot back: {}",
+                           IoError::last_error()));
+    }
+    if unsafe { chdir(cwd.to_c_str().as_ptr()) } != 0 {
+        return Err(format!("Error chdir to workdir back: {}",
                            IoError::last_error()));
     }
     return res;
@@ -120,9 +126,15 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
              .map_err(|e| format!("Can't read directory {}: {}",
                                   dir.display(), e)));
         for path in dirlist.into_iter() {
-            try!(rmdir_recursive(&path)
-                .map_err(|e| format!("Can't remove directory {}{}: {}",
-                    dir.display(), path.display(), e)));
+            if path.is_dir() {
+                try!(rmdir_recursive(&path)
+                    .map_err(|e| format!("Can't remove directory {}{}: {}",
+                        dir.display(), path.display(), e)));
+            } else {
+                try!(unlink(&path)
+                    .map_err(|e| format!("Can't remove file {}{}: {}",
+                        dir.display(), path.display(), e)));
+            }
         }
         Ok(())
     }));

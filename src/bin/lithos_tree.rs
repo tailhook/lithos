@@ -42,7 +42,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::container::Command;
-use lithos::utils::{clean_dir, join};
+use lithos::utils::{clean_dir};
 use lithos::signal;
 
 
@@ -167,16 +167,20 @@ fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
 
 
 fn check_process(cfg: &MasterConfig) -> Result<(), String> {
+    let mypid = unsafe { getpid() };
     let pid_file = cfg.runtime_dir.join("master.pid");
     if pid_file.exists() {
         match File::open(&pid_file)
             .and_then(|mut f| f.read_to_string())
             .map(|s| FromStr::from_str(s.as_slice()))
         {
+            Ok(Some::<pid_t>(pid)) if pid == mypid => {
+                return Ok(());
+            }
             Ok(Some(pid)) => {
                 if signal::is_process_alive(pid) {
                     return Err(format!(concat!("Master pid is {}. ",
-                        "And there is alive process with",
+                        "And there is alive process with ",
                         "that pid."), pid));
 
                 }
@@ -246,34 +250,54 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
 }
 
 fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
-    for ppath in readdir(&master.state_dir)
+    for tree in readdir(&master.runtime_dir.join(&master.state_dir))
         .map_err(|e| format!("Can't read state dir: {}", e))
         .unwrap_or(Vec::new())
         .into_iter()
     {
-        let components = 2;
-        let pieces: Vec<Option<&str>>;
-        pieces = ppath.str_components().rev().take(components).collect();
-        if pieces.iter().all(|x| x.is_some()) {
-            let name = Rc::new(join(pieces.iter().map(|x| x.unwrap()), "/"));
-            let lastname = pieces.last().unwrap().unwrap();
-            if mon.has(&name) {
-                continue;
-            } else if lastname.starts_with("cmd.") {
-                let pid = regex!(r"^\.\(\d+\)$")
-                    .captures(lastname)
-                    .and_then(|c| FromStr::from_str(c.at(1)));
-                if let Some(pid) = pid {
-                    if signal::is_process_alive(pid) {
+        debug!("Checking tree dir: {}", tree.display());
+        let mut valid_dirs = 0u;
+        if let Some(tree_name) = tree.filename_str() {
+            for cont in readdir(&tree)
+                .map_err(|e| format!("Can't read state dir: {}", e))
+                .unwrap_or(Vec::new())
+                .into_iter()
+            {
+                if let Some(proc_name) = cont.filename_str() {
+                    let name = Rc::new(format!("{}/{}", tree_name, proc_name));
+                    debug!("Checking process dir: {}", name);
+                    if mon.has(&name) {
+                        valid_dirs += 1;
                         continue;
+                    } else if proc_name.starts_with("cmd.") {
+                        debug!("Checking command dir: {}", name);
+                        let pid = regex!(r"\.\(\d+\)$")
+                            .captures(proc_name)
+                            .and_then(|c| FromStr::from_str(c.at(1)));
+                        if let Some(pid) = pid {
+                            if signal::is_process_alive(pid) {
+                                valid_dirs += 1;
+                                continue;
+                            }
+                        }
                     }
                 }
+                warn!("Dangling state dir {}. Deleting...", cont.display());
+                clean_dir(&cont, true)
+                    .map_err(|e| error!(
+                        "Can't remove dangling state dir {}: {}",
+                        cont.display(), e))
+                    .ok();
             }
         }
-        warn!("Dangling state dir {}. Deleting...", ppath.display());
-        clean_dir(&ppath, true)
-            .map_err(|e| error!("Can't remove dangling state dir {}: {}",
-                ppath.display(), e))
+        debug!("Tree dir {} has {} valid subdirs", tree.display(), valid_dirs);
+        if valid_dirs > 0 {
+            continue;
+        }
+        warn!("Empty tree dir {}. Deleting...", tree.display());
+        clean_dir(&tree, true)
+            .map_err(|e| error!("Can't empty state dir {}: {}",
+                tree.display(), e))
             .ok();
     }
 }
@@ -323,7 +347,6 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
         .unwrap_or(Vec::new())
         .into_iter()
         .filter_map(|f| {
-            debug!("Git config: {}", f.display());
             let name = match f.filename_str().and_then(|s| name_re.captures(s))
             {
                 Some(capt) => capt.at(1),
