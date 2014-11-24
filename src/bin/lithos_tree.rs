@@ -342,7 +342,7 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
     -> HashMap<Rc<String>, Child>
 {
     let tree_validator = TreeConfig::validator();
-    let name_re = regex!(r"^(\w+)\.yaml$");
+    let name_re = regex!(r"^([\w-]+)\.yaml$");
     readdir(&master.config_dir)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
         .unwrap_or(Vec::new())
@@ -371,7 +371,7 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     tree_name: &String, tree: Rc<TreeConfig>)
     -> Vec<(Rc<String>, Child)>
 {
-    let name_re = regex!(r"^(\w+)\.yaml$");
+    let name_re = regex!(r"^([\w-]+)\.yaml$");
     let child_validator = ChildConfig::validator();
     debug!("Reading child dir {}", tree.config_dir.display());
     readdir(&tree.config_dir)

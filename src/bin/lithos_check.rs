@@ -78,7 +78,7 @@ fn check_tree_config(tree: &TreeConfig) {
 fn check(config_file: Path, verbose: bool,
     tree_name: Option<String>, replacement_dir: Option<Path>)
 {
-    let name_re = regex!(r"^(\w+)\.yaml$");
+    let name_re = regex!(r"^([\w-]+)\.yaml$");
     let mut replacement_dir = replacement_dir;
     let master: MasterConfig = match parse_config(&config_file,
         &*MasterConfig::validator(), Default::default()) {
