@@ -75,7 +75,11 @@ fn check_tree_config(tree: &TreeConfig) {
     }
 }
 
-fn check(config_file: Path, verbose: bool) {
+fn check(config_file: Path, verbose: bool,
+    tree_name: Option<String>, replacement_dir: Option<Path>)
+{
+    let name_re = regex!(r"^(\w+)\.yaml$");
+    let mut replacement_dir = replacement_dir;
     let master: MasterConfig = match parse_config(&config_file,
         &*MasterConfig::validator(), Default::default()) {
         Ok(cfg) => cfg,
@@ -88,17 +92,18 @@ fn check(config_file: Path, verbose: bool) {
 
     check_master_config(&master, verbose);
 
-    let master_list = match readdir(&master.config_dir) {
-        Ok(list) => list,
-        Err(e) => {
+    for tree_fn in readdir(&master.config_dir)
+        .map_err(|e| {
             error!("Can't open config directory {}: {}",
                 master.config_dir.display(), e);
             set_exit_status(1);
-            return;
-        }
-    };
-
-    for tree_fn in master_list.into_iter() {
+        })
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .filter(|f| f.filename_str()
+                     .map(|s| name_re.is_match(s))
+                     .unwrap_or(false))
+    {
         let tree: TreeConfig = match parse_config(&tree_fn,
             &*TreeConfig::validator(), Default::default()) {
             Ok(cfg) => cfg,
@@ -110,7 +115,11 @@ fn check(config_file: Path, verbose: bool) {
         };
         check_tree_config(&tree);
 
-        let config_dir = tree.config_dir;
+        let config_dir = match (tree_fn.filestem_str(), &tree_name) {
+            (Some(ref f), &Some(ref t)) if *f == t.as_slice()
+            => replacement_dir.take().unwrap_or(tree.config_dir),
+            _ => tree.config_dir,
+        };
 
         debug!("Checking child dir {}", config_dir.display());
         let dirlist = match readdir(&config_dir) {
@@ -198,6 +207,10 @@ fn check(config_file: Path, verbose: bool) {
             }
         }
     }
+    if replacement_dir.is_some() {
+        error!("Tree {} is not used", tree_name);
+        set_exit_status(1);
+    }
 }
 
 fn check_binaries() {
@@ -229,6 +242,7 @@ fn main() {
     let mut config_file = Path::new("/etc/lithos.yaml");
     let mut verbose = false;
     let mut config_dir = None;
+    let mut tree_name = None;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
@@ -240,11 +254,17 @@ fn main() {
           .add_option(["-v", "--verbose"], box StoreTrue,
             "Verbose configuration");
         ap.refer(&mut config_dir)
-          .add_option(["-D", "--config-dir"], box StoreOption::<Path>,
+          .add_option(["-D", "--dir", "--config-dir"], box StoreOption::<Path>,
             concat!("Name of the alterate directory with configs. ",
                     "Useful to test configuration directory before ",
-                    "switching it to be primary one"))
+                    "switching it to be primary one. ",
+                    "You must also specify --tree."))
           .metavar("DIR");
+        ap.refer(&mut tree_name)
+          .add_option(["-T", "--tree", "--subtree-name"],
+            box StoreOption::<String>,
+            concat!("Name of the tree for which --config-dir takes effect"))
+          .metavar("NAME");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
@@ -253,6 +273,11 @@ fn main() {
             }
         }
     }
+    if config_dir.is_some() && tree_name.is_none() {
+        error!("Please specify --tree if you use --dir");
+        set_exit_status(1);
+        return;
+    }
     check_binaries();
-    check(config_file, verbose);
+    check(config_file, verbose, tree_name, config_dir);
 }
