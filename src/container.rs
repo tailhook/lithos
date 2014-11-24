@@ -63,6 +63,7 @@ pub struct Command {
     workdir: CString,
     uid_map: Option<Vec<u8>>,
     gid_map: Option<Vec<u8>>,
+    output: Option<CString>,
 }
 
 pub fn compile_map(src_map: &Vec<IdMap>) -> Vec<u8> {
@@ -91,6 +92,7 @@ impl Command {
             group_id: 0,
             uid_map: None,
             gid_map: None,
+            output: None,
         };
     }
     pub fn set_user(&mut self, uid: u32, gid: u32) {
@@ -116,6 +118,9 @@ impl Command {
     }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
+    }
+    pub fn set_output(&mut self, filename: &Path) {
+        self.output = Some(filename.to_c_str());
     }
 
     pub fn update_env<'x, I: Iterator<(&'x String, &'x String)>>(&mut self,
@@ -178,6 +183,7 @@ impl Command {
             group_id: self.group_id as i32,
             restore_sigmask: if self.restore_sigmask { 1 } else { 0 },
             workdir: self.workdir.as_ptr(),
+            output: self.output.as_ref().map(|x| x.as_ptr()).unwrap_or(null()),
         }) };
         if pid < 0 {
             return Err(IoError::last_error());
@@ -249,6 +255,7 @@ pub struct CCommand {
     exec_args: *const*const u8,
     exec_environ: *const*const u8,
     workdir: *const c_char,
+    output: *const c_char,
 }
 
 #[link(name="container", kind="static")]

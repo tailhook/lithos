@@ -1,4 +1,4 @@
-#![feature(phase, macro_rules)]
+#![feature(phase, macro_rules, if_let)]
 
 extern crate serialize;
 extern crate libc;
@@ -49,6 +49,9 @@ impl Executor for Target {
                     getenv("TERM").unwrap_or("dumb".to_string()));
         cmd.update_env(self.local.environ.iter());
         cmd.set_env("LITHOS_NAME".to_string(), (*self.name).clone());
+        if let Some(ref path) = self.local.stdout_stderr_file {
+            cmd.set_output(path);
+        }
 
         cmd.args(self.local.arguments.as_slice());
         cmd.args(self.args.as_slice());

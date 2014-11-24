@@ -55,6 +55,7 @@ pub struct ContainerConfig {
     pub hosts_file: HostsFile,
     pub uid_map: Vec<IdMap>,
     pub gid_map: Vec<IdMap>,
+    pub stdout_stderr_file: Option<Path>,
 }
 
 fn mapping_validator<'x>() -> Box<Validator + 'x> {
@@ -135,6 +136,10 @@ impl ContainerConfig {
                 ), .. Default::default()} as Box<Validator>),
             ("uid_map".to_string(), mapping_validator()),
             ("gid_map".to_string(), mapping_validator()),
+            ("stdout_stderr_file".to_string(), box Scalar {
+                optional: true,
+                default: None,
+                .. Default::default() } as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
     }
 }

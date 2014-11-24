@@ -1,6 +1,6 @@
 #include <sys/prctl.h>
 #include <sys/mount.h>
-#include <sys/types.h>
+#include <fcntl.h>
 #include <alloca.h>
 #include <unistd.h>
 #include <signal.h>
@@ -28,6 +28,7 @@ typedef struct {
     char ** const exec_args;
     char ** const exec_environ;
     const char *workdir;
+    const char *output;
 } CCommand;
 
 typedef struct {
@@ -109,6 +110,23 @@ static void _run_container(CCommand *cmd) {
         fprintf(stderr, "%s Error setting userid %d: %m\n",
             cmd->logprefix, cmd->user_id);
         abort();
+    }
+    if(cmd->output) {
+        int fd = open(cmd->output, O_CREAT|O_WRONLY|O_APPEND, 0666);
+        if(fd < 0) {
+            fprintf(stderr, "%s Can't open file %s: %m\n",
+                cmd->logprefix, cmd->output);
+            abort();
+        }
+        if(fd != 1 && dup2(fd, 1) != 1 ||
+           fd != 2 && dup2(fd, 2) != 2) {
+            fprintf(stderr, "%s Can't duplicate fd for stdio: %m\n",
+                cmd->logprefix);
+            abort();
+        }
+        if(fd != 1 && fd != 2) {
+            close(fd);
+        }
     }
     if(cmd->restore_sigmask) {
         sigset_t mask;
