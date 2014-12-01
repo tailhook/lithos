@@ -23,7 +23,6 @@ use std::default::Default;
 use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
 
-use lithos::signal;
 use lithos::utils::{in_range, in_mapping, check_mapping};
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
@@ -234,7 +233,6 @@ fn check_binaries() {
 
 fn main() {
 
-    signal::block_all();
     if getenv("RUST_LOG").is_none() {
         setenv("RUST_LOG", "warn");
     }
