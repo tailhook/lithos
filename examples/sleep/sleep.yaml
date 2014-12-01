@@ -1,4 +1,4 @@
-config-dir: examples/sleep/children
+config-dir: examples/sleep/current
 readonly-paths:
   /src: /var/lib/lithos/containers
 allow-users: [1, 1000, 100000-110000]
