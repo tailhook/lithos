@@ -17,6 +17,7 @@ use std::io::stderr;
 use std::io::IoError;
 use std::io::ALL_PERMISSIONS;
 use std::os::{set_exit_status, self_exe_path};
+use std::path::BytesContainer;
 use std::from_str::FromStr;
 use std::io::fs::{copy, rmdir_recursive, mkdir, readdir, rename};
 use std::io::fs::{readlink, symlink, File};
@@ -32,6 +33,8 @@ use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::signal;
+use lithos::sha256::{Sha256,Digest};
+
 
 fn copy_dir(source: &Path, target: &Path) -> Result<(), IoError> {
     let name_re = regex!(r"^([\w-]+)\.yaml$");
@@ -53,8 +56,28 @@ fn copy_dir(source: &Path, target: &Path) -> Result<(), IoError> {
     return Ok(());
 }
 
+fn hash_dir(dir: &Path) -> Result<String, IoError> {
+    let name_re = regex!(r"^([\w-]+)\.yaml$");
+    let mut hash = Sha256::new();
+    let mut files: Vec<Path> = try!(readdir(dir))
+        .into_iter()
+        .filter(|f| f.filename_str()
+                     .map(|s| name_re.is_match(s))
+                     .unwrap_or(false))
+        .collect();
+    files.sort();
+    for file in files.iter() {
+        hash.input(file.container_as_bytes());
+        hash.input(b"\x00");
+        hash.input(try!(try!(File::open(file)).read_to_end()).as_slice());
+        hash.input(b"\x00");
+    }
+    return Ok(hash.result_str().as_slice().slice_to(8).to_string());
+}
 
-fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path)
+
+fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
+    name_prefix: Option<String>)
     -> Result<(), String>
 {
     match Command::new(self_exe_path().unwrap().join("lithos_check"))
@@ -99,8 +122,14 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path)
         }
     };
 
-    let config_fn = config_dir.filename_str().unwrap();
-    let target_fn = Path::new(tree.config_dir.dirname()).join(config_fn);
+    let config_fn = if let Some(prefix) = name_prefix {
+        prefix.to_string() + try!(hash_dir(&config_dir)
+            .map_err(|e| format!("Can't read dir: {}", e)))
+    } else {
+        config_dir.filename_str().unwrap().to_string()
+    };
+    let target_fn = Path::new(tree.config_dir.dirname())
+                    .join(config_fn.as_slice());
     if target_fn == tree.config_dir {
         return Err(format!(concat!(
             "Target config dir ({}) is the current dir ({}). ",
@@ -132,7 +161,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path)
     info!("Ok files are there. Making symlink");
     let symlink_fn = tree.config_dir.with_filename(
         b".tmp.".to_vec() + tree.config_dir.filename().unwrap());
-    try!(symlink(&Path::new(config_fn), &symlink_fn)
+    try!(symlink(&Path::new(config_fn.as_slice()), &symlink_fn)
         .map_err(|e| format!("Error symlinking dir: {}", e)));
     try!(rename(&symlink_fn, &tree.config_dir)
         .map_err(|e| format!("Error replacing symlink: {}", e)));
@@ -162,6 +191,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path)
 fn main() {
     let mut master_config = Path::new("/etc/lithos.yaml");
     let mut verbose = false;
+    let mut name_prefix = None;
     let mut config_dir = Path::new("");
     let mut tree_name = "".to_string();
     {
@@ -174,6 +204,12 @@ fn main() {
         ap.refer(&mut verbose)
           .add_option(["-v", "--verbose"], box StoreTrue,
             "Verbose configuration");
+        ap.refer(&mut name_prefix)
+          .add_option(["--hashed-name"], box StoreOption::<String>, "
+            Do not last component of DIR as a name, but create an unique name
+            based on the PREFIX and hash of the contents.
+            ")
+          .metavar("PREFIX");
         ap.refer(&mut tree_name)
           .add_argument("tree", box Store::<String>,
             "Name of the tree which configuration will be switched for")
@@ -187,8 +223,7 @@ fn main() {
             `config-dir` it's assumed that it's already copied and will not
             be updated. Be sure to use unique directory for each deployment.
             ")
-          .required()
-          .metavar("PATH");
+          .required();
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
@@ -197,7 +232,7 @@ fn main() {
             }
         }
     }
-    match switch_config(master_config, tree_name, config_dir) {
+    match switch_config(master_config, tree_name, config_dir, name_prefix) {
         Ok(()) => {
             set_exit_status(0);
         }

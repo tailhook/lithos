@@ -1,7 +1,7 @@
 #![crate_name="lithos"]
 #![crate_type="lib"]
 
-#![feature(macro_rules,phase,if_let)]
+#![feature(macro_rules,phase,if_let,slicing_syntax)]
 
 #[phase(plugin, link)] extern crate log;
 extern crate debug;
@@ -26,3 +26,4 @@ pub mod network;
 pub mod setup;
 pub mod pipe;
 pub mod limits;
+pub mod sha256;
