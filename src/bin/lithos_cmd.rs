@@ -78,11 +78,11 @@ fn run(master_cfg: Path, tree_name: String,
         &*MasterConfig::validator(), Default::default()));
     try!(create_master_dirs(&master));
 
-    if !regex!(r"^\w+$").is_match(tree_name.as_slice()) {
+    if !regex!(r"^[\w-]+$").is_match(tree_name.as_slice()) {
         return Err(format!("Wrong tree name: {}", tree_name));
     }
-    if !regex!(r"^\w+$").is_match(command_name.as_slice()) {
-        return Err(format!("Wrong tree name: {}", command_name));
+    if !regex!(r"^[\w-]+$").is_match(command_name.as_slice()) {
+        return Err(format!("Wrong ommand name: {}", command_name));
     }
 
     let tree: TreeConfig = try_str!(parse_config(
