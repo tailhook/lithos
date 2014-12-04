@@ -30,15 +30,13 @@ use quire::parse_config;
 
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::ContainerConfig;
-use lithos::child_config::ChildConfig;
 use lithos::signal;
 use lithos::sha256::{Sha256,Digest};
 
 
 fn copy_dir(source: &Path, target: &Path) -> Result<(), IoError> {
     let name_re = regex!(r"^([\w-]+)\.yaml$");
-    let mut tmpdir = Path::new(target.dirname())
+    let tmpdir = Path::new(target.dirname())
         .join(b".tmp.".to_vec() + target.filename().unwrap());
     if tmpdir.exists() {
         try!(rmdir_recursive(&tmpdir));
@@ -168,7 +166,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
 
     info!("Done. Sending SIGQUIT to lithos_tree");
     let pid_file = master.runtime_dir.join("master.pid");
-    let pid = match File::open(&pid_file)
+    match File::open(&pid_file)
             .and_then(|mut f| f.read_to_string())
             .ok()
             .and_then(|s| FromStr::from_str(s.as_slice())) {
