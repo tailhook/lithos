@@ -45,7 +45,7 @@ lithos_switch: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_switch.rs
 		-L rust-quire -L rust-argparse -L .
 
 lithos_ps: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_ps.rs
-	$(RUSTC) src/bin/lithos_ps.rs -g -o $@ \
+	$(RUSTC) src/bin/lithos_ps.rs -g -o $@ --opt-level=3 \
 		-L rust-quire -L rust-argparse -L .
 
 container.o: container.c
