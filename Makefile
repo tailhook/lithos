@@ -16,7 +16,7 @@ test: lithos_test
 	./lithos_test
 
 
-$(LITHOSLIB): src/*.rs src/*/*.rs libcontainer.a
+$(LITHOSLIB): src/*.rs libcontainer.a
 	$(RUSTC) src/lib.rs -g -o $@ \
 		-L rust-quire -L rust-argparse -L .
 
@@ -44,7 +44,7 @@ lithos_switch: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_switch.rs
 	$(RUSTC) src/bin/lithos_switch.rs -g -o $@ \
 		-L rust-quire -L rust-argparse -L .
 
-lithos_ps: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_ps.rs
+lithos_ps: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_ps.rs src/ascii.rs
 	$(RUSTC) src/bin/lithos_ps.rs -g -o $@ --opt-level=3 \
 		-L rust-quire -L rust-argparse -L .
 

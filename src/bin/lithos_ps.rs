@@ -36,6 +36,8 @@ use lithos::signal;
 #[allow(dead_code, unused_attribute)] mod lithos_tree;
 #[allow(dead_code, unused_attribute)] mod lithos_knot;
 
+#[path = "../ascii.rs"] mod ascii;
+
 static mut boot_time: uint = 0;
 static mut clock_ticks: uint = 100;
 
