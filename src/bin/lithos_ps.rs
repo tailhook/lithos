@@ -199,8 +199,8 @@ fn format_uptime(start_ticks: uint) -> String {
     } else if uptime < 86400 {
         format!("{}h{}m{}s", uptime / 3600, (uptime / 60) % 60, uptime % 60)
     } else if uptime < 3*86400 {
-        format!("{}d{}h{}m{}s", uptime / 86400,
-            (uptime / 3600) % 24, (uptime / 60) % 60, uptime % 60)
+        format!("{}d{}h{}m", uptime / 86400,
+            (uptime / 3600) % 24, (uptime / 60) % 60)
     } else {
         format!("{}days", uptime / 86400)
     }
