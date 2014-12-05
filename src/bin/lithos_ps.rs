@@ -1,4 +1,4 @@
-#![feature(phase, macro_rules, if_let)]
+#![feature(phase, macro_rules, if_let, slicing_syntax)]
 
 extern crate serialize;
 extern crate libc;
@@ -23,8 +23,11 @@ use std::io::fs::{readdir};
 use std::io::{BufferedReader, MemWriter};
 use std::os::{set_exit_status};
 use std::default::Default;
-use libc::pid_t;
 use std::collections::{TreeMap, TreeSet};
+use time::get_time;
+use libc::pid_t;
+use libc::consts::os::sysconf::_SC_CLK_TCK;
+use libc::funcs::posix88::unistd::sysconf;
 
 use argparse::{ArgumentParser};
 
@@ -32,6 +35,9 @@ use lithos::signal;
 
 #[allow(dead_code, unused_attribute)] mod lithos_tree;
 #[allow(dead_code, unused_attribute)] mod lithos_knot;
+
+static mut boot_time: uint = 0;
+static mut clock_ticks: uint = 100;
 
 #[deriving(PartialEq, Eq, PartialOrd, Ord)]
 enum LithosInfo {
@@ -47,6 +53,15 @@ struct Process {
     start_time: uint,
     mem_rss: uint,
     mem_swap: uint,
+    threads: uint,
+    cmdline: Vec<String>,
+}
+
+#[deriving(Default)]
+struct KnotTotals {
+    mem_rss: uint,
+    mem_swap: uint,
+    processes: uint,
     threads: uint,
 }
 
@@ -76,28 +91,22 @@ fn read_cmdline(pid: pid_t) -> Result<Vec<String>, IoError> {
     return Ok(args);
 }
 
-fn get_tree_info(pid: pid_t) -> Result<LithosInfo, ()> {
-    read_cmdline(pid)
-    .map_err(|_| debug!("Can't read cmdline for {}", pid))
-    .and_then(|args| {
-        let mut out = MemWriter::new();
-        let mut err = MemWriter::new();
-        lithos_tree::Options::parse_specific_args(args, &mut out, &mut err)
-            .map_err(|_| debug!("Can't parse lithos_tree cmdline for {}", pid))
-    })
-    .map(|opt| Tree(opt.config_file))
+fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
+    let args = cmdline.clone();
+    let mut out = MemWriter::new();
+    let mut err = MemWriter::new();
+    lithos_tree::Options::parse_specific_args(args, &mut out, &mut err)
+        .map(|opt| Tree(opt.config_file))
+        .map_err(|_| debug!("Can't parse lithos_tree cmdline for {}", pid))
 }
 
-fn get_knot_info(pid: pid_t) -> Result<LithosInfo, ()> {
-    read_cmdline(pid)
-    .map_err(|_| debug!("Can't read cmdline for {}", pid))
-    .and_then(|args| {
-        let mut out = MemWriter::new();
-        let mut err = MemWriter::new();
-        lithos_knot::Options::parse_specific_args(args, &mut out, &mut err)
-            .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid))
-    })
-    .map(|opt| Knot(opt.name))
+fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
+    let args = cmdline.clone();
+    let mut out = MemWriter::new();
+    let mut err = MemWriter::new();
+    lithos_knot::Options::parse_specific_args(args, &mut out, &mut err)
+        .map(|opt| Knot(opt.name))
+        .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid))
 }
 
 fn read_process(pid: pid_t) -> Result<Process, IoError> {
@@ -105,6 +114,7 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
         &Path::new(format!("/proc/{}/status", pid).as_slice()))));
     let mut result: Process = Default::default();
     result.pid = pid;
+    result.cmdline = try!(read_cmdline(pid));
     for line in f.lines() {
         let line = try!(line);
         let mut pair = line.as_slice().splitn(1, ':');
@@ -128,10 +138,12 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
             "Name" => {
                 match value {
                     "lithos_tree" => {
-                        result.lithos_info = get_tree_info(pid).ok();
+                        result.lithos_info = get_tree_info(
+                            pid, &result.cmdline).ok();
                     }
                     "lithos_knot" => {
-                        result.lithos_info = get_knot_info(pid).ok();
+                        result.lithos_info = get_knot_info(
+                            pid, &result.cmdline).ok();
                     }
                     _ => {}
                 };
@@ -159,6 +171,51 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
         });
 
     return Ok(result);
+}
+
+impl KnotTotals {
+    fn _add_process(&mut self, prc: &Process,
+        children: &TreeMap<pid_t, Vec<Rc<Process>>>)
+    {
+        self.mem_rss += prc.mem_rss;
+        self.mem_swap += prc.mem_swap;
+        self.processes += 1;
+        self.threads += prc.threads;
+        if let Some(ref lst) = children.find(&prc.pid) {
+            for prc in lst.iter() {
+                self._add_process(&**prc, children);
+            }
+        }
+    }
+}
+
+fn format_uptime(start_ticks: uint) -> String {
+    let start_time = unsafe { boot_time  + (start_ticks / clock_ticks) };
+    let uptime = get_time().sec as uint - start_time;
+    if uptime < 60 {
+        format!("{}s", uptime)
+    } else if uptime < 3600 {
+        format!("{}m{}s", uptime / 60, uptime % 60)
+    } else if uptime < 86400 {
+        format!("{}h{}m{}s", uptime / 3600, (uptime / 60) % 60, uptime % 60)
+    } else if uptime < 3*86400 {
+        format!("{}d{}h{}m{}s", uptime / 86400,
+            (uptime / 3600) % 24, (uptime / 60) % 60, uptime % 60)
+    } else {
+        format!("{}days", uptime / 86400)
+    }
+}
+
+fn format_memory(mem: uint) -> String {
+    if mem < (1 << 10) {
+        format!("{}B", mem)
+    } else if mem < (1 << 20) {
+        format!("{:.1f}kiB", mem as f64/(1024_f64))
+    } else if mem < (1 << 30) {
+        format!("{:.1f}MiB", mem as f64/(1_048_576_f64))
+    } else {
+        format!("{:.1f}GiB", mem as f64/(1_048_576_f64 * 1024_f64))
+    }
 }
 
 fn scan_processes() -> Result<(), IoError>
@@ -191,11 +248,40 @@ fn scan_processes() -> Result<(), IoError>
     for root in roots.iter() {
         if let Some(Tree(ref cfg_file)) = root.lithos_info {
             println!("-+= {} tree ({})", root.pid, cfg_file.display());
-            for prc in children.pop(&root.pid).unwrap_or(Vec::new())
+            for prc in children.find(&root.pid).unwrap_or(&Vec::new())
                 .iter()
             {
                 if let Some(Knot(ref name)) = prc.lithos_info {
-                    println!(r" \--- {} {}", prc.pid, name);
+                    if let Some(knot_children) = children.find(&prc.pid) {
+                        if knot_children.len() == 1 {
+                            let child = &knot_children[0];
+                            let mut info: KnotTotals = Default::default();
+                            info._add_process(&**child, &children);
+                            println!(r" \--- {} {} {} [{}/{}] {}",
+                                child.pid, name,
+                                format_uptime(child.start_time),
+                                info.processes,
+                                info.threads,
+                                format_memory(info.mem_rss + info.mem_swap));
+                        } else {
+                            println!(r" \-+- ({}) {} [multiple]",
+                                     prc.pid, name);
+                            for child in knot_children.iter() {
+                                let mut info: KnotTotals = Default::default();
+                                info._add_process(&**child, &children);
+                                println!(r"   \--- {} {} {} [{}/{}] {}",
+                                    child.pid, name,
+                                    format_uptime(child.start_time),
+                                    info.processes,
+                                    info.threads,
+                                    format_memory(info.mem_rss+info.mem_swap),
+                                    );
+                            }
+                        }
+                    } else {
+                            println!(r" \--- ({}) {} [failing]",
+                                     prc.pid, name);
+                    }
                 }
             }
         }
@@ -204,9 +290,27 @@ fn scan_processes() -> Result<(), IoError>
     return Ok(());
 }
 
+fn read_global_consts() {
+    unsafe {
+        clock_ticks = sysconf(_SC_CLK_TCK) as uint;
+        boot_time =
+            BufferedReader::new(
+                File::open(&Path::new("/proc/stat"))
+                .ok().expect("Can't read /proc/stat"))
+            .lines()
+            .map(|line| line.ok().expect("Can't read /proc/stat"))
+            .filter(|line| line.as_slice().starts_with("btime "))
+            .next()
+            .and_then(|line| FromStr::from_str(line.as_slice()[5..].trim()))
+            .expect("No boot time in /proc/stat");
+    }
+}
+
 fn main() {
 
     signal::block_all();
+
+    read_global_consts();
 
     {
         let mut ap = ArgumentParser::new();
