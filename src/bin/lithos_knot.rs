@@ -9,8 +9,8 @@ extern crate quire;
 #[phase(plugin, link)] extern crate lithos;
 
 use std::rc::Rc;
-use std::os::{set_exit_status, getenv};
-use std::io::stderr;
+use std::os::{set_exit_status, getenv, args};
+use std::io::stdio::{stdout, stderr};
 use std::time::Duration;
 use std::default::Default;
 
@@ -145,47 +145,71 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     return Ok(());
 }
 
-fn main() {
+pub struct Options {
+    pub master_config: Path,
+    pub config: ChildConfig,
+    pub name: String,
+    pub args: Vec<String>,
+}
 
-    signal::block_all();
-
-    let mut master_config = Path::new("/etc/lithos.yaml");
-    let mut config = ChildConfig {
-        instances: 0,
-        image: "".to_string(),
-        config: "".to_string(),
-        kind: Daemon,
-    };
-    let mut name = "".to_string();
-    let mut args = vec!();
+impl Options {
+    pub fn parse_args() -> Result<Options, int> {
+        Options::parse_specific_args(args(), &mut stdout(), &mut stderr())
+    }
+    pub fn parse_specific_args(args: Vec<String>,
+        stdout: &mut Writer, stderr: &mut Writer)
+        -> Result<Options, int>
     {
+        let mut options = Options {
+            master_config: Path::new("/etc/lithos.yaml"),
+            config: ChildConfig {
+                instances: 0,
+                image: "".to_string(),
+                config: "".to_string(),
+                kind: Daemon,
+            },
+            name: "".to_string(),
+            args: vec!(),
+        };
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
-        ap.refer(&mut name)
+        ap.refer(&mut options.name)
           .add_option(["--name"], box Store::<String>,
             "The process name");
-        ap.refer(&mut master_config)
+        ap.refer(&mut options.master_config)
           .add_option(["--master"], box Store::<Path>,
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
-        ap.refer(&mut config)
+        ap.refer(&mut options.config)
           .add_option(["--config"], box Store::<ChildConfig>,
             "JSON-serialized container configuration")
           .required()
           .metavar("JSON");
-        ap.refer(&mut args)
+        ap.refer(&mut options.args)
           .add_argument("argument", box List::<String>,
             "Additional arguments for the command");
         ap.stop_on_first_argument(true);
-        match ap.parse_args() {
-            Ok(()) => {}
-            Err(x) => {
-                set_exit_status(x);
-                return;
-            }
+        match ap.parse(args, stdout, stderr) {
+            Ok(()) => Ok(options),
+            Err(x) => Err(x),
         }
     }
-    match run(name, master_config, config, args) {
+}
+
+fn main() {
+
+    signal::block_all();
+
+    let options = match Options::parse_args() {
+        Ok(options) => options,
+        Err(x) => {
+            set_exit_status(x);
+            return;
+        }
+    };
+    match run(options.name, options.master_config,
+              options.config, options.args)
+    {
         Ok(()) => {
             set_exit_status(0);
         }

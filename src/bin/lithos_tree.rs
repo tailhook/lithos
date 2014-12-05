@@ -13,12 +13,11 @@ extern crate quire;
 #[phase(plugin, link)] extern crate lithos;
 
 
-use std::os::args;
 use std::rc::Rc;
-use std::io::stderr;
 use std::io::IoError;
 use std::io::fs::File;
-use std::os::getenv;
+use std::os::{getenv, args};
+use std::io::stdio::{stdout, stderr};
 use std::from_str::FromStr;
 use std::io::fs::{readdir};
 use std::os::{set_exit_status, self_exe_path};
@@ -461,6 +460,34 @@ fn get_binaries() -> Option<Binaries> {
     return Some(bin);
 }
 
+pub struct Options {
+    pub config_file: Path,
+}
+
+impl Options {
+    pub fn parse_args() -> Result<Options, int> {
+        Options::parse_specific_args(args(), &mut stdout(), &mut stderr())
+    }
+    pub fn parse_specific_args(args: Vec<String>,
+        stdout: &mut Writer, stderr: &mut Writer)
+        -> Result<Options, int>
+    {
+        let mut options = Options {
+            config_file: Path::new("/etc/lithos.yaml"),
+        };
+        let mut ap = ArgumentParser::new();
+        ap.set_description("Runs tree of processes");
+        ap.refer(&mut options.config_file)
+          .add_option(["-C", "--config"], box Store::<Path>,
+            "Name of the global configuration file (default /etc/lithos.yaml)")
+          .metavar("FILE");
+        match ap.parse(args, stdout, stderr) {
+            Ok(()) => Ok(options),
+            Err(x) => Err(x),
+        }
+    }
+}
+
 fn main() {
 
     signal::block_all();
@@ -472,23 +499,14 @@ fn main() {
             return;
         }
     };
-    let mut config_file = Path::new("/etc/lithos.yaml");
-    {
-        let mut ap = ArgumentParser::new();
-        ap.set_description("Runs tree of processes");
-        ap.refer(&mut config_file)
-          .add_option(["-C", "--config"], box Store::<Path>,
-            "Name of the global configuration file (default /etc/lithos.yaml)")
-          .metavar("FILE");
-        match ap.parse_args() {
-            Ok(()) => {}
-            Err(x) => {
-                set_exit_status(x);
-                return;
-            }
+    let options = match Options::parse_args() {
+        Ok(options) => options,
+        Err(x) => {
+            set_exit_status(x);
+            return;
         }
-    }
-    match run(config_file, &bin) {
+    };
+    match run(options.config_file, &bin) {
         Ok(()) => {
             set_exit_status(0);
         }

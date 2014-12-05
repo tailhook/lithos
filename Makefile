@@ -9,7 +9,9 @@ LITHOSLIB = liblithos.rlib
 QUIRELIB = rust-quire/libquire.rlib
 ARGPARSELIB = rust-argparse/libargparse.rlib
 
-all: quire argparse lithos_tree lithos_knot lithos_check lithos_cmd lithos_switch
+all: quire argparse lithos_tree lithos_knot lithos_check lithos_cmd
+all: lithos_switch lithos_ps
+
 test: lithos_test
 	./lithos_test
 
@@ -40,6 +42,10 @@ lithos_cmd: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_cmd.rs
 
 lithos_switch: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_switch.rs
 	$(RUSTC) src/bin/lithos_switch.rs -g -o $@ \
+		-L rust-quire -L rust-argparse -L .
+
+lithos_ps: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_ps.rs
+	$(RUSTC) src/bin/lithos_ps.rs -g -o $@ \
 		-L rust-quire -L rust-argparse -L .
 
 container.o: container.c
