@@ -15,7 +15,7 @@ extern crate quire;
 
 use std::rc::Rc;
 use std::os::args;
-use std::io::stderr;
+use std::io::{stdout, stderr};
 use std::io::IoError;
 use std::io::fs::File;
 use std::from_str::FromStr;
@@ -31,6 +31,7 @@ use libc::funcs::posix88::unistd::sysconf;
 
 use argparse::{ArgumentParser};
 
+use ascii::Printer;
 use lithos::signal;
 
 #[allow(dead_code, unused_attribute)] mod lithos_tree;
@@ -220,6 +221,10 @@ fn format_memory(mem: uint) -> String {
     }
 }
 
+fn subtree_name(fullname: &String) -> Option<String> {
+    fullname.as_slice().as_slice().splitn(1, '/').next().map(|x| x.to_string())
+}
+
 fn scan_processes() -> Result<(), IoError>
 {
     let mut children = TreeMap::<pid_t, Vec<Rc<Process>>>::new();
@@ -247,46 +252,105 @@ fn scan_processes() -> Result<(), IoError>
         }
     }
 
+    let mut trees: Vec<ascii::TreeNode> = vec!();
+    let mut out = stdout();
+
     for root in roots.iter() {
         if let Some(Tree(ref cfg_file)) = root.lithos_info {
-            println!("-+= {} tree ({})", root.pid, cfg_file.display());
+            let mut subtrees = TreeMap::new();
             for prc in children.find(&root.pid).unwrap_or(&Vec::new())
                 .iter()
             {
-                if let Some(Knot(ref name)) = prc.lithos_info {
-                    if let Some(knot_children) = children.find(&prc.pid) {
-                        if knot_children.len() == 1 {
-                            let child = &knot_children[0];
+                let name = if let Some(Knot(ref name)) = prc.lithos_info {
+                    name
+                } else {
+                    continue;
+                };
+                let subname = if let Some(subname) = subtree_name(name) {
+                    subname
+                } else {
+                    warn!("Wrong child name {}", name);
+                    continue;
+                };
+                let mut subtree = subtrees.pop(&subname).unwrap_or(vec!());
+
+                if let Some(knot_children) = children.find(&prc.pid) {
+                    if knot_children.len() == 1 {
+                        let child = &knot_children[0];
+                        let mut info: KnotTotals = Default::default();
+                        info._add_process(&**child, &children);
+                        subtree.push(ascii::TreeNode {
+                            head: ascii::ColorPrinter("".to_string())
+                                .green(&child.pid)
+                                .norm(name)
+                                .blue(&format_uptime(child.start_time))
+                                .blue(&format!("[{}/{}]",
+                                              info.processes,
+                                              info.threads))
+                                .blue(&format_memory(
+                                    info.mem_rss + info.mem_swap))
+                                .unwrap(),
+                            children: vec!(),
+                        });
+                    } else {
+                        println!(r" \-+- ({}) {} [multiple]",
+                                 prc.pid, name);
+                        let mut processes = vec!();
+                        for child in knot_children.iter() {
                             let mut info: KnotTotals = Default::default();
                             info._add_process(&**child, &children);
-                            println!(r" \--- {} {} {} [{}/{}] {}",
-                                child.pid, name,
-                                format_uptime(child.start_time),
-                                info.processes,
-                                info.threads,
-                                format_memory(info.mem_rss + info.mem_swap));
-                        } else {
-                            println!(r" \-+- ({}) {} [multiple]",
-                                     prc.pid, name);
-                            for child in knot_children.iter() {
-                                let mut info: KnotTotals = Default::default();
-                                info._add_process(&**child, &children);
-                                println!(r"   \--- {} {} {} [{}/{}] {}",
-                                    child.pid, name,
-                                    format_uptime(child.start_time),
-                                    info.processes,
-                                    info.threads,
-                                    format_memory(info.mem_rss+info.mem_swap),
-                                    );
-                            }
+                            processes.push(ascii::TreeNode {
+                                head: ascii::ColorPrinter("".to_string())
+                                    .green(&child.pid)
+                                    .norm(name)
+                                    .blue(&format_uptime(child.start_time))
+                                    .blue(&format!("[{}/{}]",
+                                                  info.processes,
+                                                  info.threads))
+                                    .blue(&format_memory(
+                                        info.mem_rss + info.mem_swap))
+                                    .unwrap(),
+                                children: vec!(),
+                            });
                         }
-                    } else {
-                            println!(r" \--- ({}) {} [failing]",
-                                     prc.pid, name);
+                        subtree.push(ascii::TreeNode {
+                            head: ascii::ColorPrinter("".to_string())
+                                .red(&format!("({})", prc.pid))
+                                .norm(name)
+                                .blue(&format!("[multiple]"))
+                                .unwrap(),
+                            children: processes,
+                        });
                     }
+                } else {
+                    subtree.push(ascii::TreeNode {
+                        head: ascii::ColorPrinter("".to_string())
+                            .red(&format!("({})", prc.pid))
+                            .norm(name)
+                            .red(&format!("[failing]"))
+                            .unwrap(),
+                        children: vec!(),
+                    });
                 }
+                subtrees.insert(subname, subtree);
             }
+            trees.push(ascii::TreeNode {
+                head: ascii::ColorPrinter("".to_string())
+                    .blue(&root.pid)
+                    .norm(&"tree".to_string())
+                    .blue(&cfg_file.display())
+                    .unwrap(),
+                children: subtrees.into_iter().map(|(key, val)|
+                    ascii::TreeNode {
+                        head: key,
+                        children: val,
+                    }).collect(),
+            });
         }
+    }
+
+    for tree in trees.iter() {
+        try!(tree.print(&mut out));
     }
 
     return Ok(());

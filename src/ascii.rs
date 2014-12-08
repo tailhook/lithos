@@ -1,32 +1,33 @@
 // This is a part of lithos_ps not lithos library
 use std::io::IoError;
 use std::io::Writer;
+use std::fmt::Show;
 
 
 pub trait Printer {
-    fn norm(self, &str) -> Self;
-    fn red(self, val: &str) -> Self { self.norm(val) }
-    fn blue(self, val: &str) -> Self { self.norm(val) }
-    fn green(self, val: &str) -> Self { self.norm(val) }
+    fn norm(self, &Show) -> Self;
+    fn red(self, val: &Show) -> Self { self.norm(val) }
+    fn blue(self, val: &Show) -> Self { self.norm(val) }
+    fn green(self, val: &Show) -> Self { self.norm(val) }
     fn unwrap(self) -> String;
 }
 
-pub struct MonotonePrinter(String);
-pub struct ColorPrinter(String);
+pub struct MonotonePrinter(pub String);
+pub struct ColorPrinter(pub String);
 
 pub struct TreeNode {
-    head: String,
-    children: Vec<TreeNode>,
+    pub head: String,
+    pub children: Vec<TreeNode>,
 }
 
 
 impl Printer for MonotonePrinter {
-    fn norm<'x>(self, val: &str) -> MonotonePrinter {
+    fn norm<'x>(self, val: &Show) -> MonotonePrinter {
         let MonotonePrinter(mut buf) = self;
         if buf.len() > 0 {
             buf.push(' ');
         }
-        buf.push_str(val);
+        buf.push_str(val.to_string().as_slice());
         return MonotonePrinter(buf);
     }
     fn unwrap(self) -> String {
@@ -36,42 +37,42 @@ impl Printer for MonotonePrinter {
 }
 
 impl Printer for ColorPrinter {
-    fn norm(self, val: &str) -> ColorPrinter {
+    fn norm(self, val: &Show) -> ColorPrinter {
         let ColorPrinter(mut buf) = self;
         if buf.len() > 0 {
             buf.push(' ');
         }
-        buf.push_str(val);
+        buf.push_str(val.to_string().as_slice());
         return ColorPrinter(buf);
     }
-    fn red(self, val: &str) -> ColorPrinter {
+    fn red(self, val: &Show) -> ColorPrinter {
         let ColorPrinter(mut buf) = self;
         if buf.len() > 0 {
             buf.push(' ');
         }
-        buf.push_str("\x33[31m\x33[1m");
-        buf.push_str(val);
-        buf.push_str("\x33[0m\x3322m");
+        buf.push_str("\x1b[31m\x1b[1m");
+        buf.push_str(val.to_string().as_slice());
+        buf.push_str("\x1b[0m\x1b[22m");
         return ColorPrinter(buf);
     }
-    fn blue(self, val: &str) -> ColorPrinter {
+    fn blue(self, val: &Show) -> ColorPrinter {
         let ColorPrinter(mut buf) = self;
         if buf.len() > 0 {
             buf.push(' ');
         }
-        buf.push_str("\x33[34m\x33[1m");
-        buf.push_str(val);
-        buf.push_str("\x33[0m\x3322m");
+        buf.push_str("\x1b[34m\x1b[1m");
+        buf.push_str(val.to_string().as_slice());
+        buf.push_str("\x1b[0m\x1b[22m");
         return ColorPrinter(buf);
     }
-    fn green(self, val: &str) -> ColorPrinter {
+    fn green(self, val: &Show) -> ColorPrinter {
         let ColorPrinter(mut buf) = self;
         if buf.len() > 0 {
             buf.push(' ');
         }
-        buf.push_str("\x33[32m\x33[1m");
-        buf.push_str(val);
-        buf.push_str("\x33[0m\x3322m");
+        buf.push_str("\x1b[32m\x1b[1m");
+        buf.push_str(val.to_string().as_slice());
+        buf.push_str("\x1b[0m\x1b[22m");
         return ColorPrinter(buf);
     }
     fn unwrap(self) -> String {
@@ -111,6 +112,7 @@ impl TreeNode {
     }
 
 }
+
 
 #[cfg(test)]
 mod test {
