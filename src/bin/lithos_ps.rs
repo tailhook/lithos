@@ -28,8 +28,9 @@ use time::get_time;
 use libc::pid_t;
 use libc::consts::os::sysconf::_SC_CLK_TCK;
 use libc::funcs::posix88::unistd::sysconf;
+use serialize::json;
 
-use argparse::{ArgumentParser};
+use argparse::{ArgumentParser, StoreConst};
 
 use ascii::Printer;
 use lithos::signal;
@@ -39,8 +40,8 @@ use lithos::signal;
 
 #[path = "../ascii.rs"] mod ascii;
 
-static mut boot_time: uint = 0;
-static mut clock_ticks: uint = 100;
+static mut boot_time: u64 = 0;
+static mut clock_ticks: u64 = 100;
 
 #[deriving(PartialEq, Eq, PartialOrd, Ord)]
 enum LithosInfo {
@@ -53,11 +54,16 @@ struct Process {
     parent_id: pid_t,
     pid: pid_t,
     lithos_info: Option<LithosInfo>,
-    start_time: uint,
+    start_time: u64,
     mem_rss: uint,
     mem_swap: uint,
     threads: uint,
     cmdline: Vec<String>,
+}
+
+struct ScanResult {
+    children: TreeMap<pid_t, Vec<Rc<Process>>>,
+    roots: TreeSet<Rc<Process>>,
 }
 
 #[deriving(Default)]
@@ -192,9 +198,13 @@ impl KnotTotals {
     }
 }
 
-fn format_uptime(start_ticks: uint) -> String {
-    let start_time = unsafe { boot_time  + (start_ticks / clock_ticks) };
-    let uptime = get_time().sec as uint - start_time;
+fn start_time_sec(start_ticks: u64) -> u64 {
+    return unsafe { boot_time  + (start_ticks / clock_ticks) };
+}
+
+fn format_uptime(start_ticks: u64) -> String {
+    let start_time = start_time_sec(start_ticks);
+    let uptime = get_time().sec as u64 - start_time;
     if uptime < 60 {
         format!("{}s", uptime)
     } else if uptime < 3600 {
@@ -225,7 +235,7 @@ fn subtree_name(fullname: &String) -> Option<String> {
     fullname.as_slice().as_slice().splitn(1, '/').next().map(|x| x.to_string())
 }
 
-fn scan_processes() -> Result<(), IoError>
+fn scan_processes() -> Result<ScanResult, IoError>
 {
     let mut children = TreeMap::<pid_t, Vec<Rc<Process>>>::new();
     let mut roots = TreeSet::<Rc<Process>>::new();
@@ -251,6 +261,15 @@ fn scan_processes() -> Result<(), IoError>
             }
         }
     }
+    return Ok(ScanResult {
+        children: children,
+        roots: roots,
+    });
+}
+
+fn print_tree(scan: ScanResult) -> Result<(), IoError> {
+    let children = scan.children;
+    let roots = scan.roots;
 
     let mut trees: Vec<ascii::TreeNode> = vec!();
     let mut out = stdout();
@@ -293,8 +312,6 @@ fn scan_processes() -> Result<(), IoError>
                             children: vec!(),
                         });
                     } else {
-                        println!(r" \-+- ({}) {} [multiple]",
-                                 prc.pid, name);
                         let mut processes = vec!();
                         for child in knot_children.iter() {
                             let mut info: KnotTotals = Default::default();
@@ -356,9 +373,64 @@ fn scan_processes() -> Result<(), IoError>
     return Ok(());
 }
 
+fn print_json(scan: ScanResult) -> Result<(), IoError> {
+    let children = scan.children;
+    let roots = scan.roots;
+    let mut trees = vec!();
+
+    for root in roots.iter() {
+        let cfg_file = if let Some(Tree(ref cfg_file)) = root.lithos_info {
+            cfg_file
+        } else {
+            continue;
+        };
+        let mut knots = vec!();
+        for prc in children.find(&root.pid).unwrap_or(&Vec::new()).iter() {
+            let mut processes = vec!();
+            if let Some(knot_children) = children.find(&prc.pid) {
+                for child in knot_children.iter() {
+                    let mut info: KnotTotals = Default::default();
+                    info._add_process(&**child, &children);
+                    processes.push(json::Object(vec!(
+                        ("pid".to_string(), json::U64(prc.pid as u64)),
+                        ("processes".to_string(),
+                            json::U64(info.processes as u64)),
+                        ("threads".to_string(),
+                            json::U64(info.threads as u64)),
+                        ("mem_rss".to_string(),
+                            json::U64(info.mem_rss as u64)),
+                        ("mem_swap".to_string(),
+                            json::U64(info.mem_swap as u64)),
+                        ("start_time".to_string(),
+                            json::U64(start_time_sec(child.start_time))),
+                        ).into_iter().collect()));
+                }
+            }
+            knots.push(json::Object(vec!(
+                ("pid".to_string(), json::U64(prc.pid as u64)),
+                ("ok".to_string(), json::Boolean(processes.len() == 1)),
+                ("processes".to_string(), json::List(processes)),
+                ).into_iter().collect()));
+        }
+        trees.push(json::Object(vec!(
+            ("pid".to_string(), json::U64(root.pid as u64)),
+            ("config".to_string(),
+                json::String(cfg_file.display().to_string())),
+            ("children".to_string(),
+                json::List(knots)),
+            ).into_iter().collect()));
+    }
+
+
+    let mut out = stdout();
+    return out.write_str(json::encode(&json::Object(vec!(
+        ("trees".to_string(), json::List(trees)),
+        ).into_iter().collect())).as_slice());
+}
+
 fn read_global_consts() {
     unsafe {
-        clock_ticks = sysconf(_SC_CLK_TCK) as uint;
+        clock_ticks = sysconf(_SC_CLK_TCK) as u64;
         boot_time =
             BufferedReader::new(
                 File::open(&Path::new("/proc/stat"))
@@ -378,8 +450,13 @@ fn main() {
 
     read_global_consts();
 
+    let mut action = print_tree;
+
     {
         let mut ap = ArgumentParser::new();
+        ap.refer(&mut action)
+            .add_option(["--json"], box StoreConst(print_json),
+                "Print big json instead human-readable tree");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {
             Ok(()) => {}
@@ -389,7 +466,7 @@ fn main() {
             }
         }
     }
-    match scan_processes() {
+    match scan_processes().and_then(|s| action(s)) {
         Ok(()) => {
             set_exit_status(0);
         }
