@@ -57,6 +57,10 @@ struct Process {
     start_time: u64,
     mem_rss: uint,
     mem_swap: uint,
+    user_time: u64,
+    system_time: u64,
+    child_user_time: u64,
+    child_system_time: u64,
     threads: uint,
     cmdline: Vec<String>,
 }
@@ -163,21 +167,35 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
     let mut f = BufferedReader::new(try!(File::open(
         &Path::new(format!("/proc/{}/stat", pid).as_slice()))));
     let line = try!(f.read_line());
-    let starttime_re = regex!(
+    let stat_re = regex!(
         // We parse bracketed executable and double-bracketed, still
         // if executable name itself contains bracket we would fail
         // But even if we fail, we get only start_time missed or incorrect
-        r"^\d+\s+(?:\([^)]*\)|\(\([^)]*\)\))(?:\s+(\S+)){20}\s+(\d+)\b");
+        concat!(r"^\d+",
+            r"\s+(?:\([^)]*\)|\(\([^)]*\)\))(?:\s+(\S+)){12}",
+            r"\s+(?P<utime>\d+)\s+(?P<stime>\d+)",
+            r"\s+(?P<cutime>\d+)\s+(?P<cstime>\d+)",
+            r"(?:\s+(\S+)){4}",
+            r"\s+(?P<start_time>\d+)\b"));
         // TODO(tailhook) we can get executable name from /status and match
         // it here, the executable in /status is escaped!
-    result.start_time = starttime_re
-        .captures(line.as_slice())
-        .map(|c| c.at(1))
-        .and_then(|v| FromStr::from_str(v))
-        .unwrap_or_else(|| {
+    match stat_re.captures(line.as_slice()) {
+        Some(c) => {
+            FromStr::from_str(c.name("start_time"))
+                .map(|v| result.start_time = v);
+            FromStr::from_str(c.name("utime"))
+                .map(|v| result.user_time = v);
+            FromStr::from_str(c.name("stime"))
+                .map(|v| result.system_time = v);
+            FromStr::from_str(c.name("cutime"))
+                .map(|v| result.child_user_time = v);
+            FromStr::from_str(c.name("cstime"))
+                .map(|v| result.child_system_time = v);
+        }
+        None => {
             warn!("Error getting start_time for pid {}", pid);
-            return 0;
-        });
+        }
+    }
 
     return Ok(result);
 }
@@ -403,6 +421,14 @@ fn print_json(scan: ScanResult) -> Result<(), IoError> {
                             json::U64(info.mem_swap as u64)),
                         ("start_time".to_string(),
                             json::U64(start_time_sec(child.start_time))),
+                        ("user_time".to_string(),
+                            json::U64(child.user_time)),
+                        ("system_time".to_string(),
+                            json::U64(child.system_time)),
+                        ("child_user_time".to_string(),
+                            json::U64(child.child_user_time)),
+                        ("child_system_time".to_string(),
+                            json::U64(child.child_system_time)),
                         ).into_iter().collect()));
                 }
             }
@@ -456,6 +482,8 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.refer(&mut action)
             .add_option(["--json"], box StoreConst(print_json),
+                "Print big json instead human-readable tree");
+            .add_option(["--monitor"], box StoreConst(print_json),
                 "Print big json instead human-readable tree");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {
