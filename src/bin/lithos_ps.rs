@@ -18,12 +18,14 @@ use std::os::args;
 use std::io::{stdout, stderr};
 use std::io::IoError;
 use std::io::fs::File;
+use std::io::timer::sleep;
 use std::from_str::FromStr;
 use std::io::fs::{readdir};
 use std::io::{BufferedReader, MemWriter};
 use std::os::{set_exit_status};
 use std::default::Default;
 use std::collections::{TreeMap, TreeSet};
+use std::time::duration::Duration;
 use time::get_time;
 use libc::pid_t;
 use libc::consts::os::sysconf::_SC_CLK_TCK;
@@ -454,6 +456,61 @@ fn print_json(scan: ScanResult) -> Result<(), IoError> {
         ).into_iter().collect())).as_slice());
 }
 
+fn monitor_changes(scan: ScanResult) -> Result<(), IoError> {
+    let mut old_scan = scan;
+    loop {
+        sleep(Duration::seconds(1));
+        let new_scan = try!(scan_processes());
+
+        let mut pids = vec!();
+        let mut names = vec!();
+        //let cpus = Vec<f32>;
+        let mut mem = vec!();
+        let mut threads = vec!();
+        let mut processes = vec!();
+
+        {
+        let ref children = new_scan.children;
+        let ref roots = new_scan.roots;
+
+        for root in roots.iter() {
+            if let Some(Tree(ref cfg_file)) = root.lithos_info {
+            } else {
+                continue;
+            };
+            for prc in children.find(&root.pid).unwrap_or(&Vec::new()).iter() {
+                let name = if let Some(Knot(ref name)) = prc.lithos_info {
+                    name
+                } else {
+                    continue;
+                };
+                if let Some(knot_children) = children.find(&prc.pid) {
+                    for child in knot_children.iter() {
+                        let mut info: KnotTotals = Default::default();
+                        info._add_process(&**child, children);
+                        pids.push(child.pid as uint);
+                        names.push(name.clone());
+                        mem.push(info.mem_rss + info.mem_swap);
+                        threads.push(info.threads);
+                        processes.push(info.processes);
+                    }
+                }
+            }
+        }
+        }
+
+        ascii::render_table(&[
+            ("PID", ascii::Ordinal(pids)),
+            ("NAME", ascii::Text(names)),
+            ("THR", ascii::Ordinal(threads)),
+            ("PRC", ascii::Ordinal(processes)),
+            ("MEM", ascii::Bytes(mem)),
+            ]);
+
+        old_scan = new_scan;
+    }
+}
+
 fn read_global_consts() {
     unsafe {
         clock_ticks = sysconf(_SC_CLK_TCK) as u64;
@@ -472,8 +529,6 @@ fn read_global_consts() {
 
 fn main() {
 
-    signal::block_all();
-
     read_global_consts();
 
     let mut action = print_tree;
@@ -482,8 +537,8 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.refer(&mut action)
             .add_option(["--json"], box StoreConst(print_json),
-                "Print big json instead human-readable tree");
-            .add_option(["--monitor"], box StoreConst(print_json),
+                "Print big json instead human-readable tree")
+            .add_option(["--monitor"], box StoreConst(monitor_changes),
                 "Print big json instead human-readable tree");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {

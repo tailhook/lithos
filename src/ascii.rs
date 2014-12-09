@@ -1,6 +1,7 @@
 // This is a part of lithos_ps not lithos library
 use std::io::IoError;
 use std::io::Writer;
+use std::cmp::max;
 use std::fmt::Show;
 
 
@@ -18,6 +19,13 @@ pub struct ColorPrinter(pub String);
 pub struct TreeNode {
     pub head: String,
     pub children: Vec<TreeNode>,
+}
+
+pub enum Column {
+    Text(Vec<String>),
+    Bytes(Vec<uint>),
+    Ordinal(Vec<uint>),
+    Percent(Vec<f32>),
 }
 
 
@@ -113,6 +121,61 @@ impl TreeNode {
 
 }
 
+pub fn render_table(columns: &[(&'static str, Column)]) {
+    let mut out_cols = Vec::new();
+    for &(ref title, ref col) in columns.iter() {
+        match *col {
+            Bytes(ref items) => {
+                let max = items.iter().max().map(|&x| x).unwrap_or(1);
+                let (k, unit) = match max {
+                    1 ... 10240 => (1f64, "B"),
+                    10241 ... 10485760 => (1024f64, "kiB"),
+                    10485761 ... 10737418240 => (1048576f64, "MiB"),
+                    _ => (1073741824f64, "GiB"),
+                };
+                let mut values = vec!(format!("{1:>0$}", 7+unit.len(), title));
+                values.extend(items.iter().map(
+                    |x| format!("{:7.1f}{}", (*x as f64) / k, unit)));
+                values.reverse();
+                out_cols.push(values);
+            }
+            Text(ref items) => {
+                let maxlen = max(3,
+                    items.iter().map(|x| x.len()).max().unwrap_or(3));
+                let mut values = vec!(format!("{1:<0$}", maxlen, title));
+                values.extend(items.iter().map(
+                    |x| format!("{1:<0$}", maxlen, *x)));
+                values.reverse();
+                out_cols.push(values);
+            }
+            Ordinal(ref items) => {
+                let maxlen = max(3, items.iter().map(
+                    |x| format!("{}", x).len()).max().unwrap_or(3));
+                let mut values = vec!(format!("{1:>0$}", maxlen, title));
+                values.extend(items.iter().map(
+                    |x| format!("{1:0$}", maxlen, *x)));
+                values.reverse();
+                out_cols.push(values);
+            }
+            Percent(ref items) => {
+                let mut values = vec!(format!("{:>5}", title));
+                values.extend(items.iter().map(
+                    |x| format!("{:>5.1f}", *x)));
+                values.reverse();
+                out_cols.push(values);
+            }
+        }
+    }
+    loop {
+        for ref mut lst in out_cols.iter_mut() {
+            if lst.len() == 0 {
+                return;
+            }
+            print!("{} ", lst.pop().unwrap());
+        }
+        println!("");
+    }
+}
 
 #[cfg(test)]
 mod test {
