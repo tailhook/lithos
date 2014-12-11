@@ -138,7 +138,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
     match lnk.as_ref().map(|f| f.dirname()) {
         Ok(b".") => {},
         _ => return Err(format!(concat!(
-            "The path {} must be a directory which points to the directory ",
+            "The path {} must be a symlink which points to the directory ",
             "at the same level of hierarchy."), tree.config_dir.display())),
     };
     if lnk.unwrap().filename() == target_fn.filename() {
