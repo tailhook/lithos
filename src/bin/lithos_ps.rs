@@ -17,6 +17,7 @@ use std::rc::Rc;
 use std::os::args;
 use std::io::{stdout, stderr};
 use std::io::IoError;
+use std::mem::swap;
 use std::io::fs::File;
 use std::io::timer::sleep;
 use std::from_str::FromStr;
@@ -34,9 +35,6 @@ use serialize::json;
 
 use argparse::{ArgumentParser, StoreConst};
 
-use ascii::Printer;
-use lithos::signal;
-
 #[allow(dead_code, unused_attribute)] mod lithos_tree;
 #[allow(dead_code, unused_attribute)] mod lithos_knot;
 
@@ -45,10 +43,14 @@ use lithos::signal;
 static mut boot_time: u64 = 0;
 static mut clock_ticks: u64 = 100;
 
+struct Options {
+    printer_factory: ascii::PrinterFactory,
+}
+
 #[deriving(PartialEq, Eq, PartialOrd, Ord)]
 enum LithosInfo {
-    Tree(Path),
-    Knot(String),
+    TreeInfo(Path),
+    KnotInfo(String, String, uint),
 }
 
 #[deriving(Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -67,17 +69,59 @@ struct Process {
     cmdline: Vec<String>,
 }
 
-struct ScanResult {
-    children: TreeMap<pid_t, Vec<Rc<Process>>>,
-    roots: TreeSet<Rc<Process>>,
+#[allow(dead_code)]  // sub-groups are unused, but will be in future
+struct Group {
+    totals: GroupTotals,
+    head: Rc<Process>,
+    groups: Vec<Group>,
+}
+
+#[allow(dead_code)]  // index is not used yet
+struct Instance {
+    name: String,
+    index: uint,
+    knot_pid: i32,
+    totals: GroupTotals,
+    heads: Vec<Group>,
 }
 
 #[deriving(Default)]
-struct KnotTotals {
-    mem_rss: uint,
-    mem_swap: uint,
+struct Child {
+    totals: GroupTotals,
+    instances: TreeMap<uint, Instance>,
+}
+
+#[deriving(Default)]
+struct Tree {
+    totals: GroupTotals,
+    children: TreeMap<String, Child>,
+}
+
+struct Master {
+    pid: pid_t,
+    config: Path,
+    totals: GroupTotals,
+    trees: TreeMap<String, Tree>,
+}
+
+#[allow(dead_code)]  // totals will be used soon
+struct ScanResult {
+    masters: TreeMap<pid_t, Master>,
+    totals: GroupTotals,
+}
+
+#[deriving(Default)]
+struct GroupTotals {
     processes: uint,
     threads: uint,
+    memory: uint,
+    mem_rss: uint,
+    mem_swap: uint,
+    cpu_time: u64,
+    user_time: u64,
+    system_time: u64,
+    child_user_time: u64,
+    child_system_time: u64,
 }
 
 fn parse_mem_size(value: &str) -> uint {
@@ -111,17 +155,25 @@ fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
     let mut out = MemWriter::new();
     let mut err = MemWriter::new();
     lithos_tree::Options::parse_specific_args(args, &mut out, &mut err)
-        .map(|opt| Tree(opt.config_file))
+        .map(|opt| TreeInfo(opt.config_file))
         .map_err(|_| debug!("Can't parse lithos_tree cmdline for {}", pid))
 }
 
 fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
+    let fullname_re = regex!(r"^([\w-]+)/([\w-]+)\.(\d+)$");
     let args = cmdline.clone();
     let mut out = MemWriter::new();
     let mut err = MemWriter::new();
-    lithos_knot::Options::parse_specific_args(args, &mut out, &mut err)
-        .map(|opt| Knot(opt.name))
-        .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid))
+    let opt = try!(
+        lithos_knot::Options::parse_specific_args(args, &mut out, &mut err)
+        .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid)));
+    fullname_re.captures(opt.name.as_slice())
+        .map(|c| KnotInfo(
+            c.at(1).to_string(),
+            c.at(2).to_string(),
+            FromStr::from_str(c.at(3)).unwrap()
+        ))
+        .ok_or(())
 }
 
 fn read_process(pid: pid_t) -> Result<Process, IoError> {
@@ -174,10 +226,10 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
         // if executable name itself contains bracket we would fail
         // But even if we fail, we get only start_time missed or incorrect
         concat!(r"^\d+",
-            r"\s+(?:\([^)]*\)|\(\([^)]*\)\))(?:\s+(\S+)){12}",
+            r"\s+(?:\([^)]*\)|\(\([^)]*\)\))(?:\s+\S+){11}",
             r"\s+(?P<utime>\d+)\s+(?P<stime>\d+)",
             r"\s+(?P<cutime>\d+)\s+(?P<cstime>\d+)",
-            r"(?:\s+(\S+)){4}",
+            r"(?:\s+\S+){4}",
             r"\s+(?P<start_time>\d+)\b"));
         // TODO(tailhook) we can get executable name from /status and match
         // it here, the executable in /status is escaped!
@@ -202,19 +254,33 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
     return Ok(result);
 }
 
-impl KnotTotals {
-    fn _add_process(&mut self, prc: &Process,
-        children: &TreeMap<pid_t, Vec<Rc<Process>>>)
-    {
-        self.mem_rss += prc.mem_rss;
-        self.mem_swap += prc.mem_swap;
-        self.processes += 1;
-        self.threads += prc.threads;
-        if let Some(ref lst) = children.find(&prc.pid) {
-            for prc in lst.iter() {
-                self._add_process(&**prc, children);
-            }
-        }
+impl GroupTotals {
+    fn new(prc: &Process) -> GroupTotals {
+        return GroupTotals {
+            processes: 1,
+            threads: prc.threads,
+            memory: prc.mem_rss + prc.mem_swap,
+            mem_rss: prc.mem_rss,
+            mem_swap: prc.mem_swap,
+            cpu_time: prc.user_time + prc.system_time +
+                      prc.child_user_time + prc.child_system_time,
+            user_time: prc.user_time,
+            system_time: prc.system_time,
+            child_user_time: prc.child_user_time,
+            child_system_time: prc.child_system_time,
+        };
+    }
+    fn add_group(&mut self, group: &GroupTotals) {
+        self.processes += group.processes;
+        self.threads += group.threads;
+        self.memory += group.memory;
+        self.mem_rss += group.mem_rss;
+        self.mem_swap += group.mem_swap;
+        self.cpu_time += group.cpu_time;
+        self.user_time += group.user_time;
+        self.system_time += group.system_time;
+        self.child_user_time += group.child_user_time;
+        self.child_system_time += group.child_system_time;
     }
 }
 
@@ -251,8 +317,24 @@ fn format_memory(mem: uint) -> String {
     }
 }
 
-fn subtree_name(fullname: &String) -> Option<String> {
-    fullname.as_slice().as_slice().splitn(1, '/').next().map(|x| x.to_string())
+fn _scan_group(head: Rc<Process>,
+    all_children: &TreeMap<pid_t, Vec<Rc<Process>>>)
+    -> Group
+{
+    let mut totals = GroupTotals::new(&*head);
+    let mut groups = vec!();
+    if let Some(children) = all_children.find(&head.pid) {
+        for child in children.iter() {
+            let grp = _scan_group(child.clone(), all_children);
+            totals.add_group(&grp.totals);
+            groups.push(grp);
+        }
+    }
+    return Group {
+        totals: totals,
+        head: head,
+        groups: groups,
+    };
 }
 
 fn scan_processes() -> Result<ScanResult, IoError>
@@ -267,7 +349,7 @@ fn scan_processes() -> Result<ScanResult, IoError>
         match read_process(pid) {
             Ok(prc) => {
                 let prc = Rc::new(prc);
-                if let Some(Tree(_)) = prc.lithos_info {
+                if let Some(TreeInfo(_)) = prc.lithos_info {
                     roots.insert(prc.clone());
                 }
                 if let Some(vec) = children.find_mut(&prc.parent_id) {
@@ -281,111 +363,157 @@ fn scan_processes() -> Result<ScanResult, IoError>
             }
         }
     }
+
+    let mut masters = TreeMap::new();
+    let mut totals: GroupTotals = Default::default();
+
+    for root in roots.iter() {
+        let cfg_file = if let Some(TreeInfo(ref cfg_file)) = root.lithos_info {
+            cfg_file
+        } else {
+            continue;
+        };
+        let mut trees = TreeMap::<String, Tree>::new();
+        let mut mtotals: GroupTotals = Default::default();
+        for prc in children.find(&root.pid).unwrap_or(&Vec::new()).iter() {
+            if let Some(KnotInfo(ref sub, ref name, idx)) = prc.lithos_info {
+                let mut heads = vec!();
+                let mut ktotals: GroupTotals = Default::default();
+                if let Some(knot_children) = children.find(&prc.pid) {
+                    for child in knot_children.iter() {
+                        let grp = _scan_group(child.clone(), &children);
+                        ktotals.add_group(&grp.totals);
+                        heads.push(grp);
+                    }
+                }
+                mtotals.add_group(&ktotals);
+                if !trees.contains_key(sub) {
+                    trees.insert(sub.clone(), Default::default());
+                }
+                trees.find_mut(sub).map(|ref mut tree| {
+                    tree.totals.add_group(&ktotals);
+                    if !tree.children.contains_key(name) {
+                        tree.children.insert(name.clone(), Default::default());
+                    }
+                    tree.children.find_mut(name).map(|ref mut child| {
+                        let mut nheads = vec!();
+                        swap(&mut nheads, &mut heads);
+                        child.totals.add_group(&ktotals);
+                        child.instances.insert(idx, Instance {
+                            name: format!("{}/{}.{}", sub, name, idx),
+                            knot_pid: prc.pid,
+                            index: idx,
+                            totals: ktotals,
+                            heads: nheads,
+                        });
+                    });
+                });
+            }
+        }
+        totals.add_group(&mtotals);
+        masters.insert(root.pid, Master {
+            pid: root.pid,
+            config: cfg_file.clone(),
+            trees: trees,
+            totals: mtotals,
+            });
+    }
+
     return Ok(ScanResult {
-        children: children,
-        roots: roots,
+        masters: masters,
+        totals: totals,
     });
 }
 
-fn print_tree(scan: ScanResult) -> Result<(), IoError> {
-    let children = scan.children;
-    let roots = scan.roots;
+fn print_instance(inst: &Instance, opt: &Options) -> ascii::TreeNode {
+    let label = if inst.heads.len() == 1 {
+        let ref prc = inst.heads[0].head;
+        opt.printer_factory.new()
+            .green(&prc.pid)
+            .norm(&inst.name)
+            .blue(&format_uptime(prc.start_time))
+            .blue(&format!("[{}/{}]",
+                           inst.totals.processes,
+                           inst.totals.threads))
+            .blue(&format_memory(inst.totals.memory))
+            .unwrap()
+    } else {
+        let mut prn = opt.printer_factory.new()
+            .red(&format!("({})", inst.knot_pid))
+            .norm(&inst.name);
+        if inst.heads.len() == 0 {
+            prn = prn.red(&"<failing>".to_string());
+        } else {
+            prn = prn
+                .red(&format!("<{}>", inst.heads.len()))
+                .blue(&format!("[{}/{}]",
+                               inst.totals.processes,
+                               inst.totals.threads))
+                .blue(&format_memory(inst.totals.memory))
+        }
+        prn.unwrap()
+    };
+    return ascii::TreeNode {
+        head: label,
+        children: vec!(),  // TODO(tailhook) deeper aggregation
+    };
+}
+
+fn print_child(name: &String, child: &Child, opt: &Options)
+    -> ascii::TreeNode
+{
+    return ascii::TreeNode {
+        head: opt.printer_factory.new()
+            .norm(name)
+            .blue(&format!("[{}/{}]",
+                           child.totals.processes,
+                           child.totals.threads))
+            .blue(&format_memory(child.totals.memory))
+            .unwrap(),
+        children: child.instances.iter()
+                  .map(|(_, inst)| print_instance(inst, opt))
+                  .collect(),
+    };
+}
+
+fn print_tree(name: &String, tree: &Tree, opt: &Options) -> ascii::TreeNode {
+    let children = tree.children.iter()
+                  .map(|(name, child)| print_child(name, child, opt))
+                  .collect();
+    return ascii::TreeNode {
+        head: opt.printer_factory.new()
+            .norm(name)
+            .blue(&format!("[{}/{}]",
+                           tree.totals.processes,
+                           tree.totals.threads))
+            .blue(&format_memory(tree.totals.memory))
+            .unwrap(),
+        children: children,
+    };
+}
+
+fn print_full_tree(scan: ScanResult, opt: &Options) -> Result<(), IoError> {
 
     let mut trees: Vec<ascii::TreeNode> = vec!();
-    let mut out = stdout();
 
-    for root in roots.iter() {
-        if let Some(Tree(ref cfg_file)) = root.lithos_info {
-            let mut subtrees = TreeMap::new();
-            for prc in children.find(&root.pid).unwrap_or(&Vec::new())
-                .iter()
-            {
-                let name = if let Some(Knot(ref name)) = prc.lithos_info {
-                    name
-                } else {
-                    continue;
-                };
-                let subname = if let Some(subname) = subtree_name(name) {
-                    subname
-                } else {
-                    warn!("Wrong child name {}", name);
-                    continue;
-                };
-                let mut subtree = subtrees.pop(&subname).unwrap_or(vec!());
-
-                if let Some(knot_children) = children.find(&prc.pid) {
-                    if knot_children.len() == 1 {
-                        let child = &knot_children[0];
-                        let mut info: KnotTotals = Default::default();
-                        info._add_process(&**child, &children);
-                        subtree.push(ascii::TreeNode {
-                            head: ascii::ColorPrinter("".to_string())
-                                .green(&child.pid)
-                                .norm(name)
-                                .blue(&format_uptime(child.start_time))
-                                .blue(&format!("[{}/{}]",
-                                              info.processes,
-                                              info.threads))
-                                .blue(&format_memory(
-                                    info.mem_rss + info.mem_swap))
-                                .unwrap(),
-                            children: vec!(),
-                        });
-                    } else {
-                        let mut processes = vec!();
-                        for child in knot_children.iter() {
-                            let mut info: KnotTotals = Default::default();
-                            info._add_process(&**child, &children);
-                            processes.push(ascii::TreeNode {
-                                head: ascii::ColorPrinter("".to_string())
-                                    .green(&child.pid)
-                                    .norm(name)
-                                    .blue(&format_uptime(child.start_time))
-                                    .blue(&format!("[{}/{}]",
-                                                  info.processes,
-                                                  info.threads))
-                                    .blue(&format_memory(
-                                        info.mem_rss + info.mem_swap))
-                                    .unwrap(),
-                                children: vec!(),
-                            });
-                        }
-                        subtree.push(ascii::TreeNode {
-                            head: ascii::ColorPrinter("".to_string())
-                                .red(&format!("({})", prc.pid))
-                                .norm(name)
-                                .blue(&format!("[multiple]"))
-                                .unwrap(),
-                            children: processes,
-                        });
-                    }
-                } else {
-                    subtree.push(ascii::TreeNode {
-                        head: ascii::ColorPrinter("".to_string())
-                            .red(&format!("({})", prc.pid))
-                            .norm(name)
-                            .red(&format!("[failing]"))
-                            .unwrap(),
-                        children: vec!(),
-                    });
-                }
-                subtrees.insert(subname, subtree);
-            }
-            trees.push(ascii::TreeNode {
-                head: ascii::ColorPrinter("".to_string())
-                    .blue(&root.pid)
-                    .norm(&"tree".to_string())
-                    .blue(&cfg_file.display())
-                    .unwrap(),
-                children: subtrees.into_iter().map(|(key, val)|
-                    ascii::TreeNode {
-                        head: key,
-                        children: val,
-                    }).collect(),
-            });
-        }
+    for (pid, ref master) in scan.masters.iter() {
+        trees.push(ascii::TreeNode {
+            head: opt.printer_factory.new()
+                .blue(pid)
+                .norm(&"tree".to_string())
+                .blue(&master.config.display())
+                .blue(&format!("[{}/{}]",
+                               master.totals.processes,
+                               master.totals.threads))
+                .blue(&format_memory(master.totals.memory))
+                .unwrap(),
+            children: master.trees.iter()
+                .map(|(name, tree)| print_tree(name, tree, opt))
+                .collect(),
+        });
     }
 
+    let mut out = stdout();
     for tree in trees.iter() {
         try!(tree.print(&mut out));
     }
@@ -393,57 +521,50 @@ fn print_tree(scan: ScanResult) -> Result<(), IoError> {
     return Ok(());
 }
 
-fn print_json(scan: ScanResult) -> Result<(), IoError> {
-    let children = scan.children;
-    let roots = scan.roots;
+fn print_json(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
     let mut trees = vec!();
 
-    for root in roots.iter() {
-        let cfg_file = if let Some(Tree(ref cfg_file)) = root.lithos_info {
-            cfg_file
-        } else {
-            continue;
-        };
+    for (_, master) in scan.masters.iter() {
         let mut knots = vec!();
-        for prc in children.find(&root.pid).unwrap_or(&Vec::new()).iter() {
+        for (_, instance) in master.trees.iter()
+            .flat_map(|(_, tree)| tree.children.iter())
+            .flat_map(|(_, child)| child.instances.iter())
+        {
             let mut processes = vec!();
-            if let Some(knot_children) = children.find(&prc.pid) {
-                for child in knot_children.iter() {
-                    let mut info: KnotTotals = Default::default();
-                    info._add_process(&**child, &children);
-                    processes.push(json::Object(vec!(
-                        ("pid".to_string(), json::U64(prc.pid as u64)),
-                        ("processes".to_string(),
-                            json::U64(info.processes as u64)),
-                        ("threads".to_string(),
-                            json::U64(info.threads as u64)),
-                        ("mem_rss".to_string(),
-                            json::U64(info.mem_rss as u64)),
-                        ("mem_swap".to_string(),
-                            json::U64(info.mem_swap as u64)),
-                        ("start_time".to_string(),
-                            json::U64(start_time_sec(child.start_time))),
-                        ("user_time".to_string(),
-                            json::U64(child.user_time)),
-                        ("system_time".to_string(),
-                            json::U64(child.system_time)),
-                        ("child_user_time".to_string(),
-                            json::U64(child.child_user_time)),
-                        ("child_system_time".to_string(),
-                            json::U64(child.child_system_time)),
-                        ).into_iter().collect()));
-                }
+            for grp in instance.heads.iter() {
+                processes.push(json::Object(vec!(
+                    ("pid".to_string(), json::U64(grp.head.pid as u64)),
+                    ("processes".to_string(),
+                        json::U64(grp.totals.processes as u64)),
+                    ("threads".to_string(),
+                        json::U64(grp.totals.threads as u64)),
+                    ("mem_rss".to_string(),
+                        json::U64(grp.totals.mem_rss as u64)),
+                    ("mem_swap".to_string(),
+                        json::U64(grp.totals.mem_swap as u64)),
+                    ("start_time".to_string(),
+                        json::U64(start_time_sec(grp.head.start_time))),
+                    ("user_time".to_string(),
+                        json::U64(grp.totals.user_time)),
+                    ("system_time".to_string(),
+                        json::U64(grp.totals.system_time)),
+                    ("child_user_time".to_string(),
+                        json::U64(grp.totals.child_user_time)),
+                    ("child_system_time".to_string(),
+                        json::U64(grp.totals.child_system_time)),
+                    ).into_iter().collect()));
             }
             knots.push(json::Object(vec!(
-                ("pid".to_string(), json::U64(prc.pid as u64)),
-                ("ok".to_string(), json::Boolean(processes.len() == 1)),
+                ("name".to_string(), json::String(instance.name.to_string())),
+                ("pid".to_string(), json::U64(instance.knot_pid as u64)),
+                ("ok".to_string(), json::Boolean(instance.heads.len() == 1)),
                 ("processes".to_string(), json::List(processes)),
                 ).into_iter().collect()));
         }
         trees.push(json::Object(vec!(
-            ("pid".to_string(), json::U64(root.pid as u64)),
+            ("pid".to_string(), json::U64(master.pid as u64)),
             ("config".to_string(),
-                json::String(cfg_file.display().to_string())),
+                json::String(master.config.display().to_string())),
             ("children".to_string(),
                 json::List(knots)),
             ).into_iter().collect()));
@@ -456,58 +577,63 @@ fn print_json(scan: ScanResult) -> Result<(), IoError> {
         ).into_iter().collect())).as_slice());
 }
 
-fn monitor_changes(scan: ScanResult) -> Result<(), IoError> {
-    let mut old_scan = scan;
+fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
+    let mut old_children: TreeMap<String, Instance> = scan.masters.into_iter()
+        .flat_map(|(_, master)| master.trees.into_iter())
+        .flat_map(|(_, tree)| tree.children.into_iter())
+        .flat_map(|(_, child)| child.instances.into_iter())
+        .map(|(_, inst)| (inst.name.to_string(), inst))
+        .collect();
+    let mut old_time = get_time();
     loop {
         sleep(Duration::seconds(1));
-        let new_scan = try!(scan_processes());
+
+        let new_children: TreeMap<String, Instance> = try!(scan_processes())
+            .masters.into_iter()
+            .flat_map(|(_, master)| master.trees.into_iter())
+            .flat_map(|(_, tree)| tree.children.into_iter())
+            .flat_map(|(_, child)| child.instances.into_iter())
+            .map(|(_, inst)| (inst.name.to_string(), inst))
+            .collect();
+        let new_time = get_time();
+        let delta_ticks = ((new_time - old_time).num_milliseconds() as u64
+            * unsafe { clock_ticks }) as f32 / 1000f32;
 
         let mut pids = vec!();
         let mut names = vec!();
-        //let cpus = Vec<f32>;
+        let mut cpus = vec!();
         let mut mem = vec!();
         let mut threads = vec!();
         let mut processes = vec!();
-
-        {
-        let ref children = new_scan.children;
-        let ref roots = new_scan.roots;
-
-        for root in roots.iter() {
-            if let Some(Tree(ref cfg_file)) = root.lithos_info {
+        for (name, inst) in new_children.iter() {
+            if inst.heads.len() == 1 {
+                pids.push(inst.heads[0].head.pid as uint);
             } else {
-                continue;
-            };
-            for prc in children.find(&root.pid).unwrap_or(&Vec::new()).iter() {
-                let name = if let Some(Knot(ref name)) = prc.lithos_info {
-                    name
-                } else {
-                    continue;
-                };
-                if let Some(knot_children) = children.find(&prc.pid) {
-                    for child in knot_children.iter() {
-                        let mut info: KnotTotals = Default::default();
-                        info._add_process(&**child, children);
-                        pids.push(child.pid as uint);
-                        names.push(name.clone());
-                        mem.push(info.mem_rss + info.mem_swap);
-                        threads.push(info.threads);
-                        processes.push(info.processes);
-                    }
-                }
+                pids.push(0);
             }
-        }
+            let ticks = old_children.find(name)
+                .and_then(|old|
+                    inst.totals.cpu_time.checked_sub(&old.totals.cpu_time))
+                .unwrap_or(0);
+            names.push(inst.name.to_string());
+            cpus.push((ticks as f32/delta_ticks) * 100.);
+            threads.push(inst.totals.threads);
+            processes.push(inst.totals.processes);
+            mem.push(inst.totals.memory);
         }
 
+        print!("\x1b[2J\x1b[;H");
         ascii::render_table(&[
             ("PID", ascii::Ordinal(pids)),
             ("NAME", ascii::Text(names)),
+            ("CPU", ascii::Percent(cpus)),
             ("THR", ascii::Ordinal(threads)),
             ("PRC", ascii::Ordinal(processes)),
             ("MEM", ascii::Bytes(mem)),
             ]);
 
-        old_scan = new_scan;
+        old_children = new_children;
+        old_time = new_time;
     }
 }
 
@@ -531,7 +657,10 @@ fn main() {
 
     read_global_consts();
 
-    let mut action = print_tree;
+    let mut action = print_full_tree;
+    let mut options = Options {
+        printer_factory: ascii::Printer::factory(stdout().get_ref()),
+    };
 
     {
         let mut ap = ArgumentParser::new();
@@ -540,6 +669,13 @@ fn main() {
                 "Print big json instead human-readable tree")
             .add_option(["--monitor"], box StoreConst(monitor_changes),
                 "Print big json instead human-readable tree");
+        ap.refer(&mut options.printer_factory)
+            .add_option(["--force-color"],
+                box StoreConst(ascii::Printer::color_factory()),
+                "Force colors in output (in default mode only for now)")
+            .add_option(["--no-color"],
+                box StoreConst(ascii::Printer::plain_factory()),
+                "Don't use colors even for terminal output");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {
             Ok(()) => {}
@@ -549,7 +685,7 @@ fn main() {
             }
         }
     }
-    match scan_processes().and_then(|s| action(s)) {
+    match scan_processes().and_then(|s| action(s, &options)) {
         Ok(()) => {
             set_exit_status(0);
         }

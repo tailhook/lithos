@@ -1,20 +1,16 @@
 // This is a part of lithos_ps not lithos library
 use std::io::IoError;
 use std::io::Writer;
+use std::io::stdio::StdWriter;
 use std::cmp::max;
 use std::fmt::Show;
 
-
-pub trait Printer {
-    fn norm(self, &Show) -> Self;
-    fn red(self, val: &Show) -> Self { self.norm(val) }
-    fn blue(self, val: &Show) -> Self { self.norm(val) }
-    fn green(self, val: &Show) -> Self { self.norm(val) }
-    fn unwrap(self) -> String;
+pub struct Printer {
+    color: bool,
+    buf: String,
 }
 
-pub struct MonotonePrinter(pub String);
-pub struct ColorPrinter(pub String);
+pub struct PrinterFactory(bool);
 
 pub struct TreeNode {
     pub head: String,
@@ -28,64 +24,74 @@ pub enum Column {
     Percent(Vec<f32>),
 }
 
-
-impl Printer for MonotonePrinter {
-    fn norm<'x>(self, val: &Show) -> MonotonePrinter {
-        let MonotonePrinter(mut buf) = self;
-        if buf.len() > 0 {
-            buf.push(' ');
-        }
-        buf.push_str(val.to_string().as_slice());
-        return MonotonePrinter(buf);
-    }
-    fn unwrap(self) -> String {
-        let MonotonePrinter(buf) = self;
-        return buf;
+impl PrinterFactory {
+    pub fn new(&self) -> Printer {
+        let PrinterFactory(color) = *self;
+        return Printer {
+            color: color,
+            buf: "".to_string(),
+        };
     }
 }
 
-impl Printer for ColorPrinter {
-    fn norm(self, val: &Show) -> ColorPrinter {
-        let ColorPrinter(mut buf) = self;
-        if buf.len() > 0 {
-            buf.push(' ');
-        }
-        buf.push_str(val.to_string().as_slice());
-        return ColorPrinter(buf);
+impl Printer {
+    pub fn factory(wr: &StdWriter) -> PrinterFactory {
+        return PrinterFactory(wr.isatty());
     }
-    fn red(self, val: &Show) -> ColorPrinter {
-        let ColorPrinter(mut buf) = self;
-        if buf.len() > 0 {
-            buf.push(' ');
-        }
-        buf.push_str("\x1b[31m\x1b[1m");
-        buf.push_str(val.to_string().as_slice());
-        buf.push_str("\x1b[0m\x1b[22m");
-        return ColorPrinter(buf);
+    pub fn color_factory() -> PrinterFactory {
+        return PrinterFactory(true);
     }
-    fn blue(self, val: &Show) -> ColorPrinter {
-        let ColorPrinter(mut buf) = self;
-        if buf.len() > 0 {
-            buf.push(' ');
-        }
-        buf.push_str("\x1b[34m\x1b[1m");
-        buf.push_str(val.to_string().as_slice());
-        buf.push_str("\x1b[0m\x1b[22m");
-        return ColorPrinter(buf);
+    pub fn plain_factory() -> PrinterFactory {
+        return PrinterFactory(false);
     }
-    fn green(self, val: &Show) -> ColorPrinter {
-        let ColorPrinter(mut buf) = self;
-        if buf.len() > 0 {
-            buf.push(' ');
+    pub fn norm(mut self, val: &Show) -> Printer {
+        if self.buf.len() > 0 {
+            self.buf.push(' ');
         }
-        buf.push_str("\x1b[32m\x1b[1m");
-        buf.push_str(val.to_string().as_slice());
-        buf.push_str("\x1b[0m\x1b[22m");
-        return ColorPrinter(buf);
+        self.buf.push_str(val.to_string().as_slice());
+        return self;
     }
-    fn unwrap(self) -> String {
-        let ColorPrinter(buf) = self;
-        return buf;
+    pub fn red(mut self, val: &Show) -> Printer {
+        if self.buf.len() > 0 {
+            self.buf.push(' ');
+        }
+        if self.color {
+            self.buf.push_str("\x1b[31m\x1b[1m");
+        }
+        self.buf.push_str(val.to_string().as_slice());
+        if self.color {
+            self.buf.push_str("\x1b[0m\x1b[22m");
+        }
+        return self;
+    }
+    pub fn blue(mut self, val: &Show) -> Printer {
+        if self.buf.len() > 0 {
+            self.buf.push(' ');
+        }
+        if self.color {
+            self.buf.push_str("\x1b[34m\x1b[1m");
+        }
+        self.buf.push_str(val.to_string().as_slice());
+        if self.color {
+            self.buf.push_str("\x1b[0m\x1b[22m");
+        }
+        return self;
+    }
+    pub fn green(mut self, val: &Show) -> Printer {
+        if self.buf.len() > 0 {
+            self.buf.push(' ');
+        }
+        if self.color {
+           self. buf.push_str("\x1b[32m\x1b[1m");
+        }
+        self.buf.push_str(val.to_string().as_slice());
+        if self.color {
+            self.buf.push_str("\x1b[0m\x1b[22m");
+        }
+        return self;
+    }
+    pub fn unwrap(self) -> String {
+        return self.buf;
     }
 }
 
