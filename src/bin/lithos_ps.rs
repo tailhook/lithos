@@ -462,18 +462,22 @@ fn print_instance(inst: &Instance, opt: &Options) -> ascii::TreeNode {
 fn print_child(name: &String, child: &Child, opt: &Options)
     -> ascii::TreeNode
 {
-    return ascii::TreeNode {
-        head: opt.printer_factory.new()
-            .norm(name)
-            .blue(&format!("[{}/{}]",
-                           child.totals.processes,
-                           child.totals.threads))
-            .blue(&format_memory(child.totals.memory))
-            .unwrap(),
-        children: child.instances.iter()
-                  .map(|(_, inst)| print_instance(inst, opt))
-                  .collect(),
-    };
+    if child.instances.len() == 1 {
+        return print_instance(&child.instances[0], opt);
+    } else {
+        return ascii::TreeNode {
+            head: opt.printer_factory.new()
+                .norm(name)
+                .blue(&format!("[{}/{}]",
+                               child.totals.processes,
+                               child.totals.threads))
+                .blue(&format_memory(child.totals.memory))
+                .unwrap(),
+            children: child.instances.iter()
+                      .map(|(_, inst)| print_instance(inst, opt))
+                      .collect(),
+        };
+    }
 }
 
 fn print_tree(name: &String, tree: &Tree, opt: &Options) -> ascii::TreeNode {
