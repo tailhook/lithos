@@ -44,6 +44,7 @@ use lithos::monitor::{Monitor, Executor, Killed, Reboot};
 use lithos::container::Command;
 use lithos::utils::{clean_dir};
 use lithos::signal;
+use lithos::cgroup;
 
 
 struct Child {
@@ -123,6 +124,21 @@ fn check_master_config(cfg: &MasterConfig) -> Result<(), String> {
 fn global_init(master: &MasterConfig) -> Result<(), String> {
     try!(create_master_dirs(&*master));
     try!(check_process(&*master));
+    if let Some(ref name) = master.cgroup_name {
+        let default_controllers = &vec!(
+            "name".to_string(),
+            "cpu".to_string(),
+            "cpuacct".to_string(),
+            "memory".to_string(),
+            "blkio".to_string(),
+            );
+        let mut ctrs = &master.cgroup_controllers;
+        if ctrs.len() == 0 {
+            ctrs = default_controllers;
+        }
+        debug!("Setting up cgroup {} with controllers {}", name, ctrs);
+        try!(cgroup::ensure_in_group(name, ctrs));
+    }
     return Ok(());
 }
 

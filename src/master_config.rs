@@ -1,7 +1,7 @@
 use std::default::Default;
 use serialize::{Decoder};
 
-use quire::validate::{Validator, Structure};
+use quire::validate::{Validator, Structure, Sequence};
 use quire::validate::{Scalar};
 use super::utils::ensure_dir;
 
@@ -12,6 +12,8 @@ pub struct MasterConfig {
     pub state_dir: Path,
     pub mount_dir: Path,
     pub devfs_dir: Path,
+    pub cgroup_name: Option<String>,
+    pub cgroup_controllers: Vec<String>,
 }
 
 impl MasterConfig {
@@ -31,6 +33,13 @@ impl MasterConfig {
                 .. Default::default() } as Box<Validator>),
             ("devfs_dir".to_string(), box Scalar {
                 default: Some("/var/lib/lithos/dev".to_string()),
+                .. Default::default() } as Box<Validator>),
+            ("cgroup_name".to_string(), box Scalar {
+                default: Some("lithos.slice".to_string()),
+                .. Default::default() } as Box<Validator>),
+            ("cgroup_controllers".to_string(), box Sequence {
+                element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
                 .. Default::default() } as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
     }
