@@ -18,6 +18,7 @@ use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::signal;
+use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
@@ -125,6 +126,13 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
         .join(name.as_slice());
     try!(prepare_state_dir(state_dir, &local));
     try!(setup_filesystem(&master, &tree, &local, state_dir));
+    if let Some(cgroup_parent) = master.cgroup_name {
+        // Warning setting cgroup relative to it's own cgroup may not work
+        // if we ever want to restart lithos_knot in-place
+        try!(cgroup::ensure_in_group(
+            &(cgroup_parent + "/" + name.replace("/", ":") + ".scope"),
+            &master.cgroup_controllers));
+    }
 
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
     try!(change_root(&mount_dir, &mount_dir.join("tmp")));

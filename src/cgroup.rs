@@ -44,7 +44,7 @@ fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
         let group_path = Path::new(try!(chunks.next()
                                    .ok_or(format!("CGroup path expected")))
                                    .trim());
-        let grp = Rc::new(CGroupPath(group_name, group_path));
+        let grp = Rc::new(CGroupPath(group_name.clone(), group_path.clone()));
         res.all_groups.push(grp.clone());
         for name in names.split(',') {
             if !res.by_name.insert(name.to_string(), grp.clone()) {
@@ -58,19 +58,30 @@ fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
 pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
     -> Result<(), String>
 {
+    let default_controllers = vec!(
+        "name".to_string(),
+        "cpu".to_string(),
+        "cpuacct".to_string(),
+        "memory".to_string(),
+        "blkio".to_string(),
+        );
+    let controllers = if controllers.len() > 0
+        { controllers } else { &default_controllers };
+    debug!("Setting up cgroup {} with controllers {}", name, controllers);
     // TODO(tailhook) do we need to customize cgroup mount points?
     let cgroup_base = Path::new("/sys/fs/cgroup");
 
     let root_path = Path::new("/");
-    let root_grp = try!(parse_cgroups(Some(1)));
+
+    let parent_grp = try!(parse_cgroups(Some(1)));
     let old_grp = try!(parse_cgroups(None));
     let mypid = unsafe { getpid() };
 
     for ctr in controllers.iter() {
-        let CGroupPath(ref rfolder, ref rpath) = **root_grp.by_name.find(ctr)
-            .expect("CGroup name already checked");
+        let CGroupPath(ref rfolder, ref rpath) = **parent_grp.by_name.find(ctr)
+            .expect("CGroup name already checked");  // TODO ok_or
         let CGroupPath(ref ofolder, ref opath) = **old_grp.by_name.find(ctr)
-            .expect("CGroup old name already checked");
+            .expect("CGroup old name already checked");  // TODO ok_or
         if ofolder != rfolder {
             return Err(format!("Init process has CGroup hierarchy different \
                                 from ours, we can't setup CGroups in any \
