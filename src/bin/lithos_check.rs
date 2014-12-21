@@ -162,10 +162,11 @@ fn check(config_file: Path, verbose: bool,
                 &*ContainerConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    error!(concat!("Can't read child config {}: {}.",
-                        "Sometimes the reason is absolute symlinks for config, ",
-                        "in that case it may work in real daemon, but better ",
-                        "fix it."), child_fn.display(), e);
+                    error!("Can't read child config {}: {}.\n\
+                        Sometimes the reason of reading configuration is \
+                        absolute symlinks for config, in that case it may \
+                        work in real daemon, but better fix it.",
+                        child_fn.display(), e);
                     set_exit_status(1);
                     continue;
                 }
