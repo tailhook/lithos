@@ -19,7 +19,7 @@ use std::io::fs::File;
 use std::os::{getenv, args};
 use std::io::stdio::{stdout, stderr};
 use std::from_str::FromStr;
-use std::io::fs::{readdir};
+use std::io::fs::{readdir, rmdir};
 use std::os::{set_exit_status, self_exe_path};
 use std::ptr::null;
 use std::time::Duration;
@@ -82,12 +82,7 @@ impl Executor for Child {
         return cmd;
     }
     fn finish(&self) -> bool {
-        let st_dir = self.master_config.runtime_dir
-            .join(&self.master_config.state_dir).join(self.name.as_slice());
-        clean_dir(&st_dir, true)
-            .map_err(|e| error!("Error removing state dir {}: {}",
-                                 self.name, e))
-            .ok();
+        cleanup_child(&*self.name, &*self.master_config);
         return true;
     }
 }
@@ -102,13 +97,23 @@ impl Executor for UnidentifiedChild {
         unreachable!();
     }
     fn finish(&self) -> bool {
-        let st_dir = self.master_config.runtime_dir
-            .join(&self.master_config.state_dir).join(self.name.as_slice());
-        clean_dir(&st_dir, true)
-            .map_err(|e| error!("Error removing state dir for {}: {}",
-                                 self.name, e))
-            .ok();
+        cleanup_child(&*self.name, &*self.master_config);
         return false;
+    }
+}
+
+fn cleanup_child(name: &String, master: &MasterConfig) {
+    let st_dir = master.runtime_dir
+        .join(&master.state_dir).join(name.as_slice());
+    clean_dir(&st_dir, true)
+        .map_err(|e| error!("Error removing state dir for {}: {}", name, e))
+        .ok();
+    if master.cgroup_name.is_some() {
+        let name = name.replace("/", ":") + ".scope";
+        cgroup::remove_child_cgroup(name.as_slice(),
+                                    &master.cgroup_controllers)
+            .map_err(|e| error!("Error removing cgroup: {}", e))
+            .ok();
     }
 }
 
@@ -255,7 +260,7 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
 
 fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
     for tree in readdir(&master.runtime_dir.join(&master.state_dir))
-        .map_err(|e| format!("Can't read state dir: {}", e))
+        .map_err(|e| error!("Can't read state dir: {}", e))
         .unwrap_or(Vec::new())
         .into_iter()
     {
@@ -306,6 +311,67 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
     }
 }
 
+fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
+    if master.cgroup_name.is_none() {
+        return;
+    }
+    let cgroups = match cgroup::parse_cgroups(None) {
+        Ok(cgroups) => cgroups,
+        Err(e) => {
+            error!("Can't parse my cgroups: {}", e);
+            return;
+        }
+    };
+    // TODO(tailhook) need to customize cgroup mount point?
+    let cgroup_base = Path::new("/sys/fs/cgroup");
+    let root_path = Path::new("/");
+    let child_group_regex = regex!(r"^([\w-]+):([\w-]+\.\d+)\.scope$");
+    let cgroup_filename = master.cgroup_name.as_ref().map(|x| x.as_slice());
+
+    // Loop over all containers in case someone have changed config
+    for cgrp in cgroups.all_groups.iter() {
+        let cgroup::CGroupPath(ref folder, ref path) = **cgrp;
+        let ctr_dir = cgroup_base.join(folder.as_slice()).join(
+            &path.path_relative_from(&root_path).unwrap());
+        if path.filename_str() == cgroup_filename {
+            debug!("Checking controller dir: {}", ctr_dir.display());
+        } else {
+            debug!("Skipping controller dir: {}", ctr_dir.display());
+            continue;
+        }
+        for child_dir in readdir(&ctr_dir)
+            .map_err(|e| debug!("Can't read controller {} dir: {}",
+                                ctr_dir.display(), e))
+            .unwrap_or(Vec::new())
+            .into_iter()
+        {
+            if !child_dir.is_dir() {
+                continue;
+            }
+            let filename = child_dir.filename_str();
+            if filename.is_none() {
+                warn!("Wrong filename in cgroup: {}", child_dir.display());
+                continue;
+            }
+            let capt = child_group_regex.captures(filename.unwrap());
+            if capt.is_none() {
+                warn!("Skipping wrong group {}", child_dir.display());
+                continue;
+            }
+            let capt = capt.unwrap();
+            let name = format!("{}/{}", capt.at(1), capt.at(2));
+            if !mon.has(&Rc::new(name)) {
+                if let Err(e) = rmdir(&child_dir) {
+                    let procs = File::open(&child_dir.join("cgroup.procs"))
+                        .and_then(|mut f| f.read_to_string());
+                    error!("Error removing cgroup: {} (processes {})",
+                        e, procs);
+                }
+            }
+        }
+    }
+}
+
 fn run(config_file: Path, bin: &Binaries) -> Result<(), String> {
     let master: Rc<MasterConfig> = Rc::new(try_str!(parse_config(&config_file,
         &*MasterConfig::validator(), Default::default())));
@@ -323,6 +389,9 @@ fn run(config_file: Path, bin: &Binaries) -> Result<(), String> {
 
     info!("Removing Dangling State Dirs");
     remove_dangling_state_dirs(&mon, &*master);
+
+    info!("Removing Dangling CGroups");
+    remove_dangling_cgroups(&mon, &*master);
 
     info!("Starting Processes");
     schedule_new_workers(&mut mon, configs);

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::io::BufferedReader;
-use std::io::fs::{File, mkdir};
+use std::io::fs::{File, mkdir, rmdir};
 use std::io::fs::PathExtensions;
 use std::io::{ALL_PERMISSIONS, Append, Write};
 use std::default::Default;
@@ -10,18 +10,17 @@ use libc::getpid;
 
 
 #[deriving(PartialEq, Eq, PartialOrd, Ord)]
-struct CGroupPath(String, Path);
+pub struct CGroupPath(pub String, pub Path);
 
 
 #[deriving(Default)]
-#[allow(dead_code)]  // all_groups is not used yet
-struct ParsedCGroups {
-    all_groups: Vec<Rc<CGroupPath>>,
-    by_name: TreeMap<String, Rc<CGroupPath>>,
+pub struct ParsedCGroups {
+    pub all_groups: Vec<Rc<CGroupPath>>,
+    pub by_name: TreeMap<String, Rc<CGroupPath>>,
 }
 
 
-fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
+pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
     let path = Path::new(pid.map(|x| format!("/proc/{}/cgroup", x))
                             .unwrap_or("/proc/self/cgroup".to_string()));
     let f = try!(File::open(&path)
@@ -78,10 +77,12 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
     let mypid = unsafe { getpid() };
 
     for ctr in controllers.iter() {
-        let CGroupPath(ref rfolder, ref rpath) = **parent_grp.by_name.find(ctr)
-            .expect("CGroup name already checked");  // TODO ok_or
-        let CGroupPath(ref ofolder, ref opath) = **old_grp.by_name.find(ctr)
-            .expect("CGroup old name already checked");  // TODO ok_or
+        let CGroupPath(ref rfolder, ref rpath) = **try!(
+            parent_grp.by_name.find(ctr)
+            .ok_or(format!("CGroup {} not mounted", ctr)));
+        let CGroupPath(ref ofolder, ref opath) = **try!(
+            old_grp.by_name.find(ctr)
+            .ok_or(format!("CGroup {} not mounted", ctr)));
         if ofolder != rfolder {
             return Err(format!("Init process has CGroup hierarchy different \
                                 from ours, we can't setup CGroups in any \
@@ -111,6 +112,39 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
              .map_err(|e| format!(
                 "Error adding myself (pid: {}) to the group {}: {}",
                 mypid, fullpath.display(), e)));
+    }
+    return Ok(());
+}
+
+pub fn remove_child_cgroup(child: &str, controllers: &Vec<String>)
+    -> Result<(), String>
+{
+    // TODO(tailhook) do we need to customize cgroup mount points?
+    let cgroup_base = Path::new("/sys/fs/cgroup");
+    let default_controllers = vec!(
+        "name".to_string(),
+        "cpu".to_string(),
+        "cpuacct".to_string(),
+        "memory".to_string(),
+        "blkio".to_string(),
+        );
+    let controllers = if controllers.len() > 0
+        { controllers } else { &default_controllers };
+    debug!("Removing cgroup {}", child);
+
+    let root_path = Path::new("/");
+    let my_grp = try!(parse_cgroups(None));
+
+    for ctr in controllers.iter() {
+        let CGroupPath(ref folder, ref gpath) = **my_grp.by_name.find(ctr)
+            .expect("CGroups already checked");
+        let fullpath = cgroup_base.join(folder.as_slice())
+            .join(&gpath.path_relative_from(&root_path).unwrap())
+            .join(child);
+        rmdir(&fullpath)
+            .map_err(|e| error!("Error removing cgroup {}: {}",
+                                fullpath.display(), e))
+            .ok();
     }
     return Ok(());
 }
