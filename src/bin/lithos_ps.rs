@@ -288,20 +288,23 @@ fn start_time_sec(start_ticks: u64) -> u64 {
     return unsafe { boot_time  + (start_ticks / clock_ticks) };
 }
 
-fn format_uptime(start_ticks: u64) -> String {
+fn format_uptime(prn: ascii::Printer, start_ticks: u64) -> ascii::Printer {
     let start_time = start_time_sec(start_ticks);
     let uptime = get_time().sec as u64 - start_time;
-    if uptime < 60 {
-        format!("{}s", uptime)
+    if uptime < 30 {
+        prn.red(&format!("{}s", uptime))
+    } else if uptime < 60 {
+        prn.blue(&format!("{}s", uptime))
     } else if uptime < 3600 {
-        format!("{}m{}s", uptime / 60, uptime % 60)
+        prn.blue(&format!("{}m{}s", uptime / 60, uptime % 60))
     } else if uptime < 86400 {
-        format!("{}h{}m{}s", uptime / 3600, (uptime / 60) % 60, uptime % 60)
+        prn.blue(&format!("{}h{}m{}s",
+            uptime / 3600, (uptime / 60) % 60, uptime % 60))
     } else if uptime < 3*86400 {
-        format!("{}d{}h{}m", uptime / 86400,
-            (uptime / 3600) % 24, (uptime / 60) % 60)
+        prn.blue(&format!("{}d{}h{}m", uptime / 86400,
+            (uptime / 3600) % 24, (uptime / 60) % 60))
     } else {
-        format!("{}days", uptime / 86400)
+        prn.blue(&format!("{}days", uptime / 86400))
     }
 }
 
@@ -431,7 +434,7 @@ fn print_instance(inst: &Instance, opt: &Options) -> ascii::TreeNode {
         opt.printer_factory.new()
             .green(&prc.pid)
             .norm(&inst.name)
-            .blue(&format_uptime(prc.start_time))
+            .map(|p| format_uptime(p, prc.start_time))
             .blue(&format!("[{}/{}]",
                            inst.totals.processes,
                            inst.totals.threads))

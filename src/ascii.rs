@@ -90,6 +90,9 @@ impl Printer {
         }
         return self;
     }
+    pub fn map(self, fun: |Printer| -> Printer) -> Printer {
+        fun(self)
+    }
     pub fn unwrap(self) -> String {
         return self.buf;
     }
