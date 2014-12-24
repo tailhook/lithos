@@ -15,7 +15,8 @@ use super::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
 use super::container_config::{Statedir};
 use super::container_config::{parse_volume};
 use super::child_config::ChildConfig;
-use super::utils::temporary_change_root;
+use super::utils::{temporary_change_root, clean_dir};
+use super::cgroup;
 
 
 fn map_dir(dir: &Path, dirs: &TreeMap<Path, Path>) -> Option<Path> {
@@ -137,4 +138,19 @@ pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
         parse_config(&Path::new(child_cfg.config.as_slice()),
             &*ContainerConfig::validator(), Default::default())
     });
+}
+
+pub fn clean_child(name: &String, master: &MasterConfig) {
+    let st_dir = master.runtime_dir
+        .join(&master.state_dir).join(name.as_slice());
+    clean_dir(&st_dir, true)
+        .map_err(|e| error!("Error removing state dir for {}: {}", name, e))
+        .ok();
+    if let Some(ref master_grp) = master.cgroup_name {
+        let cgname = name.replace("/", ":") + ".scope";
+        cgroup::remove_child_cgroup(cgname.as_slice(), master_grp,
+                                    &master.cgroup_controllers)
+            .map_err(|e| error!("Error removing cgroup: {}", e))
+            .ok();
+    }
 }

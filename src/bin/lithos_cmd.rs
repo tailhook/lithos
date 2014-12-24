@@ -22,6 +22,7 @@ use libc::funcs::posix88::unistd::getpid;
 use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
+use lithos::setup::clean_child;
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::{Command};
@@ -31,15 +32,16 @@ use lithos::monitor::{Monitor, Executor};
 use lithos::signal;
 
 
-struct Child {
+struct Child<'a> {
     name: Rc<String>,
     master_file: Path,
+    master_config: &'a MasterConfig,
     child_config_serialized: String,
     root_binary: Path,
     args: Vec<String>,
 }
 
-impl Executor for Child {
+impl<'a> Executor for Child<'a> {
     fn command(&self) -> Command
     {
         let mut cmd = Command::new((*self.name).clone(), &self.root_binary);
@@ -66,6 +68,7 @@ impl Executor for Child {
         return cmd;
     }
     fn finish(&self) -> bool {
+        clean_child(&*self.name, self.master_config);
         return false;  // Do not restart
     }
 }
@@ -110,6 +113,7 @@ fn run(master_cfg: Path, tree_name: String,
     mon.add(name.clone(), box Child {
         name: name,
         master_file: master_cfg,
+        master_config: &master,
         child_config_serialized: json::encode(&child_cfg),
         root_binary: self_exe_path().unwrap().join("lithos_knot"),
         args: args,

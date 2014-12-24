@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::io::BufferedReader;
 use std::io::fs::{File, mkdir, rmdir};
 use std::io::fs::PathExtensions;
-use std::io::{ALL_PERMISSIONS, Append, Write};
+use std::io::{ALL_PERMISSIONS, Append, Write, FileNotFound};
 use std::default::Default;
 use std::collections::TreeMap;
 use libc::pid_t;
@@ -116,7 +116,8 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
     return Ok(());
 }
 
-pub fn remove_child_cgroup(child: &str, controllers: &Vec<String>)
+pub fn remove_child_cgroup(child: &str, master: &String,
+    controllers: &Vec<String>)
     -> Result<(), String>
 {
     // TODO(tailhook) do we need to customize cgroup mount points?
@@ -133,17 +134,17 @@ pub fn remove_child_cgroup(child: &str, controllers: &Vec<String>)
     debug!("Removing cgroup {}", child);
 
     let root_path = Path::new("/");
-    let my_grp = try!(parse_cgroups(None));
+    let parent_grp = try!(parse_cgroups(Some(1)));
 
     for ctr in controllers.iter() {
-        let CGroupPath(ref folder, ref gpath) = **my_grp.by_name.find(ctr)
+        let CGroupPath(ref folder, ref path) = **parent_grp.by_name.find(ctr)
             .expect("CGroups already checked");
         let fullpath = cgroup_base.join(folder.as_slice())
-            .join(&gpath.path_relative_from(&root_path).unwrap())
-            .join(child);
+            .join(path.path_relative_from(&root_path).unwrap())
+            .join(master.as_slice()).join(child);
         rmdir(&fullpath)
-            .map_err(|e| error!("Error removing cgroup {}: {}",
-                                fullpath.display(), e))
+            .map_err(|e| if e.kind != FileNotFound {
+                error!("Error removing cgroup {}: {}", fullpath.display(), e)})
             .ok();
     }
     return Ok(());

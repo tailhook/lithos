@@ -36,6 +36,7 @@ use serialize::json;
 use argparse::{ArgumentParser, Store};
 use quire::parse_config;
 
+use lithos::setup::clean_child;
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
@@ -82,7 +83,7 @@ impl Executor for Child {
         return cmd;
     }
     fn finish(&self) -> bool {
-        cleanup_child(&*self.name, &*self.master_config);
+        clean_child(&*self.name, &*self.master_config);
         return true;
     }
 }
@@ -97,23 +98,8 @@ impl Executor for UnidentifiedChild {
         unreachable!();
     }
     fn finish(&self) -> bool {
-        cleanup_child(&*self.name, &*self.master_config);
+        clean_child(&*self.name, &*self.master_config);
         return false;
-    }
-}
-
-fn cleanup_child(name: &String, master: &MasterConfig) {
-    let st_dir = master.runtime_dir
-        .join(&master.state_dir).join(name.as_slice());
-    clean_dir(&st_dir, true)
-        .map_err(|e| error!("Error removing state dir for {}: {}", name, e))
-        .ok();
-    if master.cgroup_name.is_some() {
-        let name = name.replace("/", ":") + ".scope";
-        cgroup::remove_child_cgroup(name.as_slice(),
-                                    &master.cgroup_controllers)
-            .map_err(|e| error!("Error removing cgroup: {}", e))
-            .ok();
     }
 }
 
@@ -311,6 +297,15 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
     }
 }
 
+fn _rm_cgroup(dir: &Path) {
+    if let Err(e) = rmdir(dir) {
+        let procs = File::open(&dir.join("cgroup.procs"))
+            .and_then(|mut f| f.read_to_string());
+        error!("Error removing cgroup: {} (processes {})",
+            e, procs);
+    }
+}
+
 fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
     if master.cgroup_name.is_none() {
         return;
@@ -326,9 +321,10 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
     let cgroup_base = Path::new("/sys/fs/cgroup");
     let root_path = Path::new("/");
     let child_group_regex = regex!(r"^([\w-]+):([\w-]+\.\d+)\.scope$");
+    let cmd_group_regex = regex!(r"^([\w-]+):cmd\.[\w-]+\.(\d+)\.scope$");
     let cgroup_filename = master.cgroup_name.as_ref().map(|x| x.as_slice());
 
-    // Loop over all containers in case someone have changed config
+    // Loop over all controllers in case someone have changed config
     for cgrp in cgroups.all_groups.iter() {
         let cgroup::CGroupPath(ref folder, ref path) = **cgrp;
         let ctr_dir = cgroup_base.join(folder.as_slice()).join(
@@ -353,20 +349,20 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
                 warn!("Wrong filename in cgroup: {}", child_dir.display());
                 continue;
             }
-            let capt = child_group_regex.captures(filename.unwrap());
-            if capt.is_none() {
+            let filename = filename.unwrap();
+            if let Some(capt) = child_group_regex.captures(filename) {
+                let name = format!("{}/{}", capt.at(1), capt.at(2));
+                if !mon.has(&Rc::new(name)) {
+                    _rm_cgroup(&child_dir);
+                }
+            } else if let Some(capt) = cmd_group_regex.captures(filename) {
+                let pid = FromStr::from_str(capt.at(2));
+                if pid.is_none() || !signal::is_process_alive(pid.unwrap()) {
+                    _rm_cgroup(&child_dir);
+                }
+            } else {
                 warn!("Skipping wrong group {}", child_dir.display());
                 continue;
-            }
-            let capt = capt.unwrap();
-            let name = format!("{}/{}", capt.at(1), capt.at(2));
-            if !mon.has(&Rc::new(name)) {
-                if let Err(e) = rmdir(&child_dir) {
-                    let procs = File::open(&child_dir.join("cgroup.procs"))
-                        .and_then(|mut f| f.read_to_string());
-                    error!("Error removing cgroup: {} (processes {})",
-                        e, procs);
-                }
             }
         }
     }
