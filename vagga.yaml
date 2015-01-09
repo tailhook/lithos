@@ -10,6 +10,7 @@ commands:
     - --pkglicense=MIT
     - --pkgname=lithos
     - --nodoc
+    - --strip=no
     - make
     - -B
     - all
