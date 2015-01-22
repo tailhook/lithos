@@ -103,7 +103,7 @@ Reference
     of ``gethostname`` system call along with the ip address that name
     resolves into.
 
-    .. warning:: To make use of it you should symlink``ln -s
+    .. warning:: To make use of it you should symlink ``ln -s
        /state/hosts /etc/hosts`` in the container's image. It's
        done this way so you can introspect and presumably update
        ``hosts`` from the outside of container.
