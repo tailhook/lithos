@@ -108,7 +108,7 @@ impl ContainerConfig {
                 .. Default::default()} as Box<Validator>),
             ("executable".to_string(), box Scalar {
                 .. Default::default() } as Box<Validator>),
-            ("command".to_string(), box Sequence {
+            ("arguments".to_string(), box Sequence {
                 element: box Scalar {
                     .. Default::default() } as Box<Validator>,
                 .. Default::default() } as Box<Validator>),
