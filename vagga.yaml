@@ -1,6 +1,7 @@
 commands:
 
   build-ubuntu-package:
+    description: Build ubuntu (trusty) package
     container: ubuntu
     write-mode: transient-hard-link-copy
     command:
@@ -15,6 +16,19 @@ commands:
     - -B
     - all
     - install
+
+  docs:
+    description: Build HTML docs
+    container: docs
+    work-dir: docs
+    command: [make, html]
+
+  make-docs:
+    description: Build
+    container: ubuntu
+    work-dir: docs
+    command: [make]
+
 
 containers:
 
@@ -78,3 +92,8 @@ containers:
     tmpfs-volumes:
       /tmp: size=1m,mode=1777
       /var/tmp: size=100m,mode=1777
+
+  docs:
+    builder: alpine
+    parameters:
+      packages: py-sphinx make
