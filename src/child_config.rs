@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::comm::{channel, Empty};
 use std::from_str::FromStr;
 use std::default::Default;
 use serialize::Decodable;
@@ -41,8 +42,11 @@ impl FromStr for ChildConfig {
                 |doc| { quire::ast::process(Default::default(), doc) })
         .ok()
         .and_then(|(ast, _)| {
-            let mut dec = quire::decode::YamlDecoder::new(ast);
-            Decodable::decode(&mut dec).ok()
+            let (tx, rx) = channel();
+            let mut dec = quire::decode::YamlDecoder::new(ast, tx);
+            let res = Decodable::decode(&mut dec);
+            assert!(rx.try_recv().unwrap_err() == Empty);
+            res.ok()
         })
     }
 }
