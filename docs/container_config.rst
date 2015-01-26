@@ -128,7 +128,7 @@ Reference
     both visible or non-visible from the container itself)
 
 ``volumes``
-    The mapping of mountpoint to volume definition. See volumes_ for more
+    The mapping of mountpoint to volume definition. See :ref:`volumes` for more
     info
 
 
