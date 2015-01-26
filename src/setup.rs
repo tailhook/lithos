@@ -102,7 +102,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     return Ok(());
 }
 
-pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig)
+pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
+    tree: &TreeConfig)
     -> Result<(), String>
 {
     // TODO(tailhook) chown files
@@ -114,7 +115,9 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig)
         try_str!(copy(&Path::new("/etc/resolv.conf"),
                       &dir.join("resolv.conf")));
     }
-    if local.hosts_file.localhost || local.hosts_file.public_hostname {
+    if local.hosts_file.localhost || local.hosts_file.public_hostname
+        || tree.additional_hosts.len() > 0
+    {
         let fname = dir.join("hosts");
         let mut file = try_str!(File::create(&fname));
         if local.hosts_file.localhost {
@@ -125,6 +128,9 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig)
             try_str!(writeln!(file, "{} {}",
                 try_str!(get_host_ip()),
                 try_str!(get_host_name())));
+        }
+        for (ref host, ref ip) in tree.additional_hosts.iter() {
+            try_str!(writeln!(file, "{} {}", ip, host));
         }
         try_str!(chmod(&fname, USER_RWX|GROUP_READ|OTHER_READ));
     }

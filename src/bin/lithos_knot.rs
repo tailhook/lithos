@@ -124,7 +124,7 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(name.as_slice());
-    try!(prepare_state_dir(state_dir, &local));
+    try!(prepare_state_dir(state_dir, &local, &tree));
     try!(setup_filesystem(&master, &tree, &local, state_dir));
     if let Some(cgroup_parent) = master.cgroup_name {
         // Warning setting cgroup relative to it's own cgroup may not work

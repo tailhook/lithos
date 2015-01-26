@@ -56,6 +56,7 @@ pub struct TreeConfig {
     pub writable_paths: TreeMap<Path, Path>,
     pub allow_users: Vec<Range>,
     pub allow_groups: Vec<Range>,
+    pub additional_hosts: TreeMap<String, String>,
 }
 
 impl TreeConfig {
@@ -81,6 +82,12 @@ impl TreeConfig {
                 .. Default::default() } as Box<Validator>),
             ("allow_groups".to_string(), box Sequence {
                 element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+                .. Default::default() } as Box<Validator>),
+            ("additional_hosts".to_string(), box Mapping {
+                key_element: box Scalar {
+                    .. Default::default() } as Box<Validator>,
+                value_element: box Scalar {
                     .. Default::default() } as Box<Validator>,
                 .. Default::default() } as Box<Validator>),
         ), .. Default::default() } as Box<Validator>;
