@@ -35,6 +35,7 @@ impl MasterConfig {
                 default: Some("/var/lib/lithos/dev".to_string()),
                 .. Default::default() } as Box<Validator>),
             ("cgroup_name".to_string(), box Scalar {
+                optional: true,
                 default: Some("lithos.slice".to_string()),
                 .. Default::default() } as Box<Validator>),
             ("cgroup_controllers".to_string(), box Sequence {
