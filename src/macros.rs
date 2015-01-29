@@ -1,4 +1,7 @@
-#![macro_escape]
+#![macro_use]
+
+// Don't use these macros any more
+// TODO(pc) Remove these macros altogether
 
 #[macro_export]
 macro_rules! try_str {

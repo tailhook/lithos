@@ -1,6 +1,7 @@
 use std::rc::Rc;
-use std::comm::{channel, Empty};
-use std::from_str::FromStr;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::TryRecvError::Empty;
+use std::str::FromStr;
 use std::default::Default;
 use serialize::Decodable;
 
@@ -9,9 +10,9 @@ use quire;
 
 use super::container_config::ContainerKind;
 
-#[deriving(Decodable, Encodable, PartialEq)]
+#[derive(Decodable, Encodable, PartialEq)]
 pub struct ChildConfig {
-    pub instances: uint,
+    pub instances: usize,
     pub image: String,
     pub config: String,
     pub kind: ContainerKind,
@@ -19,18 +20,18 @@ pub struct ChildConfig {
 
 impl ChildConfig {
     pub fn validator<'x>() -> Box<Validator + 'x> {
-        return box Structure { members: vec!(
-            ("instances".to_string(), box Numeric {
-                default: Some(1u),
-                .. Default::default()} as Box<Validator>),
-            ("image".to_string(), box Scalar {
-                .. Default::default() } as Box<Validator>),
-            ("config".to_string(), box Scalar {
-                .. Default::default()} as Box<Validator>),
-            ("kind".to_string(), box Scalar {
+        return Box::new(Structure { members: vec!(
+            ("instances".to_string(), Box::new(Numeric {
+                default: Some(1us),
+                .. Default::default()}) as Box<Validator>),
+            ("image".to_string(), Box::new(Scalar {
+                .. Default::default() }) as Box<Validator>),
+            ("config".to_string(), Box::new(Scalar {
+                .. Default::default()}) as Box<Validator>),
+            ("kind".to_string(), Box::new(Scalar {
                 default: Some("Daemon".to_string()),
-                .. Default::default() } as Box<Validator>),
-        ), .. Default::default() } as Box<Validator>;
+                .. Default::default() }) as Box<Validator>),
+        ), .. Default::default() }) as Box<Validator>;
     }
 }
 

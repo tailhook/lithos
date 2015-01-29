@@ -1,18 +1,14 @@
-#![feature(phase, macro_rules, if_let)]
-
 extern crate serialize;
 extern crate libc;
-#[phase(plugin, link)] extern crate log;
+#[macro_use] extern crate log;
 extern crate regex;
-#[phase(plugin)] extern crate regex_macros;
-extern crate time;
-extern crate debug;
 
 extern crate argparse;
 extern crate quire;
-#[phase(plugin, link)] extern crate lithos;
+#[macro_use] extern crate lithos;
 
 
+use regex::Regex;
 use std::os::{getenv, setenv};
 use std::os::args;
 use std::io::fs::readdir;
@@ -77,7 +73,7 @@ fn check_tree_config(tree: &TreeConfig) {
 fn check(config_file: Path, verbose: bool,
     tree_name: Option<String>, replacement_dir: Option<Path>)
 {
-    let name_re = regex!(r"^([\w-]+)\.yaml$");
+    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let mut replacement_dir = replacement_dir;
     let master: MasterConfig = match parse_config(&config_file,
         &*MasterConfig::validator(), Default::default()) {
@@ -208,7 +204,7 @@ fn check(config_file: Path, verbose: bool,
         }
     }
     if replacement_dir.is_some() {
-        error!("Tree {} is not used", tree_name);
+        error!("Tree {:?} is not used", tree_name);
         set_exit_status(1);
     }
 }
@@ -246,23 +242,24 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut config_file)
-          .add_option(["-C", "--config"], box Store::<Path>,
+          .add_option(&["-C", "--config"], Box::new(Store::<Path>),
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
-          .add_option(["-v", "--verbose"], box StoreTrue,
+          .add_option(&["-v", "--verbose"], Box::new(StoreTrue),
             "Verbose configuration");
         ap.refer(&mut config_dir)
-          .add_option(["-D", "--dir", "--config-dir"], box StoreOption::<Path>,
-            concat!("Name of the alterate directory with configs. ",
-                    "Useful to test configuration directory before ",
-                    "switching it to be primary one. ",
-                    "You must also specify --tree."))
+          .add_option(&["-D", "--dir", "--config-dir"],
+            Box::new(StoreOption::<Path>),
+            "Name of the alterate directory with configs.
+             Useful to test configuration directory before
+             switching it to be primary one.
+             You must also specify --tree.")
           .metavar("DIR");
         ap.refer(&mut tree_name)
-          .add_option(["-T", "--tree", "--subtree-name"],
-            box StoreOption::<String>,
-            concat!("Name of the tree for which --config-dir takes effect"))
+          .add_option(&["-T", "--tree", "--subtree-name"],
+            Box::new(StoreOption::<String>),
+            "Name of the tree for which --config-dir takes effect")
           .metavar("NAME");
         match ap.parse_args() {
             Ok(()) => {}

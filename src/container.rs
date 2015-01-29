@@ -1,20 +1,22 @@
 #![allow(dead_code)]
 
-use std::c_str::{CString, ToCStr};
+use std::path::BytesContainer;
+use std::ffi::{CString};
 use std::ptr::null;
 use std::io::{IoError, Open, Write};
 use std::io::fs::File;
 use std::os::getcwd;
-use std::collections::TreeMap;
-use std::collections::enum_set::{EnumSet, CLike};
+use std::collections::BTreeMap;
+use collections::enum_set::{EnumSet, CLike};
 
 use libc::{c_int, c_char, pid_t};
 
 use super::pipe::CPipe;
 use super::signal;
 use super::container_config::IdMap;
+pub use self::Namespace::*;
 
-#[deriving(Show)]
+#[derive(Show)]
 enum Namespace {
     NewMount,
     NewUts,
@@ -25,7 +27,7 @@ enum Namespace {
 }
 
 impl CLike for Namespace {
-    fn to_uint(&self) -> uint {
+    fn to_uint(&self) -> usize {
         match *self {
             NewMount => 0,
             NewUts => 1,
@@ -35,7 +37,7 @@ impl CLike for Namespace {
             NewNet => 5,
         }
     }
-    fn from_uint(val: uint) -> Namespace {
+    fn from_uint(val: usize) -> Namespace {
         match val {
             0 => NewMount,
             1 => NewUts,
@@ -55,7 +57,7 @@ pub struct Command {
     old_root_relative: Option<CString>,
     executable: CString,
     arguments: Vec<CString>,
-    environment: TreeMap<String, String>,
+    environment: BTreeMap<String, String>,
     namespaces: EnumSet<Namespace>,
     restore_sigmask: bool,
     user_id: u32,
@@ -76,17 +78,18 @@ pub fn compile_map(src_map: &Vec<IdMap>) -> Vec<u8> {
 }
 
 impl Command {
-    pub fn new<T:ToCStr>(name: String, cmd: T) -> Command {
+    pub fn new(name: String, cmd: &Path) -> Command {
         return Command {
             name: name,
             chroot: None,
             tmp_old_root: None,
             old_root_relative: None,
-            workdir: getcwd().to_c_str(),
-            executable: cmd.to_c_str(),
-            arguments: vec!(cmd.to_c_str()),
-            namespaces: EnumSet::empty(),
-            environment: TreeMap::new(),
+            workdir: CString::from_slice(getcwd()
+                .unwrap().container_as_bytes()),
+            executable: CString::from_slice(cmd.container_as_bytes()),
+            arguments: vec!(CString::from_slice(cmd.container_as_bytes())),
+            namespaces: EnumSet::new(),
+            environment: BTreeMap::new(),
             restore_sigmask: true,
             user_id: 0,
             group_id: 0,
@@ -100,31 +103,33 @@ impl Command {
         self.group_id = gid;
     }
     pub fn chroot(&mut self, dir: &Path) {
-        self.chroot = Some(dir.to_c_str());
-        self.tmp_old_root = Some(dir.join("tmp").to_c_str());
-        self.old_root_relative = Some("/tmp".to_c_str());
+        self.chroot = Some(CString::from_slice(dir.container_as_bytes()));
+        self.tmp_old_root = Some(CString::from_slice(
+            dir.join("tmp").container_as_bytes()));
+        self.old_root_relative = Some(CString::from_slice("/tmp".as_bytes()));
     }
     pub fn set_workdir(&mut self, dir: &Path) {
-        self.workdir = dir.to_c_str();
+        self.workdir = CString::from_slice(dir.container_as_bytes());
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
     }
-    pub fn arg<T:ToCStr>(&mut self, arg: T) {
-        self.arguments.push(arg.to_c_str());
+    pub fn arg<T:BytesContainer>(&mut self, arg: T) {
+        self.arguments.push(CString::from_slice(arg.container_as_bytes()));
     }
-    pub fn args<T:ToCStr>(&mut self, arg: &[T]) {
-        self.arguments.extend(arg.iter().map(|v| v.to_c_str()));
+    pub fn args<T:BytesContainer>(&mut self, arg: &[T]) {
+        self.arguments.extend(arg.iter()
+            .map(|v| CString::from_slice(v.container_as_bytes())));
     }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
     }
     pub fn set_output(&mut self, filename: &Path) {
-        self.output = Some(filename.to_c_str());
+        self.output = Some(CString::from_slice(filename.container_as_bytes()));
     }
 
-    pub fn update_env<'x, I: Iterator<(&'x String, &'x String)>>(&mut self,
-        mut env: I)
+    pub fn update_env<'x, I: Iterator<Item=(&'x String, &'x String)>>(
+        &mut self, mut env: I)
     {
         for (k, v) in env {
             self.environment.insert(k.clone(), v.clone());
@@ -132,16 +137,16 @@ impl Command {
     }
 
     pub fn container(&mut self) {
-        self.namespaces.add(NewMount);
-        self.namespaces.add(NewUts);
-        self.namespaces.add(NewIpc);
-        self.namespaces.add(NewPid);
+        self.namespaces.insert(NewMount);
+        self.namespaces.insert(NewUts);
+        self.namespaces.insert(NewIpc);
+        self.namespaces.insert(NewPid);
     }
     pub fn mount_ns(&mut self) {
-        self.namespaces.add(NewMount);
+        self.namespaces.insert(NewMount);
     }
     pub fn user_ns(&mut self, uid_map: &Vec<IdMap>, gid_map: &Vec<IdMap>) {
-        self.namespaces.add(NewUser);
+        self.namespaces.insert(NewUser);
         self.uid_map = Some(compile_map(uid_map));
         self.gid_map = Some(compile_map(gid_map));
     }
@@ -150,16 +155,18 @@ impl Command {
             .map(|a| a.as_bytes().as_ptr()).collect();
         exec_args.push(null());
         let environ_cstr: Vec<CString> = self.environment.iter()
-            .map(|(k, v)| (*k + "=" + *v).to_c_str()).collect();
+            .map(|(k, v)| CString::from_slice(
+                            (k.clone() + "=" + v.as_slice()).as_bytes()))
+            .collect();
         let mut exec_environ: Vec<*const u8> = environ_cstr.iter()
             .map(|p| p.as_bytes().as_ptr()).collect();
         exec_environ.push(null());
 
         let pipe = try!(CPipe::new());
-        let logprefix = format!(
+        let logprefix = CString::from_slice(format!(
             // Only errors are logged from C code
             "ERROR:lithos::container.c: [{}]", self.name
-            ).to_c_str();
+            ).as_bytes());
         let pid = unsafe { execute_command(&CCommand {
             pipe_reader: pipe.reader_fd(),
             logprefix: logprefix.as_bytes().as_ptr(),
@@ -189,7 +196,7 @@ impl Command {
             return Err(IoError::last_error());
         }
         if let Err(e) = self._init_container(pid, &pipe) {
-            signal::send_signal(pid, signal::SIGKILL as int);
+            signal::send_signal(pid, signal::SIGKILL as isize);
             return Err(e);
         }
         return Ok(pid)
@@ -200,7 +207,8 @@ impl Command {
     {
         let pidstr = format!("{}", pid);
         let proc_path = match self.chroot {
-            Some(ref cstr) => Path::new(cstr.as_bytes_no_nul()).join("proc").join(pidstr),
+            Some(ref cstr) => Path::new(cstr.as_bytes())
+                              .join("proc").join(pidstr),
             None => Path::new("/proc").join(pidstr),
         };
         if let Some(ref data) = self.uid_map {

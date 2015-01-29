@@ -4,19 +4,19 @@ use std::io::fs::{File, mkdir, rmdir};
 use std::io::fs::PathExtensions;
 use std::io::{ALL_PERMISSIONS, Append, Write, FileNotFound};
 use std::default::Default;
-use std::collections::TreeMap;
+use std::collections::BTreeMap;
 use libc::pid_t;
 use libc::getpid;
 
 
-#[deriving(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct CGroupPath(pub String, pub Path);
 
 
-#[deriving(Default)]
+#[derive(Default)]
 pub struct ParsedCGroups {
     pub all_groups: Vec<Rc<CGroupPath>>,
-    pub by_name: TreeMap<String, Rc<CGroupPath>>,
+    pub by_name: BTreeMap<String, Rc<CGroupPath>>,
 }
 
 
@@ -46,7 +46,7 @@ pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
         let grp = Rc::new(CGroupPath(group_name.clone(), group_path.clone()));
         res.all_groups.push(grp.clone());
         for name in names.split(',') {
-            if !res.by_name.insert(name.to_string(), grp.clone()) {
+            if res.by_name.insert(name.to_string(), grp.clone()).is_some() {
                 return Err(format!("Duplicate CGroup encountered"));
             }
         }
@@ -66,7 +66,7 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
         );
     let controllers = if controllers.len() > 0
         { controllers } else { &default_controllers };
-    debug!("Setting up cgroup {} with controllers {}", name, controllers);
+    debug!("Setting up cgroup {} with controllers {:?}", name, controllers);
     // TODO(tailhook) do we need to customize cgroup mount points?
     let cgroup_base = Path::new("/sys/fs/cgroup");
 
@@ -78,10 +78,10 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
 
     for ctr in controllers.iter() {
         let CGroupPath(ref rfolder, ref rpath) = **try!(
-            parent_grp.by_name.find(ctr)
+            parent_grp.by_name.get(ctr)
             .ok_or(format!("CGroup {} not mounted", ctr)));
         let CGroupPath(ref ofolder, ref opath) = **try!(
-            old_grp.by_name.find(ctr)
+            old_grp.by_name.get(ctr)
             .ok_or(format!("CGroup {} not mounted", ctr)));
         if ofolder != rfolder {
             return Err(format!("Init process has CGroup hierarchy different \
@@ -108,7 +108,7 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
         }
         debug!("Adding task to cgroup {}", fullpath.display());
         try!(File::open_mode(&fullpath.join("tasks"), Append, Write)
-             .and_then(|mut f| write!(f, "{}", mypid))
+             .and_then(|mut f| write!(&mut f, "{}", mypid))
              .map_err(|e| format!(
                 "Error adding myself (pid: {}) to the group {}: {}",
                 mypid, fullpath.display(), e)));
@@ -137,7 +137,7 @@ pub fn remove_child_cgroup(child: &str, master: &String,
     let parent_grp = try!(parse_cgroups(Some(1)));
 
     for ctr in controllers.iter() {
-        let CGroupPath(ref folder, ref path) = **parent_grp.by_name.find(ctr)
+        let CGroupPath(ref folder, ref path) = **parent_grp.by_name.get(ctr)
             .expect("CGroups already checked");
         let fullpath = cgroup_base.join(folder.as_slice())
             .join(path.path_relative_from(&root_path).unwrap())

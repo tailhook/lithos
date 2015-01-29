@@ -2,7 +2,7 @@ use std::io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
 use std::io::fs::{File, copy, chmod, mkdir_recursive, chown};
 use std::io::fs::PathExtensions;
 use std::default::Default;
-use std::collections::TreeMap;
+use std::collections::BTreeMap;
 
 use quire::parse_config;
 
@@ -11,15 +11,15 @@ use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
 use super::tree_config::TreeConfig;
-use super::container_config::{ContainerConfig, Readonly, Persistent, Tmpfs};
-use super::container_config::{Statedir};
+use super::container_config::{ContainerConfig};
+use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
 use super::container_config::{parse_volume};
 use super::child_config::ChildConfig;
 use super::utils::{temporary_change_root, clean_dir};
 use super::cgroup;
 
 
-fn map_dir(dir: &Path, dirs: &TreeMap<Path, Path>) -> Option<Path> {
+fn map_dir(dir: &Path, dirs: &BTreeMap<Path, Path>) -> Option<Path> {
     assert!(dir.is_absolute());
     for (prefix, real_dir) in dirs.iter() {
         if prefix.is_ancestor_of(dir) {
@@ -78,7 +78,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 if !path.exists() {
                     try_str!(mkdir_recursive(&path, ALL_PERMISSIONS));
                     // TODO(tailhook) map actual user
-                    try_str!(chown(&path, local.user_id as int, -1));
+                    try_str!(chown(&path, local.user_id as isize, -1));
                 }
                 try!(bind_mount(&path, &dest));
             }
@@ -125,12 +125,12 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
                 "127.0.0.1 localhost.localdomain localhost\n"));
         }
         if local.hosts_file.public_hostname {
-            try_str!(writeln!(file, "{} {}",
+            try_str!(writeln!(&mut file, "{} {}",
                 try_str!(get_host_ip()),
                 try_str!(get_host_name())));
         }
         for (ref host, ref ip) in tree.additional_hosts.iter() {
-            try_str!(writeln!(file, "{} {}", ip, host));
+            try_str!(writeln!(&mut file, "{} {}", ip, host));
         }
         try_str!(chmod(&fname, USER_RWX|GROUP_READ|OTHER_READ));
     }

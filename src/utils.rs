@@ -1,39 +1,46 @@
+use std::ptr;
 use std::io::{IoError, PathAlreadyExists};
 use std::io::ALL_PERMISSIONS;
+use std::ffi::CString;
 use std::io::fs::{mkdir, readdir, rmdir_recursive, rmdir, unlink};
 use std::io::fs::PathExtensions;
 use std::os::getcwd;
+use std::path::BytesContainer;
 use libc::funcs::posix88::unistd::chdir;
-use libc::{c_int, c_char};
+use libc::{c_int, c_char, timeval, c_void};
 
 use super::tree_config::Range;
 use super::container_config::IdMap;
+
+pub type Time = f64;
 
 
 extern {
     fn chroot(dir: *const c_char) -> c_int;
     fn pivot_root(new_root: *const c_char, put_old: *const c_char) -> c_int;
+    fn gettimeofday(tp: *mut timeval, tzp: *mut c_void) -> c_int;
 }
 
 
-pub fn temporary_change_root<T>(path: &Path, fun: || -> Result<T, String>)
+pub fn temporary_change_root<T, F>(path: &Path, fun: F)
     -> Result<T, String>
+    where F: Fn() -> Result<T, String>
 {
-    let cwd = getcwd();
-    if unsafe { chdir("/".to_c_str().as_ptr()) } != 0 {
+    let cwd = getcwd().unwrap();
+    if unsafe { chdir(CString::from_slice("/".as_bytes()).as_ptr()) } != 0 {
         return Err(format!("Error chdir to root: {}",
                            IoError::last_error()));
     }
-    if unsafe { chroot(path.to_c_str().as_ptr()) } != 0 {
+    if unsafe { chroot(CString::from_slice(path.container_as_bytes()).as_ptr()) } != 0 {
         return Err(format!("Error chroot to {}: {}",
                            path.display(), IoError::last_error()));
     }
     let res = fun();
-    if unsafe { chroot(".".to_c_str().as_ptr()) } != 0 {
+    if unsafe { chroot(CString::from_slice(".".as_bytes()).as_ptr()) } != 0 {
         return Err(format!("Error chroot back: {}",
                            IoError::last_error()));
     }
-    if unsafe { chdir(cwd.to_c_str().as_ptr()) } != 0 {
+    if unsafe { chdir(CString::from_slice(cwd.container_as_bytes()).as_ptr()) } != 0 {
         return Err(format!("Error chdir to workdir back: {}",
                            IoError::last_error()));
     }
@@ -75,12 +82,16 @@ pub fn check_mapping(ranges: &Vec<Range>, map: &Vec<IdMap>) -> bool {
 
 pub fn change_root(new_root: &Path, put_old: &Path) -> Result<(), String>
 {
-    if unsafe { pivot_root(new_root.to_c_str().as_ptr(),
-                           put_old.to_c_str().as_ptr()) } != 0 {
+    if unsafe { pivot_root(
+            CString::from_slice(new_root.container_as_bytes()).as_ptr(),
+            CString::from_slice(put_old.container_as_bytes()).as_ptr()) } != 0
+    {
         return Err(format!("Error pivot_root to {}: {}", new_root.display(),
                            IoError::last_error()));
     }
-    if unsafe { chdir("/".to_c_str().as_ptr()) } != 0 {
+    if unsafe { chdir(
+            CString::from_slice("/".as_bytes()).as_ptr()) } != 0
+    {
         return Err(format!("Error chdir to root: {}",
                            IoError::last_error()));
     }
@@ -145,7 +156,7 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
     return Ok(());
 }
 
-pub fn join<T: Str, I: Iterator<T>>(array: I, delimiter: &str) -> String {
+pub fn join<T: Str, I: Iterator<Item=T>>(array: I, delimiter: &str) -> String {
     let mut array = array;
     let mut res = "".to_string();
     match array.next() {
@@ -159,4 +170,10 @@ pub fn join<T: Str, I: Iterator<T>>(array: I, delimiter: &str) -> String {
         None => {}
     }
     return res;
+}
+
+pub fn get_time() -> Time {
+    let mut tv = timeval { tv_sec: 0, tv_usec: 0 };
+    unsafe { gettimeofday(&mut tv, ptr::null_mut()) };
+    return (tv.tv_sec as f64 +  tv.tv_usec as f64 * 0.000001)
 }

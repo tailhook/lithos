@@ -1,12 +1,10 @@
-#![feature(phase, macro_rules, if_let)]
-
 extern crate serialize;
 extern crate libc;
-#[phase(plugin, link)] extern crate log;
+#[macro_use] extern crate log;
 
 extern crate argparse;
 extern crate quire;
-#[phase(plugin, link)] extern crate lithos;
+#[macro_use] extern crate lithos;
 
 use std::rc::Rc;
 use std::os::{set_exit_status, getenv, args};
@@ -14,7 +12,6 @@ use std::io::stdio::{stdout, stderr};
 use std::time::Duration;
 use std::default::Default;
 
-use argparse::{ArgumentParser, Store, List};
 use quire::parse_config;
 
 use lithos::signal;
@@ -23,13 +20,16 @@ use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
-use lithos::container_config::{ContainerConfig, Daemon};
+use lithos::container_config::{ContainerConfig};
+use lithos::container_config::ContainerKind::Daemon;
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 use lithos::mount::{unmount, mount_private, bind_mount, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
+use lithos_knot_options::Options;
 
+mod lithos_knot_options;
 
 struct Target {
     name: Rc<String>,
@@ -41,7 +41,7 @@ impl Executor for Target {
     fn command(&self) -> Command
     {
         let mut cmd = Command::new((*self.name).clone(),
-            self.local.executable.as_slice());
+            &Path::new(self.local.executable.as_slice()));
         cmd.set_user(self.local.user_id, self.local.group_id);
         cmd.set_workdir(&self.local.workdir);
 
@@ -86,7 +86,7 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     let local: ContainerConfig;
     local = try!(read_local_config(&mount_dir, &config));
     if local.kind != config.kind {
-        return Err(format!("Container type mismatch {} != {}",
+        return Err(format!("Container type mismatch {:?} != {:?}",
               local.kind, config.kind));
     }
     if local.uid_map.len() > 0 {
@@ -120,7 +120,7 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
             .to_string());
     }
 
-    info!("[{:s}] Starting container", name);
+    info!("[{}] Starting container", name);
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(name.as_slice());
@@ -130,7 +130,8 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
         // Warning setting cgroup relative to it's own cgroup may not work
         // if we ever want to restart lithos_knot in-place
         try!(cgroup::ensure_in_group(
-            &(cgroup_parent + "/" + name.replace("/", ":") + ".scope"),
+            &(cgroup_parent + "/" +
+              name.replace("/", ":").as_slice() + ".scope"),
             &master.cgroup_controllers));
     }
 
@@ -141,68 +142,18 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     try_str!(set_fileno_limit(local.fileno_limit));
 
     let mut mon = Monitor::new(name.clone());
-    let name = Rc::new(name + ".main");
+    let name = Rc::new(name.clone() + ".main");
     let timeo = Duration::milliseconds((local.restart_timeout*1000.) as i64);
-    mon.add(name.clone(), box Target {
+    mon.add(name.clone(), Box::new(Target {
         name: name,
         local: local,
         args: args,
-    }, timeo, None);
+    }), timeo, None);
     mon.run();
 
     return Ok(());
 }
 
-pub struct Options {
-    pub master_config: Path,
-    pub config: ChildConfig,
-    pub name: String,
-    pub args: Vec<String>,
-}
-
-impl Options {
-    pub fn parse_args() -> Result<Options, int> {
-        Options::parse_specific_args(args(), &mut stdout(), &mut stderr())
-    }
-    pub fn parse_specific_args(args: Vec<String>,
-        stdout: &mut Writer, stderr: &mut Writer)
-        -> Result<Options, int>
-    {
-        let mut options = Options {
-            master_config: Path::new("/etc/lithos.yaml"),
-            config: ChildConfig {
-                instances: 0,
-                image: "".to_string(),
-                config: "".to_string(),
-                kind: Daemon,
-            },
-            name: "".to_string(),
-            args: vec!(),
-        };
-        let mut ap = ArgumentParser::new();
-        ap.set_description("Runs tree of processes");
-        ap.refer(&mut options.name)
-          .add_option(["--name"], box Store::<String>,
-            "The process name");
-        ap.refer(&mut options.master_config)
-          .add_option(["--master"], box Store::<Path>,
-            "Name of the master configuration file (default /etc/lithos.yaml)")
-          .metavar("FILE");
-        ap.refer(&mut options.config)
-          .add_option(["--config"], box Store::<ChildConfig>,
-            "JSON-serialized container configuration")
-          .required()
-          .metavar("JSON");
-        ap.refer(&mut options.args)
-          .add_argument("argument", box List::<String>,
-            "Additional arguments for the command");
-        ap.stop_on_first_argument(true);
-        match ap.parse(args, stdout, stderr) {
-            Ok(()) => Ok(options),
-            Err(x) => Err(x),
-        }
-    }
-}
 
 fn main() {
 
@@ -222,7 +173,7 @@ fn main() {
             set_exit_status(0);
         }
         Err(e) => {
-            (write!(stderr(), "Fatal error: {}\n", e)).ok();
+            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
             set_exit_status(1);
         }
     }

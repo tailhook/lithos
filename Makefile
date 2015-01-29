@@ -45,7 +45,7 @@ lithos_switch: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_switch.rs
 		-L rust-quire -L rust-argparse -L .
 
 lithos_ps: $(ARGPARSELIB) $(QUIRELIB) $(LITHOSLIB) src/bin/lithos_ps.rs src/ascii.rs
-	$(RUSTC) src/bin/lithos_ps.rs -g -o $@ --opt-level=3 \
+	$(RUSTC) src/bin/lithos_ps.rs -g -o $@ -C opt-level=3 \
 		-L rust-quire -L rust-argparse -L .
 
 container.o: container.c
@@ -54,11 +54,11 @@ container.o: container.c
 libcontainer.a: container.o
 	$(AR) rcs $@ $^
 
-quire:
-	make -C rust-quire quire-lib
+$(QUIRELIB):
+	make -C rust-quire libquire.rlib
 
-argparse:
-	make -C rust-argparse argparse-lib
+$(ARGPARSELIB):
+	make -C rust-argparse libargparse.rlib
 
 install:
 	install -d $(DESTDIR)$(PREFIX)/bin

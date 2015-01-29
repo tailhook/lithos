@@ -27,7 +27,8 @@ pub fn get_host_name() -> IoResult<String> {
         return Err(IoError::last_error());
     }
     return buf.as_slice().splitn(1, |x| *x == 0u8)
-           .next().and_then(from_utf8).map(|x| x.to_string())
+           .next()
+           .and_then(|x| String::from_utf8(x.to_vec()).ok())
            .ok_or(IoError {
                 kind: InvalidInput,
                 desc: "Got invalid hostname from OS",

@@ -1,15 +1,18 @@
 // This is a part of lithos_ps not lithos library
 use std::io::IoError;
 use std::io::Writer;
+use std::fmt::Writer as FmtWriter;
 use std::io::stdio::StdWriter;
 use std::cmp::max;
-use std::fmt::Show;
+use std::fmt::String as Display;
+use self::Column::*;
 
 pub struct Printer {
     color: bool,
     buf: String,
 }
 
+#[derive(Copy)]
 pub struct PrinterFactory(bool);
 
 pub struct TreeNode {
@@ -19,9 +22,9 @@ pub struct TreeNode {
 
 pub enum Column {
     Text(Vec<String>),
-    Bytes(Vec<uint>),
-    Ordinal(Vec<uint>),
-    Percent(Vec<f32>),
+    Bytes(Vec<usize>),
+    Ordinal(Vec<usize>),
+    Percent(Vec<f64>),
 }
 
 impl PrinterFactory {
@@ -44,53 +47,55 @@ impl Printer {
     pub fn plain_factory() -> PrinterFactory {
         return PrinterFactory(false);
     }
-    pub fn norm(mut self, val: &Show) -> Printer {
+    pub fn norm<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
             self.buf.push(' ');
         }
-        self.buf.push_str(val.to_string().as_slice());
+        self.buf.write_fmt(format_args!("{}", val)).unwrap();
         return self;
     }
-    pub fn red(mut self, val: &Show) -> Printer {
+    pub fn red<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
             self.buf.push(' ');
         }
         if self.color {
             self.buf.push_str("\x1b[31m\x1b[1m");
         }
-        self.buf.push_str(val.to_string().as_slice());
+        self.buf.write_fmt(format_args!("{}", val)).unwrap();
         if self.color {
             self.buf.push_str("\x1b[0m\x1b[22m");
         }
         return self;
     }
-    pub fn blue(mut self, val: &Show) -> Printer {
+    pub fn blue<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
             self.buf.push(' ');
         }
         if self.color {
             self.buf.push_str("\x1b[34m\x1b[1m");
         }
-        self.buf.push_str(val.to_string().as_slice());
+        self.buf.write_fmt(format_args!("{}", val)).unwrap();
         if self.color {
             self.buf.push_str("\x1b[0m\x1b[22m");
         }
         return self;
     }
-    pub fn green(mut self, val: &Show) -> Printer {
+    pub fn green<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
             self.buf.push(' ');
         }
         if self.color {
            self. buf.push_str("\x1b[32m\x1b[1m");
         }
-        self.buf.push_str(val.to_string().as_slice());
+        self.buf.write_fmt(format_args!("{}", val)).unwrap();
         if self.color {
             self.buf.push_str("\x1b[0m\x1b[22m");
         }
         return self;
     }
-    pub fn map(self, fun: |Printer| -> Printer) -> Printer {
+    pub fn map<F>(self, fun: F) -> Printer
+        where F: Fn(Printer) -> Printer
+    {
         fun(self)
     }
     pub fn unwrap(self) -> String {
@@ -101,7 +106,7 @@ impl Printer {
 impl TreeNode {
     pub fn print<T:Writer>(&self, writer: &mut T) -> Result<(), IoError> {
         try!(writer.write_str(self.head.as_slice()));
-        try!(writer.write_char('\n'))
+        try!(writer.write_char('\n'));
         self._print_children(writer, "  ")
     }
     pub fn _print_children<T:Writer>(&self, writer: &mut T, indent: &str)
@@ -113,7 +118,7 @@ impl TreeNode {
                 try!(writer.write_str(indent));
                 try!(writer.write_str("├─"));
                 try!(writer.write_str(child.head.as_slice()));
-                try!(writer.write_char('\n'))
+                try!(writer.write_char('\n'));
                 try!(child._print_children(writer, childindent.as_slice()));
             }
         }
@@ -122,7 +127,7 @@ impl TreeNode {
             try!(writer.write_str(indent));
             try!(writer.write_str("└─"));
             try!(writer.write_str(child.head.as_slice()));
-            try!(writer.write_char('\n'))
+            try!(writer.write_char('\n'));
             try!(child._print_children(writer, childindent.as_slice()));
         }
         return Ok(());
@@ -144,7 +149,7 @@ pub fn render_table(columns: &[(&'static str, Column)]) {
                 };
                 let mut values = vec!(format!("{1:>0$}", 7+unit.len(), title));
                 values.extend(items.iter().map(
-                    |x| format!("{:7.1f}{}", (*x as f64) / k, unit)));
+                    |x| format!("{:7.1}{}", (*x as f64) / k, unit)));
                 values.reverse();
                 out_cols.push(values);
             }
@@ -169,7 +174,7 @@ pub fn render_table(columns: &[(&'static str, Column)]) {
             Percent(ref items) => {
                 let mut values = vec!(format!("{:>5}", title));
                 values.extend(items.iter().map(
-                    |x| format!("{:>5.1f}", *x)));
+                    |x| format!("{:>5.1}", *x)));
                 values.reverse();
                 out_cols.push(values);
             }
@@ -194,7 +199,7 @@ mod test {
     fn write_tree(node: &TreeNode) -> String {
         let mut buf = MemWriter::new();
         node.print(&mut buf).unwrap();
-        return String::from_utf8(buf.unwrap()).unwrap();
+        return String::from_utf8(buf.into_inner()).unwrap();
     }
 
     #[test]

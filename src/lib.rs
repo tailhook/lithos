@@ -1,16 +1,14 @@
 #![crate_name="lithos"]
 #![crate_type="lib"]
 
-#![feature(macro_rules,phase,if_let,slicing_syntax)]
+#![feature(slicing_syntax)]
 
-#[phase(plugin, link)] extern crate log;
-extern crate debug;
+#[macro_use] extern crate log;
 extern crate libc;
 extern crate quire;
 extern crate serialize;
-extern crate time;
 extern crate regex;
-#[phase(plugin)] extern crate regex_macros;
+extern crate collections;
 
 pub mod master_config;
 pub mod tree_config;

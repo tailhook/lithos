@@ -1,16 +1,14 @@
-#![feature(phase, macro_rules, if_let)]
-
 extern crate serialize;
 extern crate libc;
-#[phase(plugin, link)] extern crate log;
+#[macro_use] extern crate log;
+extern crate regex;
 
 extern crate argparse;
 extern crate quire;
-#[phase(plugin, link)] extern crate lithos;
-#[phase(plugin)] extern crate regex_macros;
-extern crate regex;
+#[macro_use] extern crate lithos;
 
 
+use regex::Regex;
 use std::rc::Rc;
 use std::os::{set_exit_status, self_exe_path, getenv};
 use std::io::stderr;
@@ -25,7 +23,7 @@ use quire::parse_config;
 use lithos::setup::clean_child;
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::{Command};
+use lithos::container_config::ContainerKind::{Command};
 use lithos::child_config::ChildConfig;
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
@@ -81,43 +79,43 @@ fn run(master_cfg: Path, tree_name: String,
         &*MasterConfig::validator(), Default::default()));
     try!(create_master_dirs(&master));
 
-    if !regex!(r"^[\w-]+$").is_match(tree_name.as_slice()) {
+    if !Regex::new(r"^[\w-]+$").unwrap().is_match(tree_name.as_slice()) {
         return Err(format!("Wrong tree name: {}", tree_name));
     }
-    if !regex!(r"^[\w-]+$").is_match(command_name.as_slice()) {
+    if !Regex::new(r"^[\w-]+$").unwrap().is_match(command_name.as_slice()) {
         return Err(format!("Wrong ommand name: {}", command_name));
     }
 
     let tree: TreeConfig = try_str!(parse_config(
-        &master.config_dir.join(tree_name + ".yaml"),
+        &master.config_dir.join(tree_name.clone() + ".yaml"),
         &*TreeConfig::validator(), Default::default()));
 
-    let child_fn = tree.config_dir.join(command_name + ".yaml".to_string());
+    let child_fn = tree.config_dir.join(command_name.clone() + ".yaml");
     let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
         &*ChildConfig::validator(), Default::default()));
 
     debug!("Child fn: {}", child_fn.display());
 
     if child_cfg.kind != Command {
-        return Err(format!("The target container is: {}", child_cfg.kind));
+        return Err(format!("The target container is: {:?}", child_cfg.kind));
     }
 
 
     let name = Rc::new(format!("{}/cmd.{}.{}", tree_name,
         command_name, unsafe { getpid() }));
-    info!("[{}] Running command with args {}", name, args);
+    info!("[{}] Running command with args {:?}", name, args);
     let mut mon = Monitor::new((*name).clone());
     let timeo = Duration::milliseconds(0);
     let mut args = args;
     args.insert(0, "--".to_string());
-    mon.add(name.clone(), box Child {
+    mon.add(name.clone(), Box::new(Child {
         name: name,
         master_file: master_cfg,
         master_config: &master,
         child_config_serialized: json::encode(&child_cfg),
         root_binary: self_exe_path().unwrap().join("lithos_knot"),
         args: args,
-    }, timeo, None);
+    }), timeo, None);
     mon.run();
 
     return Ok(());
@@ -135,19 +133,19 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
         ap.refer(&mut master_config)
-          .add_option(["--master"], box Store::<Path>,
+          .add_option(&["--master"], Box::new(Store::<Path>),
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut tree_name)
-          .add_argument("subtree", box Store::<String>,
+          .add_argument("subtree", Box::new(Store::<String>),
             "Name of the tree to run command for")
           .required();
         ap.refer(&mut command_name)
-          .add_argument("name", box Store::<String>,
+          .add_argument("name", Box::new(Store::<String>),
             "Name of the command to run")
           .required();
         ap.refer(&mut args)
-          .add_argument("argument", box List::<String>,
+          .add_argument("argument", Box::new(List::<String>),
             "Arguments for the command");
         ap.stop_on_first_argument(true);
         match ap.parse_args() {
@@ -163,7 +161,7 @@ fn main() {
             set_exit_status(0);
         }
         Err(e) => {
-            (write!(stderr(), "Fatal error: {}\n", e)).ok();
+            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
             set_exit_status(1);
         }
     }

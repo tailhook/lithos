@@ -1,18 +1,14 @@
-#![feature(phase, macro_rules, if_let, slicing_syntax)]
-
 extern crate serialize;
 extern crate libc;
-#[phase(plugin, link)] extern crate log;
+#[macro_use] extern crate log;
 extern crate regex;
-#[phase(plugin)] extern crate regex_macros;
-extern crate time;
-extern crate debug;
 
 extern crate argparse;
 extern crate quire;
-#[phase(plugin, link)] extern crate lithos;
+#[macro_use] extern crate lithos;
 
 
+use regex::Regex;
 use std::rc::Rc;
 use std::os::args;
 use std::io::{stdout, stderr};
@@ -20,23 +16,28 @@ use std::io::{IoError, EndOfFile};
 use std::mem::swap;
 use std::io::fs::File;
 use std::io::timer::sleep;
-use std::from_str::FromStr;
+use std::str::FromStr;
 use std::io::fs::{readdir};
 use std::io::{BufferedReader, MemWriter};
 use std::os::{set_exit_status};
 use std::default::Default;
-use std::collections::{TreeMap, TreeSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::duration::Duration;
-use time::get_time;
 use libc::pid_t;
 use libc::consts::os::sysconf::_SC_CLK_TCK;
 use libc::funcs::posix88::unistd::sysconf;
+use lithos::utils::get_time;
+use serialize::json::Json;
 use serialize::json;
+use ascii::Column;
 
 use argparse::{ArgumentParser, StoreConst};
 
-#[allow(dead_code, unused_attribute)] mod lithos_tree;
-#[allow(dead_code, unused_attribute)] mod lithos_knot;
+use self::LithosInfo::*;
+use self::Action::*;
+
+mod lithos_tree_options;
+mod lithos_knot_options;
 
 #[path = "../ascii.rs"] mod ascii;
 
@@ -47,25 +48,25 @@ struct Options {
     printer_factory: ascii::PrinterFactory,
 }
 
-#[deriving(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 enum LithosInfo {
     TreeInfo(Path),
-    KnotInfo(String, String, uint),
+    KnotInfo(String, String, usize),
 }
 
-#[deriving(Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
 struct Process {
     parent_id: pid_t,
     pid: pid_t,
     lithos_info: Option<LithosInfo>,
     start_time: u64,
-    mem_rss: uint,
-    mem_swap: uint,
+    mem_rss: usize,
+    mem_swap: usize,
     user_time: u64,
     system_time: u64,
     child_user_time: u64,
     child_system_time: u64,
-    threads: uint,
+    threads: usize,
     cmdline: Vec<String>,
 }
 
@@ -79,44 +80,45 @@ struct Group {
 #[allow(dead_code)]  // index is not used yet
 struct Instance {
     name: String,
-    index: uint,
+    index: usize,
     knot_pid: i32,
     totals: GroupTotals,
     heads: Vec<Group>,
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 struct Child {
     totals: GroupTotals,
-    instances: TreeMap<uint, Instance>,
+    instances: BTreeMap<usize, Instance>,
 }
 
-#[deriving(Default)]
+#[derive(Default)]
 struct Tree {
     totals: GroupTotals,
-    children: TreeMap<String, Child>,
+    children: BTreeMap<String, Child>,
 }
 
 struct Master {
     pid: pid_t,
     config: Path,
     totals: GroupTotals,
-    trees: TreeMap<String, Tree>,
+    trees: BTreeMap<String, Tree>,
 }
 
 #[allow(dead_code)]  // totals will be used soon
 struct ScanResult {
-    masters: TreeMap<pid_t, Master>,
+    masters: BTreeMap<pid_t, Master>,
     totals: GroupTotals,
 }
 
-#[deriving(Default)]
+#[derive(Default)]
+#[derive(Copy)]
 struct GroupTotals {
-    processes: uint,
-    threads: uint,
-    memory: uint,
-    mem_rss: uint,
-    mem_swap: uint,
+    processes: usize,
+    threads: usize,
+    memory: usize,
+    mem_rss: usize,
+    mem_swap: usize,
     cpu_time: u64,
     user_time: u64,
     system_time: u64,
@@ -124,9 +126,9 @@ struct GroupTotals {
     child_system_time: u64,
 }
 
-fn parse_mem_size(value: &str) -> uint {
+fn parse_mem_size(value: &str) -> usize {
     let mut pair = value.as_slice().splitn(1, ' ');
-    let val: uint = FromStr::from_str(pair.next().unwrap())
+    let val: usize = FromStr::from_str(pair.next().unwrap())
         .expect("Memory should be integer");
     let unit = pair.next().unwrap_or("kB");
     match unit {
@@ -158,24 +160,25 @@ fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
     let args = cmdline.clone();
     let mut out = MemWriter::new();
     let mut err = MemWriter::new();
-    lithos_tree::Options::parse_specific_args(args, &mut out, &mut err)
+    lithos_tree_options::Options::parse_specific_args(args, &mut out, &mut err)
         .map(|opt| TreeInfo(opt.config_file))
         .map_err(|_| debug!("Can't parse lithos_tree cmdline for {}", pid))
 }
 
 fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
-    let fullname_re = regex!(r"^([\w-]+)/([\w-]+)\.(\d+)$");
+    let fullname_re = Regex::new(r"^([\w-]+)/([\w-]+)\.(\d+)$").unwrap();
     let args = cmdline.clone();
     let mut out = MemWriter::new();
     let mut err = MemWriter::new();
     let opt = try!(
-        lithos_knot::Options::parse_specific_args(args, &mut out, &mut err)
+        lithos_knot_options::Options::parse_specific_args(
+            args, &mut out, &mut err)
         .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid)));
     fullname_re.captures(opt.name.as_slice())
         .map(|c| KnotInfo(
-            c.at(1).to_string(),
-            c.at(2).to_string(),
-            FromStr::from_str(c.at(3)).unwrap()
+            c.at(1).unwrap().to_string(),
+            c.at(2).unwrap().to_string(),
+            FromStr::from_str(c.at(3).unwrap()).unwrap()
         ))
         .ok_or(())
 }
@@ -225,7 +228,7 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
     let mut f = BufferedReader::new(try!(File::open(
         &Path::new(format!("/proc/{}/stat", pid).as_slice()))));
     let line = try!(f.read_line());
-    let stat_re = regex!(
+    let stat_re = Regex::new(
         // We parse bracketed executable and double-bracketed, still
         // if executable name itself contains bracket we would fail
         // But even if we fail, we get only start_time missed or incorrect
@@ -234,20 +237,20 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
             r"\s+(?P<utime>\d+)\s+(?P<stime>\d+)",
             r"\s+(?P<cutime>\d+)\s+(?P<cstime>\d+)",
             r"(?:\s+\S+){4}",
-            r"\s+(?P<start_time>\d+)\b"));
+            r"\s+(?P<start_time>\d+)\b")).unwrap();
         // TODO(tailhook) we can get executable name from /status and match
         // it here, the executable in /status is escaped!
     match stat_re.captures(line.as_slice()) {
         Some(c) => {
-            FromStr::from_str(c.name("start_time"))
+            FromStr::from_str(c.name("start_time").unwrap())
                 .map(|v| result.start_time = v);
-            FromStr::from_str(c.name("utime"))
+            FromStr::from_str(c.name("utime").unwrap())
                 .map(|v| result.user_time = v);
-            FromStr::from_str(c.name("stime"))
+            FromStr::from_str(c.name("stime").unwrap())
                 .map(|v| result.system_time = v);
-            FromStr::from_str(c.name("cutime"))
+            FromStr::from_str(c.name("cutime").unwrap())
                 .map(|v| result.child_user_time = v);
-            FromStr::from_str(c.name("cstime"))
+            FromStr::from_str(c.name("cstime").unwrap())
                 .map(|v| result.child_system_time = v);
         }
         None => {
@@ -294,7 +297,7 @@ fn start_time_sec(start_ticks: u64) -> u64 {
 
 fn format_uptime(prn: ascii::Printer, start_ticks: u64) -> ascii::Printer {
     let start_time = start_time_sec(start_ticks);
-    let uptime = get_time().sec as u64 - start_time;
+    let uptime = get_time() as u64 - start_time;
     if uptime < 30 {
         prn.red(&format!("{}s", uptime))
     } else if uptime < 60 {
@@ -312,25 +315,25 @@ fn format_uptime(prn: ascii::Printer, start_ticks: u64) -> ascii::Printer {
     }
 }
 
-fn format_memory(mem: uint) -> String {
+fn format_memory(mem: usize) -> String {
     if mem < (1 << 10) {
         format!("{}B", mem)
     } else if mem < (1 << 20) {
-        format!("{:.1f}kiB", mem as f64/(1024_f64))
+        format!("{:.1}kiB", mem as f64/(1024_f64))
     } else if mem < (1 << 30) {
-        format!("{:.1f}MiB", mem as f64/(1_048_576_f64))
+        format!("{:.1}MiB", mem as f64/(1_048_576_f64))
     } else {
-        format!("{:.1f}GiB", mem as f64/(1_048_576_f64 * 1024_f64))
+        format!("{:.1}GiB", mem as f64/(1_048_576_f64 * 1024_f64))
     }
 }
 
 fn _scan_group(head: Rc<Process>,
-    all_children: &TreeMap<pid_t, Vec<Rc<Process>>>)
+    all_children: &BTreeMap<pid_t, Vec<Rc<Process>>>)
     -> Group
 {
     let mut totals = GroupTotals::new(&*head);
     let mut groups = vec!();
-    if let Some(children) = all_children.find(&head.pid) {
+    if let Some(children) = all_children.get(&head.pid) {
         for child in children.iter() {
             let grp = _scan_group(child.clone(), all_children);
             totals.add_group(&grp.totals);
@@ -346,8 +349,8 @@ fn _scan_group(head: Rc<Process>,
 
 fn scan_processes() -> Result<ScanResult, IoError>
 {
-    let mut children = TreeMap::<pid_t, Vec<Rc<Process>>>::new();
-    let mut roots = TreeSet::<Rc<Process>>::new();
+    let mut children = BTreeMap::<pid_t, Vec<Rc<Process>>>::new();
+    let mut roots = BTreeSet::<Rc<Process>>::new();
 
     for pid in try!(readdir(&Path::new("/proc")))
         .into_iter()
@@ -359,7 +362,7 @@ fn scan_processes() -> Result<ScanResult, IoError>
                 if let Some(TreeInfo(_)) = prc.lithos_info {
                     roots.insert(prc.clone());
                 }
-                if let Some(vec) = children.find_mut(&prc.parent_id) {
+                if let Some(vec) = children.get_mut(&prc.parent_id) {
                     vec.push(prc);
                     continue;
                 }
@@ -371,7 +374,7 @@ fn scan_processes() -> Result<ScanResult, IoError>
         }
     }
 
-    let mut masters = TreeMap::new();
+    let mut masters = BTreeMap::new();
     let mut totals: GroupTotals = Default::default();
 
     for root in roots.iter() {
@@ -380,13 +383,13 @@ fn scan_processes() -> Result<ScanResult, IoError>
         } else {
             continue;
         };
-        let mut trees = TreeMap::<String, Tree>::new();
+        let mut trees = BTreeMap::<String, Tree>::new();
         let mut mtotals: GroupTotals = Default::default();
-        for prc in children.find(&root.pid).unwrap_or(&Vec::new()).iter() {
+        for prc in children.get(&root.pid).unwrap_or(&Vec::new()).iter() {
             if let Some(KnotInfo(ref sub, ref name, idx)) = prc.lithos_info {
                 let mut heads = vec!();
                 let mut ktotals: GroupTotals = Default::default();
-                if let Some(knot_children) = children.find(&prc.pid) {
+                if let Some(knot_children) = children.get(&prc.pid) {
                     for child in knot_children.iter() {
                         let grp = _scan_group(child.clone(), &children);
                         ktotals.add_group(&grp.totals);
@@ -397,12 +400,12 @@ fn scan_processes() -> Result<ScanResult, IoError>
                 if !trees.contains_key(sub) {
                     trees.insert(sub.clone(), Default::default());
                 }
-                trees.find_mut(sub).map(|ref mut tree| {
+                trees.get_mut(sub).map(|ref mut tree| {
                     tree.totals.add_group(&ktotals);
                     if !tree.children.contains_key(name) {
                         tree.children.insert(name.clone(), Default::default());
                     }
-                    tree.children.find_mut(name).map(|ref mut child| {
+                    tree.children.get_mut(name).map(|ref mut child| {
                         let mut nheads = vec!();
                         swap(&mut nheads, &mut heads);
                         child.totals.add_group(&ktotals);
@@ -543,53 +546,53 @@ fn print_json(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
         {
             let mut processes = vec!();
             for grp in instance.heads.iter() {
-                processes.push(json::Object(vec!(
-                    ("pid".to_string(), json::U64(grp.head.pid as u64)),
+                processes.push(Json::Object(vec!(
+                    ("pid".to_string(), Json::U64(grp.head.pid as u64)),
                     ("processes".to_string(),
-                        json::U64(grp.totals.processes as u64)),
+                        Json::U64(grp.totals.processes as u64)),
                     ("threads".to_string(),
-                        json::U64(grp.totals.threads as u64)),
+                        Json::U64(grp.totals.threads as u64)),
                     ("mem_rss".to_string(),
-                        json::U64(grp.totals.mem_rss as u64)),
+                        Json::U64(grp.totals.mem_rss as u64)),
                     ("mem_swap".to_string(),
-                        json::U64(grp.totals.mem_swap as u64)),
+                        Json::U64(grp.totals.mem_swap as u64)),
                     ("start_time".to_string(),
-                        json::U64(start_time_sec(grp.head.start_time))),
+                        Json::U64(start_time_sec(grp.head.start_time))),
                     ("user_time".to_string(),
-                        json::U64(grp.totals.user_time)),
+                        Json::U64(grp.totals.user_time)),
                     ("system_time".to_string(),
-                        json::U64(grp.totals.system_time)),
+                        Json::U64(grp.totals.system_time)),
                     ("child_user_time".to_string(),
-                        json::U64(grp.totals.child_user_time)),
+                        Json::U64(grp.totals.child_user_time)),
                     ("child_system_time".to_string(),
-                        json::U64(grp.totals.child_system_time)),
+                        Json::U64(grp.totals.child_system_time)),
                     ).into_iter().collect()));
             }
-            knots.push(json::Object(vec!(
-                ("name".to_string(), json::String(instance.name.to_string())),
-                ("pid".to_string(), json::U64(instance.knot_pid as u64)),
-                ("ok".to_string(), json::Boolean(instance.heads.len() == 1)),
-                ("processes".to_string(), json::List(processes)),
+            knots.push(Json::Object(vec!(
+                ("name".to_string(), Json::String(instance.name.to_string())),
+                ("pid".to_string(), Json::U64(instance.knot_pid as u64)),
+                ("ok".to_string(), Json::Boolean(instance.heads.len() == 1)),
+                ("processes".to_string(), Json::Array(processes)),
                 ).into_iter().collect()));
         }
-        trees.push(json::Object(vec!(
-            ("pid".to_string(), json::U64(master.pid as u64)),
+        trees.push(Json::Object(vec!(
+            ("pid".to_string(), Json::U64(master.pid as u64)),
             ("config".to_string(),
-                json::String(master.config.display().to_string())),
+                Json::String(master.config.display().to_string())),
             ("children".to_string(),
-                json::List(knots)),
+                Json::Array(knots)),
             ).into_iter().collect()));
     }
 
 
     let mut out = stdout();
-    return out.write_str(json::encode(&json::Object(vec!(
-        ("trees".to_string(), json::List(trees)),
+    return out.write_str(json::encode(&Json::Object(vec!(
+        ("trees".to_string(), Json::Array(trees)),
         ).into_iter().collect())).as_slice());
 }
 
 fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
-    let mut old_children: TreeMap<String, Instance> = scan.masters.into_iter()
+    let mut old_children: BTreeMap<String, Instance> = scan.masters.into_iter()
         .flat_map(|(_, master)| master.trees.into_iter())
         .flat_map(|(_, tree)| tree.children.into_iter())
         .flat_map(|(_, child)| child.instances.into_iter())
@@ -599,7 +602,7 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
     loop {
         sleep(Duration::seconds(1));
 
-        let new_children: TreeMap<String, Instance> = try!(scan_processes())
+        let new_children: BTreeMap<String, Instance> = try!(scan_processes())
             .masters.into_iter()
             .flat_map(|(_, master)| master.trees.into_iter())
             .flat_map(|(_, tree)| tree.children.into_iter())
@@ -607,8 +610,8 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
             .map(|(_, inst)| (inst.name.to_string(), inst))
             .collect();
         let new_time = get_time();
-        let delta_ticks = ((new_time - old_time).num_milliseconds() as u64
-            * unsafe { clock_ticks }) as f32 / 1000f32;
+        let delta_ticks = ((new_time - old_time)
+            * unsafe { clock_ticks } as f64) / 1000.;
 
         let mut pids = vec!();
         let mut names = vec!();
@@ -618,16 +621,16 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
         let mut processes = vec!();
         for (name, inst) in new_children.iter() {
             if inst.heads.len() == 1 {
-                pids.push(inst.heads[0].head.pid as uint);
+                pids.push(inst.heads[0].head.pid as usize);
             } else {
                 pids.push(0);
             }
-            let ticks = old_children.find(name)
-                .and_then(|old|
-                    inst.totals.cpu_time.checked_sub(&old.totals.cpu_time))
+            let ticks = old_children.get(name)
+                .map(|old| inst.totals.cpu_time - old.totals.cpu_time)
+                .map(|x| if x < 0 { 0 } else { x })
                 .unwrap_or(0);
             names.push(inst.name.to_string());
-            cpus.push((ticks as f32/delta_ticks) * 100.);
+            cpus.push((ticks as f64/delta_ticks) * 100.);
             threads.push(inst.totals.threads);
             processes.push(inst.totals.processes);
             mem.push(inst.totals.memory);
@@ -635,12 +638,12 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
 
         print!("\x1b[2J\x1b[;H");
         ascii::render_table(&[
-            ("PID", ascii::Ordinal(pids)),
-            ("NAME", ascii::Text(names)),
-            ("CPU", ascii::Percent(cpus)),
-            ("THR", ascii::Ordinal(threads)),
-            ("PRC", ascii::Ordinal(processes)),
-            ("MEM", ascii::Bytes(mem)),
+            ("PID", Column::Ordinal(pids)),
+            ("NAME", Column::Text(names)),
+            ("CPU", Column::Percent(cpus)),
+            ("THR", Column::Ordinal(threads)),
+            ("PRC", Column::Ordinal(processes)),
+            ("MEM", Column::Bytes(mem)),
             ]);
 
         old_children = new_children;
@@ -664,11 +667,18 @@ fn read_global_consts() {
     }
 }
 
+#[derive(Copy)]
+enum Action {
+    PrintFullTree,
+    PrintJson,
+    MonitorChanges,
+}
+
 fn main() {
 
     read_global_consts();
 
-    let mut action = print_full_tree;
+    let mut action = PrintFullTree;
     let mut options = Options {
         printer_factory: ascii::Printer::factory(stdout().get_ref()),
     };
@@ -676,16 +686,16 @@ fn main() {
     {
         let mut ap = ArgumentParser::new();
         ap.refer(&mut action)
-            .add_option(["--json"], box StoreConst(print_json),
+            .add_option(&["--json"], Box::new(StoreConst(PrintJson)),
                 "Print big json instead human-readable tree")
-            .add_option(["--monitor"], box StoreConst(monitor_changes),
+            .add_option(&["--monitor"], Box::new(StoreConst(MonitorChanges)),
                 "Print big json instead human-readable tree");
         ap.refer(&mut options.printer_factory)
-            .add_option(["--force-color"],
-                box StoreConst(ascii::Printer::color_factory()),
+            .add_option(&["--force-color"],
+                Box::new(StoreConst(ascii::Printer::color_factory())),
                 "Force colors in output (in default mode only for now)")
-            .add_option(["--no-color"],
-                box StoreConst(ascii::Printer::plain_factory()),
+            .add_option(&["--no-color"],
+                Box::new(StoreConst(ascii::Printer::plain_factory())),
                 "Don't use colors even for terminal output");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {
@@ -696,12 +706,18 @@ fn main() {
             }
         }
     }
-    match scan_processes().and_then(|s| action(s, &options)) {
+    match scan_processes().and_then(|s| {
+        match action {
+            PrintFullTree => print_full_tree(s, &options),
+            PrintJson => print_json(s, &options),
+            MonitorChanges => monitor_changes(s, &options),
+        }
+    }) {
         Ok(()) => {
             set_exit_status(0);
         }
         Err(e) => {
-            (write!(stderr(), "Fatal error: {}\n", e)).ok();
+            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
             set_exit_status(1);
         }
     }

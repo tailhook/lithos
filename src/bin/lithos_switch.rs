@@ -1,24 +1,20 @@
-#![feature(phase, macro_rules, if_let)]
-
 extern crate serialize;
 extern crate libc;
-#[phase(plugin, link)] extern crate log;
+#[macro_use] extern crate log;
 extern crate regex;
-#[phase(plugin)] extern crate regex_macros;
-extern crate time;
-extern crate debug;
 
 extern crate argparse;
 extern crate quire;
-#[phase(plugin, link)] extern crate lithos;
+#[macro_use] extern crate lithos;
 
 
+use regex::Regex;
 use std::io::stderr;
 use std::io::IoError;
 use std::io::ALL_PERMISSIONS;
 use std::os::{set_exit_status, self_exe_path};
 use std::path::BytesContainer;
-use std::from_str::FromStr;
+use std::str::FromStr;
 use std::io::fs::{copy, rmdir_recursive, mkdir, readdir, rename};
 use std::io::fs::{readlink, symlink, File};
 use std::io::fs::PathExtensions;
@@ -35,7 +31,7 @@ use lithos::sha256::{Sha256,Digest};
 
 
 fn copy_dir(source: &Path, target: &Path) -> Result<(), IoError> {
-    let name_re = regex!(r"^([\w-]+)\.yaml$");
+    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let tmpdir = Path::new(target.dirname())
         .join(b".tmp.".to_vec() + target.filename().unwrap());
     if tmpdir.exists() {
@@ -55,7 +51,7 @@ fn copy_dir(source: &Path, target: &Path) -> Result<(), IoError> {
 }
 
 fn hash_dir(dir: &Path) -> Result<String, IoError> {
-    let name_re = regex!(r"^([\w-]+)\.yaml$");
+    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let mut hash = Sha256::new();
     let mut files: Vec<Path> = try!(readdir(dir))
         .into_iter()
@@ -122,7 +118,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
 
     let config_fn = if let Some(prefix) = name_prefix {
         prefix.to_string() + try!(hash_dir(&config_dir)
-            .map_err(|e| format!("Can't read dir: {}", e)))
+            .map_err(|e| format!("Can't read dir: {}", e))).as_slice()
     } else {
         config_dir.filename_str().unwrap().to_string()
     };
@@ -171,7 +167,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
             .ok()
             .and_then(|s| FromStr::from_str(s.as_slice())) {
         Some(pid) if signal::is_process_alive(pid) => {
-            signal::send_signal(pid, signal::SIGQUIT as int);
+            signal::send_signal(pid, signal::SIGQUIT as isize);
         }
         Some(pid) => {
             warn!("Process with pid {} is not running...", pid);
@@ -196,25 +192,25 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut master_config)
-          .add_option(["--master"], box Store::<Path>,
+          .add_option(&["--master"], Box::new(Store::<Path>),
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
-          .add_option(["-v", "--verbose"], box StoreTrue,
+          .add_option(&["-v", "--verbose"], Box::new(StoreTrue),
             "Verbose configuration");
         ap.refer(&mut name_prefix)
-          .add_option(["--hashed-name"], box StoreOption::<String>, "
+          .add_option(&["--hashed-name"], Box::new(StoreOption::<String>), "
             Do not last component of DIR as a name, but create an unique name
             based on the PREFIX and hash of the contents.
             ")
           .metavar("PREFIX");
         ap.refer(&mut tree_name)
-          .add_argument("tree", box Store::<String>,
+          .add_argument("tree", Box::new(Store::<String>),
             "Name of the tree which configuration will be switched for")
           .required()
           .metavar("NAME");
         ap.refer(&mut config_dir)
-          .add_argument("dir", box Store::<Path>, "
+          .add_argument("dir", Box::new(Store::<Path>), "
             Name of the configuration directory to switch to. It doesn't
             have to be a directory inside `config-dir`, and it will be copied
             there. However, if directory with the same name exists in the
@@ -235,7 +231,7 @@ fn main() {
             set_exit_status(0);
         }
         Err(e) => {
-            (write!(stderr(), "Fatal error: {}\n", e)).ok();
+            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
             set_exit_status(1);
         }
     }

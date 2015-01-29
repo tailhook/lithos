@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <grp.h>
 
 // Glibc has a function, but doesn't declare any header for it
@@ -153,14 +154,18 @@ void block_all_signals() {
     sigprocmask(SIG_BLOCK, &mask, NULL);
 }
 
-int wait_any_signal(CSignalInfo *sig, struct timespec *ts) {
+int wait_any_signal(CSignalInfo *sig, double timeo) {
+    struct timespec ts = {
+        .tv_sec = (long)timeo,
+        .tv_nsec = (int)ceil((timeo - floor(timeo))*1000000000),
+    };
     sigset_t mask;
     sigfillset(&mask);
     while(1) {
         siginfo_t native_info;
         int rc;
-        if(ts) {
-            rc = sigtimedwait(&mask, &native_info, ts);
+        if(timeo >= 0) {
+            rc = sigtimedwait(&mask, &native_info, &ts);
         } else {
             rc = sigwaitinfo(&mask, &native_info);
         }
