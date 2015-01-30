@@ -610,8 +610,7 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
             .map(|(_, inst)| (inst.name.to_string(), inst))
             .collect();
         let new_time = get_time();
-        let delta_ticks = ((new_time - old_time)
-            * unsafe { clock_ticks } as f64) / 1000.;
+        let delta_ticks = (new_time - old_time) * unsafe {clock_ticks} as f64;
 
         let mut pids = vec!();
         let mut names = vec!();
