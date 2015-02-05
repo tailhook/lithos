@@ -1,4 +1,5 @@
 use std::io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
+use std::io::FilePermission;
 use std::io::fs::{File, copy, chmod, mkdir_recursive, chown};
 use std::io::fs::PathExtensions;
 use std::default::Default;
@@ -15,7 +16,7 @@ use super::container_config::{ContainerConfig};
 use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
 use super::container_config::{parse_volume};
 use super::child_config::ChildConfig;
-use super::utils::{temporary_change_root, clean_dir};
+use super::utils::{temporary_change_root, clean_dir, set_file_mode};
 use super::cgroup;
 
 
@@ -110,6 +111,8 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
     if !dir.exists() {
         try!(mkdir_recursive(dir, ALL_PERMISSIONS)
             .map_err(|e| format!("Couldn't create state directory: {}", e)));
+        try!(set_file_mode(dir, 0o1777)
+            .map_err(|e| format!("Couldn't set chmod for state dir: {}", e)));
     }
     if local.resolv_conf.copy_from_host {
         try_str!(copy(&Path::new("/etc/resolv.conf"),

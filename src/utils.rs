@@ -6,8 +6,8 @@ use std::io::fs::{mkdir, readdir, rmdir_recursive, rmdir, unlink};
 use std::io::fs::PathExtensions;
 use std::os::getcwd;
 use std::path::BytesContainer;
-use libc::funcs::posix88::unistd::chdir;
-use libc::{c_int, c_char, timeval, c_void};
+use libc::{c_int, c_char, timeval, c_void, mode_t};
+use libc::{chmod, chdir};
 
 use super::tree_config::Range;
 use super::container_config::IdMap;
@@ -176,4 +176,13 @@ pub fn get_time() -> Time {
     let mut tv = timeval { tv_sec: 0, tv_usec: 0 };
     unsafe { gettimeofday(&mut tv, ptr::null_mut()) };
     return (tv.tv_sec as f64 +  tv.tv_usec as f64 * 0.000001)
+}
+
+pub fn set_file_mode(path: &Path, mode: mode_t) -> Result<(), IoError> {
+    let cpath = CString::from_slice(path.container_as_bytes());
+    let rc = unsafe { chmod(cpath.as_ptr(), mode) };
+    if rc < 0 {
+        return Err(IoError::last_error());
+    }
+    return Ok(());
 }
