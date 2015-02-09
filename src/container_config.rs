@@ -1,17 +1,30 @@
 use std::default::Default;
 use std::collections::BTreeMap;
 
-use quire::validate::{Validator, Structure, Sequence, Scalar, Numeric};
+use quire::validate::{Validator, Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping};
 use self::Volume::*;
 
-//  TODO(tailhook) Currently we parse the string into the following
-//  enum, but in future we should just decode into it
+
+#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+pub struct TmpfsInfo {
+    pub size: usize,
+    pub mode: u32,
+}
+
+#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+pub struct StatedirInfo {
+    pub path: Path,
+    pub mkdir: bool,
+    pub mode: u32,
+}
+
+#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
 pub enum Volume {
     Readonly(Path),
     Persistent(Path),
-    Tmpfs(String),
-    Statedir(Path),
+    Tmpfs(TmpfsInfo),
+    Statedir(StatedirInfo),
 }
 
 #[derive(Decodable, Encodable, Show, PartialEq, Eq)]
@@ -41,7 +54,7 @@ pub struct IdMap {
 #[derive(Decodable, Encodable)]
 pub struct ContainerConfig {
     pub kind: ContainerKind,
-    pub volumes: BTreeMap<String, String>,
+    pub volumes: BTreeMap<String, Volume>,
     pub user_id: u32,
     pub group_id: u32,
     pub restart_timeout: f32,
@@ -84,8 +97,7 @@ impl ContainerConfig {
             ("volumes".to_string(), Box::new(Mapping {
                 key_element: Box::new(Scalar {
                     .. Default::default() }) as Box<Validator>,
-                value_element: Box::new(Scalar {
-                    .. Default::default() }) as Box<Validator>,
+                value_element: volume_validator(),
             .. Default::default() }) as Box<Validator>),
             ("user_id".to_string(), Box::new(Numeric {
                 default: None::<u32>,
@@ -145,32 +157,35 @@ impl ContainerConfig {
     }
 }
 
-pub fn parse_volume(val: &str) -> Result<Volume, String> {
-    if val.starts_with("/") {
-        let p = Path::new(val);
-        if !p.is_absolute() {
-            return Err(format!("Volume path must be absolute: \"{}\"",
-                               p.display()));
-        }
-        return Ok(Readonly(p));
-    } else if val.starts_with("rw:") {
-        let p = Path::new(val.slice_from(3));
-        if !p.is_absolute() {
-            return Err(format!("Volume path must be absolute: \"{}\"",
-                               p.display()));
-        }
-        return Ok(Persistent(p));
-    } else if val.starts_with("state:") {
-        let p = Path::new(val.slice_from(6));
-        if !p.is_absolute() {
-            return Err(format!("Volume path must be absolute: \"{}\"",
-                               p.display()));
-        }
-        return Ok(Statedir(p));
-    } else if val.starts_with("tmpfs:") {
-        // TODO(tailhook) validate parameters
-        return Ok(Tmpfs(val.slice_from(6).to_string()));
-    } else {
-        return Err(format!("Unknown volume type {}", val));
-    }
+pub fn volume_validator<'a>() -> Box<Validator + 'a> {
+    return Box::new(Enum { options: vec!(
+        ("Persisent".to_string(),  Scalar {
+            .. Default::default()}) as Box<Validator>)
+        ("Readonly".to_string(),  Scalar {
+            .. Default::default()}) as Box<Validator>)
+        ("Tmpfs".to_string(),  Box::new(Structure { members: vec!(
+            ("size".to_string(),  Box::new(Numeric {
+                min: Some(0us),
+                default: Some(100*1024*1024),
+                .. Default::default()}) as Box<Validator>),
+            ("mode".to_string(),  Box::new(Numeric {
+                min: Some(0u32),
+                max: Some(0o1777u32),
+                default: Some(0o766),
+                .. Default::default()}) as Box<Validator>),
+            ),.. Default::default()}) as Box<Validator>),
+        ("Statedir".to_string(),  Box::new(Structure { members: vec!(
+            ("path".to_string(),  Box::new(Scalar {
+                default: Some("/".to_string()),
+                .. Default::default()}) as Box<Validator>),
+            ("mkdir".to_string(),  Box::new(Scalar {
+                default: Some("true".to_string()),
+                .. Default::default()}) as Box<Validator>),
+            ("mode".to_string(),  Box::new(Numeric {
+                min: Some(0u32),
+                max: Some(0o700u32),
+                default: Some(0o766),
+                .. Default::default()}) as Box<Validator>),
+            ),.. Default::default()}) as Box<Validator>),
+        ), .. Default::default()}) as Box<Validator>;
 }

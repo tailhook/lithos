@@ -1,6 +1,6 @@
 use std::io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
 use std::io::FilePermission;
-use std::io::fs::{File, copy, chmod, mkdir_recursive, chown};
+use std::io::fs::{File, copy, chmod, mkdir_recursive, chown, mkdir};
 use std::io::fs::PathExtensions;
 use std::default::Default;
 use std::collections::BTreeMap;
@@ -12,9 +12,8 @@ use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
 use super::tree_config::TreeConfig;
-use super::container_config::{ContainerConfig};
+use super::container_config::{ContainerConfig, Volume};
 use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
-use super::container_config::{parse_volume};
 use super::child_config::ChildConfig;
 use super::utils::{temporary_change_root, clean_dir, set_file_mode};
 use super::cgroup;
@@ -44,18 +43,18 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     let mntdir = master.runtime_dir.join(&master.mount_dir);
     assert!(mntdir.is_absolute());
 
-    let mut volumes: Vec<(&String, &String)> = local.volumes.iter().collect();
+    let mut volumes: Vec<(&String, &Volume)> = local.volumes.iter().collect();
     volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
 
-    for &(mp_str, volume_str) in volumes.iter() {
+    for &(mp_str, volume) in volumes.iter() {
         let tmp_mp = Path::new(mp_str.as_slice());
         assert!(tmp_mp.is_absolute());  // should be checked earlier
 
         let dest = mntdir.join(tmp_mp.path_relative_from(&root).unwrap());
-        match try_str!(parse_volume(volume_str.as_slice())) {
-            Readonly(dir) => {
-                let path = match map_dir(&dir, &tree.readonly_paths).or_else(
-                                 || map_dir(&dir, &tree.writable_paths)) {
+        match volume {
+            &Readonly(ref dir) => {
+                let path = match map_dir(dir, &tree.readonly_paths).or_else(
+                                 || map_dir(dir, &tree.writable_paths)) {
                     None => {
                         return Err(format!(concat!("Can't find volume for {},",
                             " probably missing entry in readonly-paths"),
@@ -66,8 +65,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 try!(bind_mount(&path, &dest));
                 try!(mount_ro_recursive(&dest));
             }
-            Persistent(dir) => {
-                let path = match map_dir(&dir, &tree.writable_paths) {
+            &Persistent(ref dir) => {
+                let path = match map_dir(dir, &tree.writable_paths) {
                     None => {
                         return Err(format!(concat!("Can't find volume for {},",
                             " probably missing entry in writable-paths"),
@@ -83,14 +82,21 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 }
                 try!(bind_mount(&path, &dest));
             }
-            Tmpfs(opt) => {
-                try!(mount_tmpfs(&dest, opt.as_slice()));
+            &Tmpfs(ref opt) => {
+                try!(mount_tmpfs(&dest,
+                    format!("size={},mode=0{:o}",
+                            opt.size, opt.mode).as_slice()));
             }
-            Statedir(dir) => {
-                let relative_dir = dir.path_relative_from(&root).unwrap();
-                try!(bind_mount(
-                    &state_dir.join(relative_dir),
-                    &dest));
+            &Statedir(ref opt) => {
+                let relative_dir = opt.path.path_relative_from(&root).unwrap();
+                let dir = state_dir.join(&relative_dir);
+                if relative_dir != Path::new(".") {
+                    try!(mkdir(&dir, ALL_PERMISSIONS)
+                        .map_err(|e| format!("Can't mkdir {:?}: {}", dir, e)));
+                    try!(set_file_mode(&dir, opt.mode)
+                        .map_err(|e| format!("Can't chmod {:?}: {}", dir, e)));
+                }
+                try!(bind_mount(&dir, &dest));
             }
         }
     }
