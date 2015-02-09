@@ -13,16 +13,26 @@ pub struct TmpfsInfo {
 }
 
 #[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
-pub struct StatedirInfo {
+pub struct PersistentInfo {
     pub path: Path,
     pub mkdir: bool,
     pub mode: u32,
+    pub user: u32,
+    pub group: u32,
+}
+
+#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+pub struct StatedirInfo {
+    pub path: Path,
+    pub mode: u32,
+    pub user: u32,
+    pub group: u32,
 }
 
 #[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
 pub enum Volume {
     Readonly(Path),
-    Persistent(Path),
+    Persistent(PersistentInfo),
     Tmpfs(TmpfsInfo),
     Statedir(StatedirInfo),
 }
@@ -89,6 +99,12 @@ fn mapping_validator<'x>() -> Box<Validator + 'x> {
 }
 
 impl ContainerConfig {
+    pub fn map_uid(&self, uid: u32) -> Option<u32> {
+        _map_id(&self.uid_map, uid)
+    }
+    pub fn map_gid(&self, gid: u32) -> Option<u32> {
+        _map_id(&self.gid_map, gid)
+    }
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
             ("kind".to_string(), Box::new(Scalar {
@@ -159,10 +175,27 @@ impl ContainerConfig {
 
 pub fn volume_validator<'a>() -> Box<Validator + 'a> {
     return Box::new(Enum { options: vec!(
-        ("Persisent".to_string(),  Scalar {
-            .. Default::default()}) as Box<Validator>)
-        ("Readonly".to_string(),  Scalar {
-            .. Default::default()}) as Box<Validator>)
+        ("Persistent".to_string(),  Box::new(Structure { members: vec!(
+            ("path".to_string(),  Box::new(Scalar {
+                default: Some("/".to_string()),
+                .. Default::default()}) as Box<Validator>),
+            ("mkdir".to_string(),  Box::new(Scalar {
+                default: Some("false".to_string()),
+                .. Default::default()}) as Box<Validator>),
+            ("mode".to_string(),  Box::new(Numeric {
+                min: Some(0u32),
+                max: Some(0o700u32),
+                default: Some(0o766),
+                .. Default::default()}) as Box<Validator>),
+            ("user".to_string(),  Box::new(Numeric {
+                default: Some(0u32),
+                .. Default::default()}) as Box<Validator>),
+            ("group".to_string(),  Box::new(Numeric {
+                default: Some(0u32),
+                .. Default::default()}) as Box<Validator>),
+            ),.. Default::default()}) as Box<Validator>),
+        ("Readonly".to_string(), Box::new(Scalar {
+            .. Default::default()}) as Box<Validator>),
         ("Tmpfs".to_string(),  Box::new(Structure { members: vec!(
             ("size".to_string(),  Box::new(Numeric {
                 min: Some(0us),
@@ -178,14 +211,29 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
             ("path".to_string(),  Box::new(Scalar {
                 default: Some("/".to_string()),
                 .. Default::default()}) as Box<Validator>),
-            ("mkdir".to_string(),  Box::new(Scalar {
-                default: Some("true".to_string()),
-                .. Default::default()}) as Box<Validator>),
             ("mode".to_string(),  Box::new(Numeric {
                 min: Some(0u32),
                 max: Some(0o700u32),
                 default: Some(0o766),
                 .. Default::default()}) as Box<Validator>),
+            ("user".to_string(),  Box::new(Numeric {
+                default: Some(0u32),
+                .. Default::default()}) as Box<Validator>),
+            ("group".to_string(),  Box::new(Numeric {
+                default: Some(0u32),
+                .. Default::default()}) as Box<Validator>),
             ),.. Default::default()}) as Box<Validator>),
         ), .. Default::default()}) as Box<Validator>;
+}
+
+fn _map_id(map: &Vec<IdMap>, id: u32) -> Option<u32> {
+    if map.len() == 0 {
+        return Some(id);
+    }
+    for rng in map.iter() {
+        if id >= rng.outside && id <= rng.outside + rng.count {
+            return Some(rng.inside + (id - rng.outside));
+        }
+    }
+    None
 }

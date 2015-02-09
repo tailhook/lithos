@@ -65,20 +65,33 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 try!(bind_mount(&path, &dest));
                 try!(mount_ro_recursive(&dest));
             }
-            &Persistent(ref dir) => {
-                let path = match map_dir(dir, &tree.writable_paths) {
+            &Persistent(ref opt) => {
+                let path = match map_dir(&opt.path, &tree.writable_paths) {
                     None => {
-                        return Err(format!(concat!("Can't find volume for {},",
-                            " probably missing entry in writable-paths"),
-                            dir.display()));
+                        return Err(format!("Can't find volume for {:?}, \
+                            probably missing entry in writable-paths",
+                            opt.path));
                     }
                     Some(path) => path,
                 };
-                // TODO(tailhook) make it parametrized
                 if !path.exists() {
-                    try_str!(mkdir_recursive(&path, ALL_PERMISSIONS));
-                    // TODO(tailhook) map actual user
-                    try_str!(chown(&path, local.user_id as isize, -1));
+                    if opt.mkdir {
+                        try!(mkdir_recursive(&path, ALL_PERMISSIONS)
+                            .map_err(|e| format!("Error creating \
+                                persistent volume: {}", e)));
+                        let user = try!(local.map_uid(opt.user)
+                            .ok_or(format!("Non-mapped user {} for volume {}",
+                                opt.user, mp_str)));
+                        let group = try!(local.map_gid(opt.group)
+                            .ok_or(format!("Non-mapped group {} for volume {}",
+                                opt.group, mp_str)));
+                        try!(chown(&path, user as isize, group as isize)
+                            .map_err(|e| format!("Error chowning \
+                                persistent volume: {}", e)));
+                        try!(set_file_mode(&path, opt.mode)
+                            .map_err(|e| format!("Can't chmod persistent \
+                                volume: {}", e)));
+                    }
                 }
                 try!(bind_mount(&path, &dest));
             }
@@ -91,10 +104,21 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 let relative_dir = opt.path.path_relative_from(&root).unwrap();
                 let dir = state_dir.join(&relative_dir);
                 if relative_dir != Path::new(".") {
-                    try!(mkdir(&dir, ALL_PERMISSIONS)
-                        .map_err(|e| format!("Can't mkdir {:?}: {}", dir, e)));
+                    try!(mkdir_recursive(&dir, ALL_PERMISSIONS)
+                        .map_err(|e| format!("Error creating \
+                            persistent volume: {}", e)));
+                    let user = try!(local.map_uid(opt.user)
+                        .ok_or(format!("Non-mapped user {} for volume {}",
+                            opt.user, mp_str)));
+                    let group = try!(local.map_gid(opt.group)
+                        .ok_or(format!("Non-mapped group {} for volume {}",
+                            opt.group, mp_str)));
+                    try!(chown(&dir, user as isize, group as isize)
+                        .map_err(|e| format!("Error chowning \
+                            persistent volume: {}", e)));
                     try!(set_file_mode(&dir, opt.mode)
-                        .map_err(|e| format!("Can't chmod {:?}: {}", dir, e)));
+                        .map_err(|e| format!("Can't chmod persistent \
+                            volume: {}", e)));
                 }
                 try!(bind_mount(&dir, &dest));
             }
