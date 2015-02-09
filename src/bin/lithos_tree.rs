@@ -450,10 +450,16 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
         .unwrap_or(BTreeMap::<String, ChildConfig>::new())
         .into_iter()
         .filter(|&(_, ref child)| child.kind == Daemon)
-        .flat_map(|(child_name, child)| {
+        .flat_map(|(child_name, mut child)| {
+            let instances = child.instances;
+
+            //  Child doesn't need to know how many instances it's run
+            //  And for comparison on restart we need to have "one" always
+            child.instances = 1;
             let child_string = Rc::new(json::encode(&child));
+
             let child = Rc::new(child);
-            let items: Vec<(Rc<String>, Child)> = range(0, child.instances)
+            let items: Vec<(Rc<String>, Child)> = range(0, instances)
                 .map(|i| {
                     let name = format!("{}/{}.{}", tree_name, child_name, i);
                     let name = Rc::new(name);
