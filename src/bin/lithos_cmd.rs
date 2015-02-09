@@ -14,6 +14,7 @@ use std::os::{set_exit_status, self_exe_path, getenv};
 use std::io::stderr;
 use std::time::Duration;
 use std::default::Default;
+use std::collections::BTreeMap;
 use serialize::json;
 use libc::funcs::posix88::unistd::getpid;
 
@@ -83,18 +84,21 @@ fn run(master_cfg: Path, tree_name: String,
         return Err(format!("Wrong tree name: {}", tree_name));
     }
     if !Regex::new(r"^[\w-]+$").unwrap().is_match(command_name.as_slice()) {
-        return Err(format!("Wrong ommand name: {}", command_name));
+        return Err(format!("Wrong command name: {}", command_name));
     }
 
     let tree: TreeConfig = try_str!(parse_config(
         &master.config_dir.join(tree_name.clone() + ".yaml"),
         &*TreeConfig::validator(), Default::default()));
 
-    let child_fn = tree.config_dir.join(command_name.clone() + ".yaml");
-    let child_cfg: ChildConfig = try_str!(parse_config(&child_fn,
+    debug!("Children config {:?}", tree.config_file);
+    let tree_children: BTreeMap<String, ChildConfig>;
+    tree_children = try_str!(parse_config(&tree.config_file,
         &*ChildConfig::validator(), Default::default()));
+    let child_cfg = try!(tree_children.get(&command_name)
+        .ok_or(format!("Command {:?} not found", command_name)));
 
-    debug!("Child fn: {}", child_fn.display());
+
 
     if child_cfg.kind != Command {
         return Err(format!("The target container is: {:?}", child_cfg.kind));

@@ -15,6 +15,7 @@ use std::io::fs::readdir;
 use std::os::{set_exit_status, self_exe_path};
 use std::io::fs::PathExtensions;
 use std::default::Default;
+use std::collections::BTreeMap;
 
 use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
@@ -71,10 +72,10 @@ fn check_tree_config(tree: &TreeConfig) {
 }
 
 fn check(config_file: Path, verbose: bool,
-    tree_name: Option<String>, replacement_dir: Option<Path>)
+    tree_name: Option<String>, alter_config: Option<Path>)
 {
     let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
-    let mut replacement_dir = replacement_dir;
+    let mut alter_config = alter_config;
     let master: MasterConfig = match parse_config(&config_file,
         &*MasterConfig::validator(), Default::default()) {
         Ok(cfg) => cfg,
@@ -110,59 +111,45 @@ fn check(config_file: Path, verbose: bool,
         };
         check_tree_config(&tree);
 
-        let config_dir = match (tree_fn.filestem_str(), &tree_name) {
+        let config_file = match (tree_fn.filestem_str(), &tree_name) {
             (Some(ref f), &Some(ref t)) if *f == t.as_slice()
-            => replacement_dir.take().unwrap_or(tree.config_dir),
-            _ => tree.config_dir,
+            => alter_config.take().unwrap_or(tree.config_file),
+            _ => tree.config_file,
         };
 
-        debug!("Checking child dir {}", config_dir.display());
-        let dirlist = match readdir(&config_dir) {
-            Ok(dirlist) => dirlist,
+        debug!("Checking {}", config_file.display());
+        let all_children: BTreeMap<String, ChildConfig>;
+        all_children = match parse_config(&config_file,
+            &*ChildConfig::list_validator(), Default::default()) {
+            Ok(cfg) => cfg,
             Err(e) => {
-                error!("Can't open config directory {}: {}",
-                    config_dir.display(), e);
+                error!("Can't read child config {}: {}",
+                    config_file.display(), e);
                 set_exit_status(1);
-                return;
+                continue;
             }
         };
-        for child_fn in dirlist.into_iter() {
-            match (child_fn.filestem_str(), child_fn.extension_str()) {
-                (Some(""), _) => continue,  // Hidden files
-                (_, Some("yaml")) => {}
-                _ => continue,  // Non-yaml, old, whatever, files
-            }
-            debug!("Checking {}", child_fn.display());
-            let child_cfg: ChildConfig = match parse_config(&child_fn,
-                &*ChildConfig::validator(), Default::default()) {
-                Ok(cfg) => cfg,
-                Err(e) => {
-                    error!("Can't read child config {}: {}",
-                        child_fn.display(), e);
-                    set_exit_status(1);
-                    continue;
-                }
-            };
-            let cfg_path = Path::new(child_cfg.config);
+        for (ref child_name, ref child_cfg) in all_children.iter() {
+            let cfg_path = Path::new(child_cfg.config.as_slice());
             if !cfg_path.is_absolute() {
                 error!("Config path must be absolute");
                 set_exit_status(1);
                 continue;
             }
-            debug!("Opening config {}", child_fn.display());
+            debug!("Opening config for {:?}", child_name);
             let config: ContainerConfig = match parse_config(
                 &tree.image_dir
-                    .join(child_cfg.image)
+                    .join(child_cfg.image.as_slice())
                     .join(cfg_path.path_relative_from(
                         &Path::new("/")).unwrap()),
                 &*ContainerConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    error!("Can't read child config {}: {}.\n\
+                    error!("Can't read child config {:?}: {}.\n\
                         Sometimes the reason of reading configuration is \
                         absolute symlinks for config, in that case it may \
                         work in real daemon, but better fix it.",
-                        child_fn.display(), e);
+                        child_name, e);
                     set_exit_status(1);
                     continue;
                 }
@@ -203,7 +190,7 @@ fn check(config_file: Path, verbose: bool,
             }
         }
     }
-    if replacement_dir.is_some() {
+    if alter_config.is_some() {
         error!("Tree {:?} is not used", tree_name);
         set_exit_status(1);
     }
@@ -236,7 +223,7 @@ fn main() {
 
     let mut config_file = Path::new("/etc/lithos.yaml");
     let mut verbose = false;
-    let mut config_dir = None;
+    let mut alter_config = None;
     let mut tree_name = None;
     {
         let mut ap = ArgumentParser::new();
@@ -248,11 +235,11 @@ fn main() {
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], Box::new(StoreTrue),
             "Verbose configuration");
-        ap.refer(&mut config_dir)
-          .add_option(&["-D", "--dir", "--config-dir"],
+        ap.refer(&mut alter_config)
+          .add_option(&["--alternate-config"],
             Box::new(StoreOption::<Path>),
-            "Name of the alterate directory with configs.
-             Useful to test configuration directory before
+            "Name of the alterate file name with configs.
+             Useful to test configuration file before
              switching it to be primary one.
              You must also specify --tree.")
           .metavar("DIR");
@@ -269,11 +256,11 @@ fn main() {
             }
         }
     }
-    if config_dir.is_some() && tree_name.is_none() {
+    if alter_config.is_some() && tree_name.is_none() {
         error!("Please specify --tree if you use --dir");
         set_exit_status(1);
         return;
     }
     check_binaries();
-    check(config_file, verbose, tree_name, config_dir);
+    check(config_file, verbose, tree_name, alter_config);
 }

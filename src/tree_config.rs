@@ -52,7 +52,7 @@ impl Decodable for Range {
 
 #[derive(Decodable)]
 pub struct TreeConfig {
-    pub config_dir: Path,
+    pub config_file: Path,
     pub image_dir: Path,
     pub readonly_paths: BTreeMap<Path, Path>,
     pub writable_paths: BTreeMap<Path, Path>,
@@ -64,8 +64,8 @@ pub struct TreeConfig {
 impl TreeConfig {
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
-            ("config_dir".to_string(), Box::new(Scalar {
-                default: Some("/etc/lithos/current".to_string()),
+            ("config_file".to_string(), Box::new(Scalar {
+                default: Some("/etc/lithos/current.yaml".to_string()),
                 .. Default::default() }) as Box<Validator>),
             ("image_dir".to_string(), Box::new(Scalar {
                 default: Some("/var/lib/lithos/containers".to_string()),

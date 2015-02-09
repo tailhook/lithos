@@ -30,47 +30,16 @@ use lithos::signal;
 use lithos::sha256::{Sha256,Digest};
 
 
-fn copy_dir(source: &Path, target: &Path) -> Result<(), IoError> {
-    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
-    let tmpdir = Path::new(target.dirname())
-        .join(b".tmp.".to_vec() + target.filename().unwrap());
-    if tmpdir.exists() {
-        try!(rmdir_recursive(&tmpdir));
-    }
-    try!(mkdir(&tmpdir, ALL_PERMISSIONS));
-    for file in try!(readdir(source))
-        .into_iter()
-        .filter(|f| f.filename_str()
-                     .map(|s| name_re.is_match(s))
-                     .unwrap_or(false))
-    {
-        try!(copy(&file, &tmpdir.join(file.filename().unwrap())));
-    }
-    try!(rename(&tmpdir, target));
-    return Ok(());
-}
-
-fn hash_dir(dir: &Path) -> Result<String, IoError> {
-    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
+fn hash_file(file: &Path) -> Result<String, IoError> {
     let mut hash = Sha256::new();
-    let mut files: Vec<Path> = try!(readdir(dir))
-        .into_iter()
-        .filter(|f| f.filename_str()
-                     .map(|s| name_re.is_match(s))
-                     .unwrap_or(false))
-        .collect();
-    files.sort();
-    for file in files.iter() {
-        hash.input(file.container_as_bytes());
-        hash.input(b"\x00");
-        hash.input(try!(try!(File::open(file)).read_to_end()).as_slice());
-        hash.input(b"\x00");
-    }
+    // We assume that file is small enough so we don't care reading it
+    // to memory
+    hash.input(try!(try!(File::open(file)).read_to_end()).as_slice());
     return Ok(hash.result_str().as_slice().slice_to(8).to_string());
 }
 
 
-fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
+fn switch_config(master_cfg: Path, tree_name: String, config_file: Path,
     name_prefix: Option<String>)
     -> Result<(), String>
 {
@@ -82,8 +51,8 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
         .arg(&master_cfg)
         .arg("--tree")
         .arg(tree_name.as_slice())
-        .arg("--config-dir")
-        .arg(&config_dir)
+        .arg("--alternate-config")
+        .arg(&config_file)
         .output()
     {
         Ok(ref po) if po.status == ExitStatus(0) => { }
@@ -117,47 +86,46 @@ fn switch_config(master_cfg: Path, tree_name: String, config_dir: Path,
     };
 
     let config_fn = if let Some(prefix) = name_prefix {
-        prefix.to_string() + try!(hash_dir(&config_dir)
-            .map_err(|e| format!("Can't read dir: {}", e))).as_slice()
+        prefix.to_string() + try!(hash_file(&config_file)
+            .map_err(|e| format!("Can't read file: {}", e))).as_slice() +
+            ".yaml"
     } else {
-        config_dir.filename_str().unwrap().to_string()
+        config_file.filename_str().unwrap().to_string()
     };
-    let target_fn = Path::new(tree.config_dir.dirname())
+    let target_fn = Path::new(tree.config_file.dirname())
                     .join(config_fn.as_slice());
-    if target_fn == tree.config_dir {
-        return Err(format!(concat!(
-            "Target config dir ({}) is the current dir ({}). ",
-            "You must have unique name for each new configuration"),
-            target_fn.display(), tree.config_dir.display()));
+    if target_fn == tree.config_file {
+        return Err(format!("Target config file ({:?}) \
+            is the current file ({:?}). You must have unique \
+            name for each new configuration",
+            target_fn, tree.config_file));
     }
-    let lnk = readlink(&tree.config_dir);
+    let lnk = readlink(&tree.config_file);
     match lnk.as_ref().map(|f| f.dirname()) {
         Ok(b".") => {},
-        _ => return Err(format!(concat!(
-            "The path {} must be a symlink which points to the directory ",
-            "at the same level of hierarchy."), tree.config_dir.display())),
+        _ => return Err(format!("The path {:?} must be a symlink \
+            which points to the directory at the same level of hierarchy.",
+            tree.config_file)),
     };
     if lnk.unwrap().filename() == target_fn.filename() {
         warn!("Target config dir is the active one. Nothing to do.");
         return Ok(());
     }
     if target_fn.exists() {
-        warn!(concat!("Target directory {} exists. ",
-            "Probably already copied. Skipping copying step."),
-            target_fn.display());
+        warn!("Target file {:?} exists. \
+            Probably already copied. Skipping copying step.",
+            target_fn);
     } else {
         info!("Seems everything nice. Copying");
-        match copy_dir(&config_dir, &target_fn) {
-            Ok(()) => {}
-            Err(e) => return Err(format!("Error copying config dir: {}", e)),
-        }
+        try!(copy(&config_file, &target_fn)
+            .map_err(|e| format!("Error copying: {}", e)));
     }
     info!("Ok files are there. Making symlink");
-    let symlink_fn = tree.config_dir.with_filename(
-        b".tmp.".to_vec() + tree.config_dir.filename().unwrap());
+    let symlink_fn = tree.config_file.with_filename(
+        b".tmp.".to_vec() + tree.config_file.filename().unwrap());
     try!(symlink(&Path::new(config_fn.as_slice()), &symlink_fn)
         .map_err(|e| format!("Error symlinking dir: {}", e)));
-    try!(rename(&symlink_fn, &tree.config_dir)
+    try!(rename(&symlink_fn, &tree.config_file)
         .map_err(|e| format!("Error replacing symlink: {}", e)));
 
     info!("Done. Sending SIGQUIT to lithos_tree");
@@ -186,7 +154,7 @@ fn main() {
     let mut master_config = Path::new("/etc/lithos.yaml");
     let mut verbose = false;
     let mut name_prefix = None;
-    let mut config_dir = Path::new("");
+    let mut config_file = Path::new("");
     let mut tree_name = "".to_string();
     {
         let mut ap = ArgumentParser::new();
@@ -200,8 +168,8 @@ fn main() {
             "Verbose configuration");
         ap.refer(&mut name_prefix)
           .add_option(&["--hashed-name"], Box::new(StoreOption::<String>), "
-            Do not last component of DIR as a name, but create an unique name
-            based on the PREFIX and hash of the contents.
+            Do not use last component of FILE as a name, but create an unique
+            name based on the PREFIX and hash of the contents.
             ")
           .metavar("PREFIX");
         ap.refer(&mut tree_name)
@@ -209,14 +177,15 @@ fn main() {
             "Name of the tree which configuration will be switched for")
           .required()
           .metavar("NAME");
-        ap.refer(&mut config_dir)
-          .add_argument("dir", Box::new(Store::<Path>), "
+        ap.refer(&mut config_file)
+          .add_argument("new_config", Box::new(Store::<Path>), "
             Name of the configuration directory to switch to. It doesn't
             have to be a directory inside `config-dir`, and it will be copied
             there. However, if directory with the same name exists in the
             `config-dir` it's assumed that it's already copied and will not
             be updated. Be sure to use unique directory for each deployment.
             ")
+          .metavar("FILE")
           .required();
         match ap.parse_args() {
             Ok(()) => {}
@@ -226,7 +195,7 @@ fn main() {
             }
         }
     }
-    match switch_config(master_config, tree_name, config_dir, name_prefix) {
+    match switch_config(master_config, tree_name, config_file, name_prefix) {
         Ok(()) => {
             set_exit_status(0);
         }

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::default::Default;
 use serialize::Decodable;
 
-use quire::validate::{Validator, Structure, Scalar, Numeric};
+use quire::validate::{Validator, Structure, Scalar, Numeric, Mapping};
 use quire;
 
 use super::container_config::ContainerKind;
@@ -19,6 +19,13 @@ pub struct ChildConfig {
 }
 
 impl ChildConfig {
+    pub fn list_validator<'x>() -> Box<Validator + 'x> {
+        return Box::new(Mapping {
+            key_element: Box::new(Scalar {
+                .. Default::default()}),
+            value_element: ChildConfig::validator(),
+            .. Default::default() });
+    }
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
             ("instances".to_string(), Box::new(Numeric {

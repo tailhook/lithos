@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use libc::pid_t;
 use libc::funcs::posix88::unistd::{getpid, execv};
 use serialize::json;
+use std::collections::BTreeMap;
 
 use quire::parse_config;
 
@@ -442,22 +443,12 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
 {
     let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let child_validator = ChildConfig::validator();
-    debug!("Reading child dir {}", tree.config_dir.display());
-    readdir(&tree.config_dir)
-        .map_err(|e| { error!("Can't read config dir: {}", e); e })
-        .unwrap_or(Vec::new())
+    debug!("Reading child config {}", tree.config_file.display());
+    parse_config(&tree.config_file,
+        &*ChildConfig::list_validator(), Default::default())
+        .map_err(|e| warn!("Can't read config {:?}: {}", tree.config_file, e))
+        .unwrap_or(BTreeMap::<String, ChildConfig>::new())
         .into_iter()
-        .filter_map(|f| {
-            let name = match f.filename_str().and_then(|s| name_re.captures(s))
-            {
-                Some(capt) => capt.at(1).unwrap(),
-                None => return None,
-            };
-            parse_config(&f, &*child_validator, Default::default())
-                .map_err(|e| warn!("Can't read config {}: {}", f.display(), e))
-                .map(|cfg: ChildConfig| (name.to_string(), cfg))
-                .ok()
-        })
         .filter(|&(_, ref child)| child.kind == Daemon)
         .flat_map(|(child_name, child)| {
             let child_string = Rc::new(json::encode(&child));
