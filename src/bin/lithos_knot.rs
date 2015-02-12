@@ -129,10 +129,18 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     if let Some(cgroup_parent) = master.cgroup_name {
         // Warning setting cgroup relative to it's own cgroup may not work
         // if we ever want to restart lithos_knot in-place
-        try!(cgroup::ensure_in_group(
+        let cgroups = try!(cgroup::ensure_in_group(
             &(cgroup_parent + "/" +
               name.replace("/", ":").as_slice() + ".scope"),
             &master.cgroup_controllers));
+        cgroups.set_value(cgroup::Controller::Memory,
+            "memory.limit_in_bytes",
+            format!("{}", local.memory_limit).as_slice())
+            .map_err(|e| error!("Error setting cgroup limit: {}", e));
+        cgroups.set_value(cgroup::Controller::Cpu,
+                "cpu.shares",
+                format!("{}", local.cpu_shares).as_slice())
+            .map_err(|e| error!("Error setting cgroup limit: {}", e));
     }
 
     let mount_dir = master.runtime_dir.join(&master.mount_dir);

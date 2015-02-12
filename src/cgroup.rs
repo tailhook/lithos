@@ -12,11 +12,21 @@ use libc::getpid;
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct CGroupPath(pub String, pub Path);
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Show)]
+pub enum Controller {
+    Cpu,
+    Memory,
+}
+
 
 #[derive(Default)]
 pub struct ParsedCGroups {
     pub all_groups: Vec<Rc<CGroupPath>>,
     pub by_name: BTreeMap<String, Rc<CGroupPath>>,
+}
+
+pub struct CGroups {
+    full_paths: BTreeMap<Controller, Path>
 }
 
 
@@ -55,7 +65,7 @@ pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
 }
 
 pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
-    -> Result<(), String>
+    -> Result<CGroups, String>
 {
     let default_controllers = vec!(
         "name".to_string(),
@@ -75,6 +85,7 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
     let parent_grp = try!(parse_cgroups(Some(1)));
     let old_grp = try!(parse_cgroups(None));
     let mypid = unsafe { getpid() };
+    let mut res = CGroups { full_paths: BTreeMap::new() };
 
     for ctr in controllers.iter() {
         let CGroupPath(ref rfolder, ref rpath) = **try!(
@@ -112,8 +123,17 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
              .map_err(|e| format!(
                 "Error adding myself (pid: {}) to the group {}: {}",
                 mypid, fullpath.display(), e)));
+        match ctr.as_slice() {
+            "cpu" => {
+                res.full_paths.insert(Controller::Cpu, fullpath);
+            }
+            "memory" => {
+                res.full_paths.insert(Controller::Memory, fullpath);
+            }
+            _ => {}
+        };
     }
-    return Ok(());
+    return Ok(res);
 }
 
 pub fn remove_child_cgroup(child: &str, master: &String,
@@ -148,4 +168,17 @@ pub fn remove_child_cgroup(child: &str, master: &String,
             .ok();
     }
     return Ok(());
+}
+
+impl CGroups {
+    pub fn set_value(&self, ctr: Controller, key: &str, value: &str)
+        -> Result<(), String>
+    {
+        let path = try!(self.full_paths.get(&ctr)
+            .ok_or(format!("Controller {:?} is not initialized", ctr)));
+        File::create(&path.join(key))
+            .and_then(|mut f| f.write_str(value))
+            .map_err(|e| format!("Can't write to cgroup path {:?}/{}: {}",
+                path, key, e))
+    }
 }
