@@ -19,7 +19,7 @@ pub struct ChildConfig {
 }
 
 impl ChildConfig {
-    pub fn list_validator<'x>() -> Box<Validator + 'x> {
+    pub fn mapping_validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Mapping {
             key_element: Box::new(Scalar {
                 .. Default::default()}),

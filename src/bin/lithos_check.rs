@@ -120,7 +120,7 @@ fn check(config_file: Path, verbose: bool,
         debug!("Checking {}", config_file.display());
         let all_children: BTreeMap<String, ChildConfig>;
         all_children = match parse_config(&config_file,
-            &*ChildConfig::list_validator(), Default::default()) {
+            &*ChildConfig::mapping_validator(), Default::default()) {
             Ok(cfg) => cfg,
             Err(e) => {
                 error!("Can't read child config {}: {}",

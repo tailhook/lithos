@@ -94,7 +94,7 @@ fn run(master_cfg: Path, tree_name: String,
     debug!("Children config {:?}", tree.config_file);
     let tree_children: BTreeMap<String, ChildConfig>;
     tree_children = try_str!(parse_config(&tree.config_file,
-        &*ChildConfig::validator(), Default::default()));
+        &*ChildConfig::mapping_validator(), Default::default()));
     let child_cfg = try!(tree_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));
 

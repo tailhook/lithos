@@ -445,7 +445,7 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     let child_validator = ChildConfig::validator();
     debug!("Reading child config {}", tree.config_file.display());
     parse_config(&tree.config_file,
-        &*ChildConfig::list_validator(), Default::default())
+        &*ChildConfig::mapping_validator(), Default::default())
         .map_err(|e| warn!("Can't read config {:?}: {}", tree.config_file, e))
         .unwrap_or(BTreeMap::<String, ChildConfig>::new())
         .into_iter()
