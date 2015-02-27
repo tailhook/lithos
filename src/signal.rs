@@ -1,10 +1,10 @@
 use std::os::errno;
 use std::cmp::max;
-use std::io::IoError;
+use std::old_io::IoError;
 use std::ptr::null;
 use std::time::duration::Duration;
 use std::default::Default;
-use std::io::process::Process;
+use std::old_io::process::Process;
 use libc::types::os::common::posix01::timespec;
 pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR, ECHILD};
 pub use libc::consts::os::posix88::{SIGKILL};
@@ -80,10 +80,10 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
                     status = 0;
                     let rc = unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
                     if rc < 0 {
-                        if errno() == EINTR as usize {
+                        if errno() == EINTR {
                             continue;
                         }
-                        if errno() != ECHILD as usize {
+                        if errno() != ECHILD {
                             panic!("Failure '{}' not expected, on death of {}",
                                 IoError::last_error(), ptr.pid);
                         }

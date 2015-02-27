@@ -1,8 +1,6 @@
 #![crate_name="lithos"]
 #![crate_type="lib"]
 
-#![feature(slicing_syntax)]
-
 #[macro_use] extern crate log;
 extern crate libc;
 extern crate quire;
@@ -16,7 +14,6 @@ pub mod container_config;
 pub mod child_config;
 pub mod monitor;
 pub mod container;
-pub mod macros;
 pub mod signal;
 pub mod mount;
 pub mod utils;
@@ -26,4 +23,5 @@ pub mod pipe;
 pub mod limits;
 pub mod sha256;
 pub mod cgroup;
+pub mod itertools;
 #[cfg(test)] pub mod ascii;  // actually a lithos_ps module

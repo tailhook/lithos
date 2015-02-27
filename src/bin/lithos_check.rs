@@ -11,9 +11,10 @@ extern crate quire;
 use regex::Regex;
 use std::os::{getenv, setenv};
 use std::os::args;
-use std::io::fs::readdir;
-use std::os::{set_exit_status, self_exe_path};
-use std::io::fs::PathExtensions;
+use std::old_io::fs::readdir;
+use std::env::{set_exit_status};
+use std::os::{self_exe_path};
+use std::old_io::fs::PathExtensions;
 use std::default::Default;
 use std::collections::BTreeMap;
 
@@ -229,23 +230,21 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut config_file)
-          .add_option(&["-C", "--config"], Box::new(Store::<Path>),
+          .add_option(&["-C", "--config"], Store,
             "Name of the global configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
-          .add_option(&["-v", "--verbose"], Box::new(StoreTrue),
+          .add_option(&["-v", "--verbose"], StoreTrue,
             "Verbose configuration");
         ap.refer(&mut alter_config)
-          .add_option(&["--alternate-config"],
-            Box::new(StoreOption::<Path>),
+          .add_option(&["--alternate-config"], StoreOption,
             "Name of the alterate file name with configs.
              Useful to test configuration file before
              switching it to be primary one.
              You must also specify --tree.")
           .metavar("DIR");
         ap.refer(&mut tree_name)
-          .add_option(&["-T", "--tree", "--subtree-name"],
-            Box::new(StoreOption::<String>),
+          .add_option(&["-T", "--tree", "--subtree-name"], StoreOption,
             "Name of the tree for which --config-dir takes effect")
           .metavar("NAME");
         match ap.parse_args() {

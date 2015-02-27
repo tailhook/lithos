@@ -1,104 +1,90 @@
 commands:
 
-  make:
+  make: !Command
     description: Build lithos in ubuntu container
     container: ubuntu
-    command: [make]
+    run: [make]
 
-  build-ubuntu-package:
+  build-ubuntu-package: !Command
     description: Build ubuntu (trusty) package
     container: ubuntu
     write-mode: transient-hard-link-copy
-    command:
+    run:
     - checkinstall
     - --default
     - --maintainer=paul@colomiets.name
     - --pkglicense=MIT
     - --pkgname=lithos
     - --nodoc
+    - --requires=libcap2-bin
     - --strip=no
     - make
     - -B
     - all
     - install
 
-  docs:
+  docs: !Command
     description: Build HTML docs
     container: docs
     work-dir: docs
-    command: [make, html]
+    run: [make, html]
 
-  make-docs:
+  make-docs: !Command
     description: Build
     container: ubuntu
     work-dir: docs
-    command: [make]
+    run: [make]
 
 
 containers:
 
   busybox:
     # This one is used as a container inside the lithos example
-    builder: docker
-    parameters:
-      image: busybox
-    provision: |
-      set -ex
-      export PATH=/bin
-      mkdir /config
-      cat <<END > /config/sleep.yaml
-      kind: Daemon
-      user_id: 1
-      volumes:
-        /tmp: !Tmpfs { size: 100Mi }
-      memory_limit: 104857600
-      cpu_shares: 3
-      executable: /bin/sleep
-      arguments: [60]
-      uid-map:
-      - {inside: 0, outside: 1000, count: 1}
-      - {inside: 1, outside: 1, count: 1}
-      gid-map:
-      - {inside: 0, outside: 100, count: 1}
-      END
-      cat <<END > /config/busybox.yaml
-      kind: Command
-      user_id: 1
-      volumes:
-        /tmp: !Tmpfs { size: 100Mi }
-      memory_limit: 104857600
-      cpu_shares: 3
-      executable: /bin/busybox
-      uid-map:
-      - {inside: 0, outside: 1000, count: 1}
-      - {inside: 1, outside: 1, count: 1}
-      gid-map:
-      - {inside: 0, outside: 100, count: 1}
-      END
+    setup:
+    - !Alpine v3.1
+    - !Sh |
+        cat <<END > /config/sleep.yaml
+        kind: Daemon
+        user_id: 1
+        volumes:
+          /tmp: !Tmpfs { size: 100Mi }
+        memory_limit: 104857600
+        cpu_shares: 3
+        executable: /bin/sleep
+        arguments: [60]
+        uid-map:
+        - {inside: 0, outside: 1000, count: 1}
+        - {inside: 1, outside: 1, count: 1}
+        gid-map:
+        - {inside: 0, outside: 100, count: 1}
+        END
+    - !Sh |
+        cat <<END > /config/busybox.yaml
+        kind: Command
+        user_id: 1
+        volumes:
+          /tmp: !Tmpfs { size: 100Mi }
+        memory_limit: 104857600
+        cpu_shares: 3
+        executable: /bin/busybox
+        uid-map:
+        - {inside: 0, outside: 1000, count: 1}
+        - {inside: 1, outside: 1, count: 1}
+        gid-map:
+        - {inside: 0, outside: 100, count: 1}
+        END
 
   ubuntu:
-    # The container to build lithos ubuntu package
-    builder: ubuntu
-    uids: [0-1000, 65534]
-    gids: [0-1000, 65534]
-    parameters:
-      repos: universe
-      packages: make checkinstall wget
-    provision: |
-      export PATH=/bin:/usr/bin:/usr/bin/local
-      chown root /var/spool/rsyslog
-      cd /work/run
-      wget https://static.rust-lang.org/dist/rust-1.0.0-alpha-x86_64-unknown-linux-gnu.tar.gz
-      tar -xf rust-1.0.0-alpha-x86_64-unknown-linux-gnu.tar.gz
-      cd rust-1.0.0-alpha-x86_64-unknown-linux-gnu
-      ./install.sh --prefix=/usr
-    environ:
-      LD_LIBRARY_PATH: /usr/lib/rustlib/x86_64-unknown-linux-gnu/lib
-    tmpfs-volumes:
-      /tmp: size=1m,mode=1777
-      /var/tmp: size=100m,mode=1777
+    setup:
+    - !Ubuntu trusty
+    - !UbuntuUniverse
+    - !Install [make, checkinstall, wget, gcc, libc6-dev, ca-certificates]
+    - !TarInstall
+      url: http://static.rust-lang.org/dist/rust-1.0.0-alpha.2-x86_64-unknown-linux-gnu.tar.gz
+      script: |
+        ./install.sh --prefix=/usr --components=rustc,cargo
 
   docs:
-    builder: alpine
-    parameters:
-      packages: py-sphinx make
+    setup:
+    - !Alpine v3.1
+    - !Install [py-sphinx, make]

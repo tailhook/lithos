@@ -1,7 +1,7 @@
-use std::io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
-use std::io::FilePermission;
-use std::io::fs::{File, copy, chmod, mkdir_recursive, chown, mkdir};
-use std::io::fs::PathExtensions;
+use std::old_io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
+use std::old_io::FilePermission;
+use std::old_io::fs::{File, copy, chmod, mkdir_recursive, chown, mkdir};
+use std::old_io::fs::PathExtensions;
 use std::default::Default;
 use std::collections::BTreeMap;
 
@@ -145,27 +145,32 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
             .map_err(|e| format!("Couldn't set chmod for state dir: {}", e)));
     }
     if local.resolv_conf.copy_from_host {
-        try_str!(copy(&Path::new("/etc/resolv.conf"),
-                      &dir.join("resolv.conf")));
+        try!(copy(&Path::new("/etc/resolv.conf"), &dir.join("resolv.conf"))
+            .map_err(|e| format!("State dir: {}", e)));
     }
     if local.hosts_file.localhost || local.hosts_file.public_hostname
         || tree.additional_hosts.len() > 0
     {
         let fname = dir.join("hosts");
-        let mut file = try_str!(File::create(&fname));
-        if local.hosts_file.localhost {
-            try_str!(file.write_str(
-                "127.0.0.1 localhost.localdomain localhost\n"));
-        }
-        if local.hosts_file.public_hostname {
-            try_str!(writeln!(&mut file, "{} {}",
-                try_str!(get_host_ip()),
-                try_str!(get_host_name())));
-        }
-        for (ref host, ref ip) in tree.additional_hosts.iter() {
-            try_str!(writeln!(&mut file, "{} {}", ip, host));
-        }
-        try_str!(chmod(&fname, USER_RWX|GROUP_READ|OTHER_READ));
+        let mut file = try!(File::create(&fname)
+            .and_then(|mut file| {
+                if local.hosts_file.localhost {
+                    try!(file.write_str(
+                        "127.0.0.1 localhost.localdomain localhost\n"));
+                }
+                if local.hosts_file.public_hostname {
+                    try!(writeln!(&mut file, "{} {}",
+                        try!(get_host_ip()),
+                        try!(get_host_name())));
+                }
+                for (ref host, ref ip) in tree.additional_hosts.iter() {
+                    try!(writeln!(&mut file, "{} {}", ip, host));
+                }
+                Ok(())
+            })
+            .map_err(|e| format!("Error writing hosts: {}", e)));
+        try!(chmod(&fname, USER_RWX|GROUP_READ|OTHER_READ)
+            .map_err(|e| format!("Error writing hosts")));
     }
     return Ok(());
 }

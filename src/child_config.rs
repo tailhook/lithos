@@ -43,18 +43,19 @@ impl ChildConfig {
 }
 
 impl FromStr for ChildConfig {
-    fn from_str(body: &str) -> Option<ChildConfig> {
+    type Err = ();
+    fn from_str(body: &str) -> Result<ChildConfig, ()> {
         quire::parser::parse(
                 Rc::new("<command-line>".to_string()),
                 body,
                 |doc| { quire::ast::process(Default::default(), doc) })
-        .ok()
+        .map_err(|_| ())
         .and_then(|(ast, _)| {
             let (tx, rx) = channel();
             let mut dec = quire::decode::YamlDecoder::new(ast, tx);
             let res = Decodable::decode(&mut dec);
             assert!(rx.try_recv().unwrap_err() == Empty);
-            res.ok()
+            res.map_err(|_| ())
         })
     }
 }

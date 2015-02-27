@@ -1,5 +1,5 @@
 use std::os::{set_exit_status, getenv, args};
-use std::io::stdio::{stdout, stderr};
+use std::old_io::stdio::{stdout, stderr};
 
 use argparse::{ArgumentParser, Store, List};
 
@@ -15,12 +15,12 @@ pub struct Options {
 }
 
 impl Options {
-    pub fn parse_args() -> Result<Options, isize> {
+    pub fn parse_args() -> Result<Options, i32> {
         Options::parse_specific_args(args(), &mut stdout(), &mut stderr())
     }
     pub fn parse_specific_args(args: Vec<String>,
         stdout: &mut Writer, stderr: &mut Writer)
-        -> Result<Options, isize>
+        -> Result<Options, i32>
     {
         let mut options = Options {
             master_config: Path::new("/etc/lithos.yaml"),
@@ -37,20 +37,20 @@ impl Options {
             let mut ap = ArgumentParser::new();
             ap.set_description("Runs tree of processes");
             ap.refer(&mut options.name)
-              .add_option(&["--name"], Box::new(Store::<String>),
+              .add_option(&["--name"], Store,
                 "The process name");
             ap.refer(&mut options.master_config)
-              .add_option(&["--master"], Box::new(Store::<Path>),
+              .add_option(&["--master"], Store,
                 "Name of the master configuration file \
                  (default /etc/lithos.yaml)")
               .metavar("FILE");
             ap.refer(&mut options.config)
-              .add_option(&["--config"], Box::new(Store::<ChildConfig>),
+              .add_option(&["--config"], Store,
                 "JSON-serialized container configuration")
               .required()
               .metavar("JSON");
             ap.refer(&mut options.args)
-              .add_argument("argument", Box::new(List::<String>),
+              .add_argument("argument", List,
                 "Additional arguments for the command");
             ap.stop_on_first_argument(true);
             ap.parse(args, stdout, stderr)

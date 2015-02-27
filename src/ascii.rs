@@ -1,15 +1,14 @@
 // This is a part of lithos_ps not lithos library
-use std::io::IoError;
-use std::io::Writer;
-use std::fmt::Writer as FmtWriter;
-use std::io::stdio::StdWriter;
+use std::old_io::IoError;
+use std::old_io::Writer;
+use std::old_io::stdio::StdWriter;
 use std::cmp::max;
-use std::fmt::String as Display;
+use std::fmt::Display;
 use self::Column::*;
 
 pub struct Printer {
     color: bool,
-    buf: String,
+    buf: Vec<u8>,
 }
 
 #[derive(Copy)]
@@ -32,7 +31,7 @@ impl PrinterFactory {
         let PrinterFactory(color) = *self;
         return Printer {
             color: color,
-            buf: "".to_string(),
+            buf: Vec::with_capacity(100),
         };
     }
 }
@@ -49,47 +48,44 @@ impl Printer {
     }
     pub fn norm<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
-            self.buf.push(' ');
+            self.buf.push(b' ');
         }
-        self.buf.write_fmt(format_args!("{}", val)).unwrap();
+        write!(&mut self.buf, "{}", val).unwrap();
         return self;
     }
     pub fn red<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
-            self.buf.push(' ');
+            self.buf.push(b' ');
         }
         if self.color {
-            self.buf.push_str("\x1b[31m\x1b[1m");
-        }
-        self.buf.write_fmt(format_args!("{}", val)).unwrap();
-        if self.color {
-            self.buf.push_str("\x1b[0m\x1b[22m");
+            write!(&mut self.buf, "\x1b[31m\x1b[1m{}\x1b[0m\x1b[22m",
+                val).unwrap();
+        } else {
+            write!(&mut self.buf, "{}", val).unwrap();
         }
         return self;
     }
     pub fn blue<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
-            self.buf.push(' ');
+            self.buf.push(b' ');
         }
         if self.color {
-            self.buf.push_str("\x1b[34m\x1b[1m");
-        }
-        self.buf.write_fmt(format_args!("{}", val)).unwrap();
-        if self.color {
-            self.buf.push_str("\x1b[0m\x1b[22m");
+            write!(&mut self.buf, "\x1b[34m\x1b[1m{}\x1b[0m\x1b[22m",
+                val).unwrap();
+        } else {
+            write!(&mut self.buf, "{}", val).unwrap();
         }
         return self;
     }
     pub fn green<T:Display>(mut self, val: T) -> Printer {
         if self.buf.len() > 0 {
-            self.buf.push(' ');
+            self.buf.push(b' ');
         }
         if self.color {
-           self. buf.push_str("\x1b[32m\x1b[1m");
-        }
-        self.buf.write_fmt(format_args!("{}", val)).unwrap();
-        if self.color {
-            self.buf.push_str("\x1b[0m\x1b[22m");
+            write!(&mut self.buf, "\x1b[32m\x1b[1m{}\x1b[0m\x1b[22m",
+                val).unwrap();
+        } else {
+            write!(&mut self.buf, "{}", val).unwrap();
         }
         return self;
     }
@@ -99,7 +95,7 @@ impl Printer {
         fun(self)
     }
     pub fn unwrap(self) -> String {
-        return self.buf;
+        return String::from_utf8(self.buf).unwrap();
     }
 }
 

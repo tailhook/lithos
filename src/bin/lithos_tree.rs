@@ -5,21 +5,22 @@ extern crate regex;
 
 extern crate argparse;
 extern crate quire;
-#[macro_use] extern crate lithos;
+extern crate lithos;
 
 
 use std::rc::Rc;
-use std::io::IoError;
-use std::io::fs::File;
+use std::old_io::IoError;
+use std::old_io::fs::File;
 use std::os::{getenv, args};
-use std::io::stdio::{stdout, stderr};
+use std::old_io::stdio::{stdout, stderr};
 use std::str::FromStr;
-use std::io::fs::{readdir, rmdir};
-use std::os::{set_exit_status, self_exe_path};
+use std::old_io::fs::{readdir, rmdir};
+use std::env::{set_exit_status};
+use std::os::{self_exe_path};
 use std::ptr::null;
 use std::time::Duration;
-use std::path::BytesContainer;
-use std::io::fs::PathExtensions;
+use std::old_path::BytesContainer;
+use std::old_io::fs::PathExtensions;
 use std::ffi::{CString};
 use regex::Regex;
 use std::default::Default;
@@ -156,7 +157,7 @@ fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
     }
     let stat = stat.unwrap();
     return Some(ppid) == ppid_regex.captures(stat.as_slice())
-                         .and_then(|c| FromStr::from_str(c.at(1).unwrap()));
+                     .and_then(|c| FromStr::from_str(c.at(1).unwrap()).ok());
 }
 
 
@@ -166,12 +167,14 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     if pid_file.exists() {
         match File::open(&pid_file)
             .and_then(|mut f| f.read_to_string())
-            .map(|s| FromStr::from_str(s.as_slice()))
+            .map_err(|_| ())
+            .and_then(|s| FromStr::from_str(s.as_slice())
+                            .map_err(|_| ()))
         {
-            Ok(Some::<pid_t>(pid)) if pid == mypid => {
+            Ok::<pid_t, ()>(pid) if pid == mypid => {
                 return Ok(());
             }
-            Ok(Some(pid)) => {
+            Ok(pid) => {
                 if signal::is_process_alive(pid) {
                     return Err(format!(concat!("Master pid is {}. ",
                         "And there is alive process with ",
@@ -201,7 +204,8 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
         .map_err(|e| format!("Can't read procfs: {}", e))
         .unwrap_or(Vec::new())
         .into_iter()
-        .filter_map(|p| p.filename_str().and_then(FromStr::from_str))
+        .filter_map(|p| p.filename_str()
+                        .and_then(|e| FromStr::from_str(e).ok()))
     {
         if !_is_child(pid, mypid) {
             continue;
@@ -251,7 +255,7 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
         .into_iter()
     {
         debug!("Checking tree dir: {}", tree.display());
-        let mut valid_dirs = 0us;
+        let mut valid_dirs = 0usize;
         if let Some(tree_name) = tree.filename_str() {
             for cont in readdir(&tree)
                 .map_err(|e| format!("Can't read state dir: {}", e))
@@ -266,8 +270,8 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
                         continue;
                     } else if proc_name.starts_with("cmd.") {
                         debug!("Checking command dir: {}", name);
-                        let pid = pid_regex.captures(proc_name)
-                            .and_then(|c| FromStr::from_str(c.at(1).unwrap()));
+                        let pid = pid_regex.captures(proc_name).and_then(
+                            |c| FromStr::from_str(c.at(1).unwrap()).ok());
                         if let Some(pid) = pid {
                             if signal::is_process_alive(pid) {
                                 valid_dirs += 1;
@@ -358,7 +362,7 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
                     _rm_cgroup(&child_dir);
                 }
             } else if let Some(capt) = cmd_group_regex.captures(filename) {
-                let pid = FromStr::from_str(capt.at(2).unwrap());
+                let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
                 if pid.is_none() || !signal::is_process_alive(pid.unwrap()) {
                     _rm_cgroup(&child_dir);
                 }
@@ -371,8 +375,9 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
 }
 
 fn run(config_file: Path, bin: &Binaries) -> Result<(), String> {
-    let master: Rc<MasterConfig> = Rc::new(try_str!(parse_config(&config_file,
-        &*MasterConfig::validator(), Default::default())));
+    let master: Rc<MasterConfig> = Rc::new(try!(parse_config(&config_file,
+        &*MasterConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading master config: {}", e))));
     try!(check_master_config(&*master));
     try!(global_init(&*master));
 
@@ -456,7 +461,7 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
             //  Child doesn't need to know how many instances it's run
             //  And for comparison on restart we need to have "one" always
             child.instances = 1;
-            let child_string = Rc::new(json::encode(&child));
+            let child_string = Rc::new(json::encode(&child).unwrap());
 
             let child = Rc::new(child);
             let items: Vec<(Rc<String>, Child)> = range(0, instances)

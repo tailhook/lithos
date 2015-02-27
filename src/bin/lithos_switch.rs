@@ -9,17 +9,18 @@ extern crate quire;
 
 
 use regex::Regex;
-use std::io::stderr;
-use std::io::IoError;
-use std::io::ALL_PERMISSIONS;
-use std::os::{set_exit_status, self_exe_path};
-use std::path::BytesContainer;
+use std::old_io::stderr;
+use std::old_io::IoError;
+use std::old_io::ALL_PERMISSIONS;
+use std::env::{set_exit_status};
+use std::os::{self_exe_path};
+use std::old_path::BytesContainer;
 use std::str::FromStr;
-use std::io::fs::{copy, rmdir_recursive, mkdir, readdir, rename};
-use std::io::fs::{readlink, symlink, File};
-use std::io::fs::PathExtensions;
+use std::old_io::fs::{copy, rmdir_recursive, mkdir, readdir, rename};
+use std::old_io::fs::{readlink, symlink, File};
+use std::old_io::fs::PathExtensions;
 use std::default::Default;
-use std::io::process::{Command, InheritFd, ExitStatus};
+use std::old_io::process::{Command, InheritFd, ExitStatus};
 
 use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 use quire::parse_config;
@@ -133,7 +134,7 @@ fn switch_config(master_cfg: Path, tree_name: String, config_file: Path,
     match File::open(&pid_file)
             .and_then(|mut f| f.read_to_string())
             .ok()
-            .and_then(|s| FromStr::from_str(s.as_slice())) {
+            .and_then(|s| FromStr::from_str(s.as_slice()).ok()) {
         Some(pid) if signal::is_process_alive(pid) => {
             signal::send_signal(pid, signal::SIGQUIT as isize);
         }
@@ -160,25 +161,25 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut master_config)
-          .add_option(&["--master"], Box::new(Store::<Path>),
+          .add_option(&["--master"], Store,
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
-          .add_option(&["-v", "--verbose"], Box::new(StoreTrue),
+          .add_option(&["-v", "--verbose"], StoreTrue,
             "Verbose configuration");
         ap.refer(&mut name_prefix)
-          .add_option(&["--hashed-name"], Box::new(StoreOption::<String>), "
+          .add_option(&["--hashed-name"], StoreOption, "
             Do not use last component of FILE as a name, but create an unique
             name based on the PREFIX and hash of the contents.
             ")
           .metavar("PREFIX");
         ap.refer(&mut tree_name)
-          .add_argument("tree", Box::new(Store::<String>),
+          .add_argument("tree", Store,
             "Name of the tree which configuration will be switched for")
           .required()
           .metavar("NAME");
         ap.refer(&mut config_file)
-          .add_argument("new_config", Box::new(Store::<Path>), "
+          .add_argument("new_config", Store, "
             Name of the configuration directory to switch to. It doesn't
             have to be a directory inside `config-dir`, and it will be copied
             there. However, if directory with the same name exists in the

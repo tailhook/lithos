@@ -10,8 +10,9 @@ extern crate quire;
 
 use regex::Regex;
 use std::rc::Rc;
-use std::os::{set_exit_status, self_exe_path, getenv};
-use std::io::stderr;
+use std::env::{set_exit_status};
+use std::os::{self_exe_path, getenv};
+use std::old_io::stderr;
 use std::time::Duration;
 use std::default::Default;
 use std::collections::BTreeMap;
@@ -76,8 +77,9 @@ fn run(master_cfg: Path, tree_name: String,
     command_name: String, args: Vec<String>)
     -> Result<(), String>
 {
-    let master: MasterConfig = try_str!(parse_config(&master_cfg,
-        &*MasterConfig::validator(), Default::default()));
+    let master: MasterConfig = try!(parse_config(&master_cfg,
+        &*MasterConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading master config: {}", e)));
     try!(create_master_dirs(&master));
 
     if !Regex::new(r"^[\w-]+$").unwrap().is_match(tree_name.as_slice()) {
@@ -87,14 +89,16 @@ fn run(master_cfg: Path, tree_name: String,
         return Err(format!("Wrong command name: {}", command_name));
     }
 
-    let tree: TreeConfig = try_str!(parse_config(
+    let tree: TreeConfig = try!(parse_config(
         &master.config_dir.join(tree_name.clone() + ".yaml"),
-        &*TreeConfig::validator(), Default::default()));
+        &*TreeConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading tree config: {}", e)));
 
     debug!("Children config {:?}", tree.config_file);
     let tree_children: BTreeMap<String, ChildConfig>;
-    tree_children = try_str!(parse_config(&tree.config_file,
-        &*ChildConfig::mapping_validator(), Default::default()));
+    tree_children = try!(parse_config(&tree.config_file,
+        &*ChildConfig::mapping_validator(), Default::default())
+        .map_err(|e| format!("Error reading children config: {}", e)));
     let child_cfg = try!(tree_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));
 
@@ -116,7 +120,7 @@ fn run(master_cfg: Path, tree_name: String,
         name: name,
         master_file: master_cfg,
         master_config: &master,
-        child_config_serialized: json::encode(&child_cfg),
+        child_config_serialized: json::encode(&child_cfg).unwrap(),
         root_binary: self_exe_path().unwrap().join("lithos_knot"),
         args: args,
     }), timeo, None);
@@ -137,19 +141,19 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
         ap.refer(&mut master_config)
-          .add_option(&["--master"], Box::new(Store::<Path>),
+          .add_option(&["--master"], Store,
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut tree_name)
-          .add_argument("subtree", Box::new(Store::<String>),
+          .add_argument("subtree", Store,
             "Name of the tree to run command for")
           .required();
         ap.refer(&mut command_name)
-          .add_argument("name", Box::new(Store::<String>),
+          .add_argument("name", Store,
             "Name of the command to run")
           .required();
         ap.refer(&mut args)
-          .add_argument("argument", Box::new(List::<String>),
+          .add_argument("argument", List,
             "Arguments for the command");
         ap.stop_on_first_argument(true);
         match ap.parse_args() {

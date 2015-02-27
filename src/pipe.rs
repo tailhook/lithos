@@ -1,4 +1,4 @@
-use std::io::{IoError, EndOfFile};
+use std::old_io::{IoError, EndOfFile};
 use std::os::{Pipe, pipe};
 use std::os::errno;
 

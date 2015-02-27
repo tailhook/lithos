@@ -30,17 +30,19 @@ impl Decodable for Range {
     fn decode<D:Decoder>(d: &mut D) -> Result<Range, D::Error> {
         match d.read_str() {
             Ok(val) => {
-                let num:Option<u32> = FromStr::from_str(val.as_slice());
+                let num:Result<u32, _> = FromStr::from_str(val.as_slice());
                 match num {
-                    Some(num) => return Ok(Range::new(num, num)),
-                    None => {}
+                    Ok(num) => return Ok(Range::new(num, num)),
+                    Err(_) => {}
                 }
                 let regex = Regex::new(r"^(\d+)-(\d+)$").unwrap();
                 match regex.captures(val.as_slice()) {
                     Some(caps) => {
                         return Ok(Range::new(
-                            caps.at(1).and_then(FromStr::from_str).unwrap(),
-                            caps.at(2).and_then(FromStr::from_str).unwrap()));
+                            caps.at(1).and_then(
+                                |x| FromStr::from_str(x).ok()).unwrap(),
+                            caps.at(2).and_then(
+                                |x| FromStr::from_str(x).ok()).unwrap()));
                     }
                     None => unimplemented!(),
                 }

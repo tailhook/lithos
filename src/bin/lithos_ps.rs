@@ -11,15 +11,15 @@ extern crate quire;
 use regex::Regex;
 use std::rc::Rc;
 use std::os::args;
-use std::io::{stdout, stderr};
-use std::io::{IoError, EndOfFile};
+use std::old_io::{stdout, stderr};
+use std::old_io::{IoError, EndOfFile};
 use std::mem::swap;
-use std::io::fs::File;
-use std::io::timer::sleep;
+use std::old_io::fs::File;
+use std::old_io::timer::sleep;
 use std::str::FromStr;
-use std::io::fs::{readdir};
-use std::io::{BufferedReader, MemWriter};
-use std::os::{set_exit_status};
+use std::old_io::fs::{readdir};
+use std::old_io::{BufferedReader, MemWriter};
+use std::env::{set_exit_status};
 use std::default::Default;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::duration::Duration;
@@ -129,7 +129,7 @@ struct GroupTotals {
 fn parse_mem_size(value: &str) -> usize {
     let mut pair = value.as_slice().splitn(1, ' ');
     let val: usize = FromStr::from_str(pair.next().unwrap())
-        .expect("Memory should be integer");
+        .ok().expect("Memory should be integer");
     let unit = pair.next().unwrap_or("kB");
     match unit {
         "kB" | "" => val * 1024,
@@ -197,7 +197,7 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
         match name.as_slice(){
             "PPid" => {
                 result.parent_id = FromStr::from_str(value)
-                    .expect("Ppid should be integer");
+                    .ok().expect("Ppid should be integer");
             }
             "VmRSS" => {
                 result.mem_rss = parse_mem_size(value);
@@ -207,7 +207,7 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
             }
             "Threads" => {
                 result.threads = FromStr::from_str(value)
-                    .expect("Threads should be integer");
+                    .ok().expect("Threads should be integer");
             }
             "Name" => {
                 match value {
@@ -299,7 +299,7 @@ fn format_uptime(prn: ascii::Printer, start_ticks: u64) -> ascii::Printer {
     let start_time = start_time_sec(start_ticks);
     let uptime = get_time() as u64 - start_time;
     if uptime < 30 {
-        prn.red(&format!("{}s", uptime))
+        prn.red(format!("{}s", uptime))
     } else if uptime < 60 {
         prn.blue(&format!("{}s", uptime))
     } else if uptime < 3600 {
@@ -354,7 +354,8 @@ fn scan_processes() -> Result<ScanResult, IoError>
 
     for pid in try!(readdir(&Path::new("/proc")))
         .into_iter()
-        .filter_map(|p| p.filename_str().and_then(FromStr::from_str))
+        .filter_map(|p| p.filename_str()
+                         .and_then(|x| FromStr::from_str(x).ok()))
     {
         match read_process(pid) {
             Ok(prc) => {
@@ -588,7 +589,7 @@ fn print_json(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
     let mut out = stdout();
     return out.write_str(json::encode(&Json::Object(vec!(
         ("trees".to_string(), Json::Array(trees)),
-        ).into_iter().collect())).as_slice());
+        ).into_iter().collect())).unwrap().as_slice());
 }
 
 fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
@@ -661,7 +662,8 @@ fn read_global_consts() {
             .map(|line| line.ok().expect("Can't read /proc/stat"))
             .filter(|line| line.as_slice().starts_with("btime "))
             .next()
-            .and_then(|line| FromStr::from_str(line.as_slice()[5..].trim()))
+            .and_then(|line| FromStr::from_str(
+                            line.as_slice()[5..].trim()).ok())
             .expect("No boot time in /proc/stat");
     }
 }
@@ -685,16 +687,16 @@ fn main() {
     {
         let mut ap = ArgumentParser::new();
         ap.refer(&mut action)
-            .add_option(&["--json"], Box::new(StoreConst(PrintJson)),
+            .add_option(&["--json"], StoreConst(PrintJson),
                 "Print big json instead human-readable tree")
-            .add_option(&["--monitor"], Box::new(StoreConst(MonitorChanges)),
+            .add_option(&["--monitor"], StoreConst(MonitorChanges),
                 "Print big json instead human-readable tree");
         ap.refer(&mut options.printer_factory)
             .add_option(&["--force-color"],
-                Box::new(StoreConst(ascii::Printer::color_factory())),
+                StoreConst(ascii::Printer::color_factory()),
                 "Force colors in output (in default mode only for now)")
             .add_option(&["--no-color"],
-                Box::new(StoreConst(ascii::Printer::plain_factory())),
+                StoreConst(ascii::Printer::plain_factory()),
                 "Don't use colors even for terminal output");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {

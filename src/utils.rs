@@ -1,11 +1,11 @@
 use std::ptr;
-use std::io::{IoError, PathAlreadyExists};
-use std::io::ALL_PERMISSIONS;
+use std::old_io::{IoError, PathAlreadyExists};
+use std::old_io::ALL_PERMISSIONS;
 use std::ffi::CString;
-use std::io::fs::{mkdir, readdir, rmdir_recursive, rmdir, unlink};
-use std::io::fs::PathExtensions;
+use std::old_io::fs::{mkdir, readdir, rmdir_recursive, rmdir, unlink};
+use std::old_io::fs::PathExtensions;
 use std::os::getcwd;
-use std::path::BytesContainer;
+use std::old_path::BytesContainer;
 use libc::{c_int, c_char, timeval, c_void, mode_t};
 use libc::{chmod, chdir};
 

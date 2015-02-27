@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use std::path::BytesContainer;
 use std::ffi::{CString};
 use std::ptr::null;
-use std::io::{IoError, Open, Write};
-use std::io::fs::File;
+use std::old_io::{IoError, Open, Write};
+use std::old_io::fs::File;
 use std::os::getcwd;
+use std::old_path::BytesContainer;
 use std::collections::BTreeMap;
 use collections::enum_set::{EnumSet, CLike};
 
@@ -27,7 +27,7 @@ enum Namespace {
 }
 
 impl CLike for Namespace {
-    fn to_uint(&self) -> usize {
+    fn to_usize(&self) -> usize {
         match *self {
             NewMount => 0,
             NewUts => 1,
@@ -37,7 +37,7 @@ impl CLike for Namespace {
             NewNet => 5,
         }
     }
-    fn from_uint(val: usize) -> Namespace {
+    fn from_usize(val: usize) -> Namespace {
         match val {
             0 => NewMount,
             1 => NewUts,

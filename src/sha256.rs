@@ -140,7 +140,7 @@ impl FixedBuffer for FixedBuffer64 {
             if input.len() >= buffer_remaining {
                     copy_memory(
                         self.buffer.slice_mut(self.buffer_idx, size),
-                        &input[..buffer_remaining]);
+                        &input[0..buffer_remaining]);
                 self.buffer_idx = 0;
                 func(&self.buffer);
                 i += buffer_remaining;
@@ -156,7 +156,7 @@ impl FixedBuffer for FixedBuffer64 {
         // While we have at least a full buffer size chunk's worth of data, process that data
         // without copying it into the buffer
         while input.len() - i >= size {
-            func(&input[i..i + size]);
+            func(&input[i..(i + size)]);
             i += size;
         }
 
@@ -188,7 +188,7 @@ impl FixedBuffer for FixedBuffer64 {
     fn full_buffer<'s>(&'s mut self) -> &'s [u8] {
         assert!(self.buffer_idx == 64);
         self.buffer_idx = 0;
-        return &self.buffer[..64];
+        return &self.buffer[0..64];
     }
 
     fn position(&self) -> usize { self.buffer_idx }
@@ -569,7 +569,7 @@ mod tests {
             sh.reset();
             let len = t.input.len();
             let mut left = len;
-            while left > 0us {
+            while left > 0u {
                 let take = (left + 1us) / 2us;
                 sh.input_str(t.input
                               .slice(len - left, take + len - left));
@@ -604,7 +604,7 @@ mod tests {
 
         let tests = wikipedia_tests;
 
-        let mut sh = Box::new(Sha256::new());
+        let mut sh = box Sha256::new();
 
         test_hash(&mut *sh, tests.as_slice());
     }

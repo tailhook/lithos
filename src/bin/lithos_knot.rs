@@ -7,8 +7,9 @@ extern crate quire;
 #[macro_use] extern crate lithos;
 
 use std::rc::Rc;
-use std::os::{set_exit_status, getenv, args};
-use std::io::stdio::{stdout, stderr};
+use std::env::{set_exit_status};
+use std::os::{getenv, args};
+use std::old_io::stdio::{stdout, stderr};
 use std::time::Duration;
 use std::default::Default;
 
@@ -70,12 +71,14 @@ impl Executor for Target {
 fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     -> Result<(), String>
 {
-    let master: MasterConfig = try_str!(parse_config(&master_file,
-        &*MasterConfig::validator(), Default::default()));
+    let master: MasterConfig = try!(parse_config(&master_file,
+        &*MasterConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading master config: {}", e)));
     let tree_name = name.as_slice().splitn(1, '/').next().unwrap();
-    let tree: TreeConfig = try_str!(parse_config(
+    let tree: TreeConfig = try!(parse_config(
         &master.config_dir.join(tree_name.to_string() + ".yaml"),
-        &*TreeConfig::validator(), Default::default()));
+        &*TreeConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading tree config: {}", e)));
 
     try!(mount_private(&Path::new("/")));
     let image_path = tree.image_dir.join(config.image.as_slice());
@@ -147,7 +150,8 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     try!(change_root(&mount_dir, &mount_dir.join("tmp")));
     try!(unmount(&Path::new("/tmp")));
 
-    try_str!(set_fileno_limit(local.fileno_limit));
+    try!(set_fileno_limit(local.fileno_limit)
+        .map_err(|e| format!("Error setting file limit: {}", e)));
 
     let mut mon = Monitor::new(name.clone());
     let name = Rc::new(name.clone() + ".main");

@@ -1,8 +1,8 @@
 use std::rc::Rc;
-use std::io::BufferedReader;
-use std::io::fs::{File, mkdir, rmdir};
-use std::io::fs::PathExtensions;
-use std::io::{ALL_PERMISSIONS, Append, Write, FileNotFound};
+use std::old_io::BufferedReader;
+use std::old_io::fs::{File, mkdir, rmdir};
+use std::old_io::fs::PathExtensions;
+use std::old_io::{ALL_PERMISSIONS, Append, Write, FileNotFound};
 use std::default::Default;
 use std::collections::BTreeMap;
 use libc::pid_t;
