@@ -6,4 +6,4 @@
 	url = git://github.com/tailhook/rust-quire
 [submodule "regex"]
 	path = regex
-	url = git@github.com:rust-lang/regex.git
+	url = git://github.com/rust-lang/regex.git
