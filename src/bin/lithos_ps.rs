@@ -148,7 +148,9 @@ fn read_cmdline(pid: pid_t) -> Result<Vec<String>, IoError> {
               .as_slice().split('\0')
               .map(|x| x.to_string())
               .collect();
-    args.pop();  // empty arg at the end
+    if args[args.len() - 1] == "" {
+        args.pop();  // empty arg at the end
+    }
     if args.len() == 0 {
         return Err(IoError { kind: EndOfFile, detail: None,
             desc: "Unexpected Eof. Probably process is zombie" });
