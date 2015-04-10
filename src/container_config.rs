@@ -80,6 +80,7 @@ pub struct ContainerConfig {
     pub uid_map: Vec<IdMap>,
     pub gid_map: Vec<IdMap>,
     pub stdout_stderr_file: Option<Path>,
+    pub restart_process_only: bool,
 }
 
 fn mapping_validator<'x>() -> Box<Validator + 'x> {
@@ -168,6 +169,9 @@ impl ContainerConfig {
             ("stdout_stderr_file".to_string(), Box::new(Scalar {
                 optional: true,
                 default: None,
+                .. Default::default() }) as Box<Validator>),
+            ("restart_process_only".to_string(), Box::new(Scalar {
+                default: Some("false".to_string()),
                 .. Default::default() }) as Box<Validator>),
         ), .. Default::default() }) as Box<Validator>;
     }

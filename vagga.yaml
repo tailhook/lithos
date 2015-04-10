@@ -16,7 +16,6 @@ commands:
     - --pkglicense=MIT
     - --pkgname=lithos
     - --nodoc
-    - --requires=libcap2-bin
     - --strip=no
     - make
     - -B

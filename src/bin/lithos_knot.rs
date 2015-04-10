@@ -64,7 +64,8 @@ impl Executor for Target {
         return cmd;
     }
     fn finish(&self) -> bool {
-        return self.local.kind == Daemon;
+        return self.local.kind == Daemon
+            && self.local.restart_process_only;
     }
 }
 

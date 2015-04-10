@@ -127,6 +127,18 @@ Reference
     and is opened outside of the container (so depending on ``volumes`` may be
     both visible or non-visible from the container itself)
 
+``restart-process-only``
+    (default ``false``) If true when restarting process (i.e. in case
+    process died or was killed), lithos restarts just the failed process.
+    This means container will not be recreated, volumes will not be remounted,
+    tmpfs will not be cleaned and some daemon processes may leave running.
+
+    By default ``lithos_knot`` which is pid 1 in the container exits when
+    process dies. Which means all other processes will die on ``KILL`` signal,
+    and container will be removed and created again. It's a little bit slower
+    but safer default. This leaves no hanging daemons, orphan files in state
+    dir and tmpfs garbage.
+
 ``volumes``
     The mapping of mountpoint to volume definition. See :ref:`volumes` for more
     info
