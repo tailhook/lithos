@@ -10,7 +10,7 @@ use quire;
 
 use super::container_config::ContainerKind;
 
-#[derive(Decodable, Encodable, PartialEq)]
+#[derive(RustcDecodable, RustcEncodable, PartialEq)]
 pub struct ChildConfig {
     pub instances: usize,
     pub image: String,
@@ -29,7 +29,7 @@ impl ChildConfig {
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
             ("instances".to_string(), Box::new(Numeric {
-                default: Some(1us),
+                default: Some(1),
                 .. Default::default()}) as Box<Validator>),
             ("image".to_string(), Box::new(Scalar {
                 .. Default::default() }) as Box<Validator>),

@@ -6,13 +6,13 @@ use quire::validate::{Mapping};
 use self::Volume::*;
 
 
-#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub struct TmpfsInfo {
     pub size: usize,
     pub mode: u32,
 }
 
-#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub struct PersistentInfo {
     pub path: Path,
     pub mkdir: bool,
@@ -21,7 +21,7 @@ pub struct PersistentInfo {
     pub group: u32,
 }
 
-#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub struct StatedirInfo {
     pub path: Path,
     pub mode: u32,
@@ -29,7 +29,7 @@ pub struct StatedirInfo {
     pub group: u32,
 }
 
-#[derive(Decodable, Encodable, Clone, PartialEq, Eq)]
+#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub enum Volume {
     Readonly(Path),
     Persistent(PersistentInfo),
@@ -37,31 +37,31 @@ pub enum Volume {
     Statedir(StatedirInfo),
 }
 
-#[derive(Decodable, Encodable, Show, PartialEq, Eq)]
+#[derive(RustcDecodable, RustcEncodable, Debug, PartialEq, Eq)]
 pub enum ContainerKind {
     Daemon,
     Command,
 }
 
-#[derive(Decodable, Encodable)]
+#[derive(RustcDecodable, RustcEncodable)]
 pub struct ResolvConf {
     pub copy_from_host: bool,
 }
 
-#[derive(Decodable, Encodable)]
+#[derive(RustcDecodable, RustcEncodable)]
 pub struct HostsFile {
     pub localhost: bool,
     pub public_hostname: bool,
 }
 
-#[derive(Decodable, Encodable, Copy)]
+#[derive(RustcDecodable, RustcEncodable, Copy)]
 pub struct IdMap {
     pub inside: u32,
     pub outside: u32,
     pub count: u32,
 }
 
-#[derive(Decodable, Encodable)]
+#[derive(RustcDecodable, RustcEncodable)]
 pub struct ContainerConfig {
     pub kind: ContainerKind,
     pub volumes: BTreeMap<String, Volume>,
@@ -120,21 +120,21 @@ impl ContainerConfig {
                 default: None::<u32>,
                 .. Default::default()}) as Box<Validator>),
             ("group_id".to_string(), Box::new(Numeric {
-                default: Some(0u32),
+                default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ("memory_limit".to_string(), Box::new(Numeric {
                 default: Some(0xffffffffffffffffu64),
                 .. Default::default()}) as Box<Validator>),
             ("fileno_limit".to_string(), Box::new(Numeric {
-                default: Some(1024u64),
+                default: Some(1024),
                 .. Default::default()}) as Box<Validator>),
             ("cpu_shares".to_string(), Box::new(Numeric {
-                default: Some(1024us),
+                default: Some(1024),
                 .. Default::default()}) as Box<Validator>),
             ("restart_timeout".to_string(), Box::new(Numeric {
-                min: Some(0.),
-                max: Some(86400.),
-                default: Some(1f32),
+                min: Some(0),
+                max: Some(86400),
+                default: Some(1),
                 .. Default::default()}) as Box<Validator>),
             ("executable".to_string(), Box::new(Scalar {
                 .. Default::default() }) as Box<Validator>),
@@ -202,12 +202,12 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
             .. Default::default()}) as Box<Validator>),
         ("Tmpfs".to_string(),  Box::new(Structure { members: vec!(
             ("size".to_string(),  Box::new(Numeric {
-                min: Some(0us),
+                min: Some(0),
                 default: Some(100*1024*1024),
                 .. Default::default()}) as Box<Validator>),
             ("mode".to_string(),  Box::new(Numeric {
-                min: Some(0u32),
-                max: Some(0o1777u32),
+                min: Some(0),
+                max: Some(0o1777),
                 default: Some(0o766),
                 .. Default::default()}) as Box<Validator>),
             ),.. Default::default()}) as Box<Validator>),
@@ -216,15 +216,15 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
                 default: Some("/".to_string()),
                 .. Default::default()}) as Box<Validator>),
             ("mode".to_string(),  Box::new(Numeric {
-                min: Some(0u32),
-                max: Some(0o700u32),
+                min: Some(0),
+                max: Some(0o700),
                 default: Some(0o766),
                 .. Default::default()}) as Box<Validator>),
             ("user".to_string(),  Box::new(Numeric {
-                default: Some(0u32),
+                default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ("group".to_string(),  Box::new(Numeric {
-                default: Some(0u32),
+                default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ),.. Default::default()}) as Box<Validator>),
         ), .. Default::default()}) as Box<Validator>;

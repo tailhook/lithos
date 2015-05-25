@@ -1,7 +1,8 @@
 use std::str::from_utf8;
-use std::old_io::{IoError, IoResult, InvalidInput};
-use std::old_io::net::ip::IpAddr;
-use std::old_io::net::get_host_addresses;
+use std::io::Error as IoError;
+use std::io::Result as IoResult;
+use std::io::ErrorKind::InvalidInput;
+use std::net::IpAddr;
 use libc::{c_int, size_t, c_char};
 
 

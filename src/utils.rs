@@ -1,11 +1,8 @@
 use std::ptr;
-use std::old_io::{IoError, PathAlreadyExists};
-use std::old_io::ALL_PERMISSIONS;
+use std::io::Error as IoError;
+use std::io::ErrorKind::AlreadyExists;
 use std::ffi::CString;
-use std::old_io::fs::{mkdir, readdir, rmdir_recursive, rmdir, unlink};
-use std::old_io::fs::PathExtensions;
-use std::os::getcwd;
-use std::old_path::BytesContainer;
+use std::env::current_dir;
 use libc::{c_int, c_char, timeval, c_void, mode_t};
 use libc::{chmod, chdir};
 
@@ -26,7 +23,7 @@ pub fn temporary_change_root<T, F>(path: &Path, fun: F)
     -> Result<T, String>
     where F: Fn() -> Result<T, String>
 {
-    let cwd = getcwd().unwrap();
+    let cwd = current_dir().unwrap();
     if unsafe { chdir(CString::from_slice("/".as_bytes()).as_ptr()) } != 0 {
         return Err(format!("Error chdir to root: {}",
                            IoError::last_error()));
@@ -107,6 +104,7 @@ pub fn ensure_dir(dir: &Path) -> Result<(), String> {
         }
         return Ok(());
     }
+
     match mkdir(dir, ALL_PERMISSIONS) {
         Ok(()) => return Ok(()),
         Err(ref e) if e.kind == PathAlreadyExists => {

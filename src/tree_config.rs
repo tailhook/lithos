@@ -1,13 +1,13 @@
 use std::default::Default;
 use std::collections::BTreeMap;
 use std::str::FromStr;
-use serialize::{Decoder, Decodable};
+use rustc_serialize::{Decoder, Decodable};
 use regex::Regex;
 
 use quire::validate::{Validator, Structure};
 use quire::validate::{Sequence, Mapping, Scalar};
 
-#[derive(Clone, Show)]
+#[derive(Clone, Debug)]
 pub struct Range {
     pub start: u32,
     pub end: u32,
@@ -26,7 +26,7 @@ impl Range {
     }
 }
 
-impl Decodable for Range {
+impl RustcDecodable for Range {
     fn decode<D:Decoder>(d: &mut D) -> Result<Range, D::Error> {
         match d.read_str() {
             Ok(val) => {
@@ -52,7 +52,7 @@ impl Decodable for Range {
     }
 }
 
-#[derive(Decodable)]
+#[derive(RustcDecodable)]
 pub struct TreeConfig {
     pub config_file: Path,
     pub image_dir: Path,

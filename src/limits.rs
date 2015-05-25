@@ -1,4 +1,4 @@
-use std::old_io::IoError;
+use std::io::Error as IoError;
 use libc::c_int;
 
 static RLIMIT_NOFILE: c_int = 7;

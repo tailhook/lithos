@@ -7,6 +7,7 @@ extern crate quire;
 extern crate serialize;
 extern crate regex;
 extern crate collections;
+extern crate rustc_serialize;
 
 pub mod master_config;
 pub mod tree_config;

@@ -1,6 +1,6 @@
-use std::old_io::{IoError, EndOfFile};
+use std::io::Error as IoError;
+use std::io::ErrorKind::EndOfFile;
 use std::os::{Pipe, pipe};
-use std::os::errno;
 
 use libc::{c_int, c_void};
 use libc::funcs::posix88::unistd::{close, write};
@@ -27,7 +27,8 @@ impl CPipe {
             unsafe {
                 rc = write(pipe.writer, ['x' as u8].as_ptr() as *const c_void, 1);
             }
-            if rc < 0 && (errno() as i32 == EINTR || errno() as i32 == EAGAIN) {
+            let err = Error::last_os_error().raw_os_error();
+            if rc < 0 && (err == Some(EINTR) || err == Some(EAGAIN)) {
                 continue
             }
             break;

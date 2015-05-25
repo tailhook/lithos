@@ -1,7 +1,4 @@
-use std::old_io::{ALL_PERMISSIONS, USER_RWX, GROUP_READ, OTHER_READ};
-use std::old_io::FilePermission;
-use std::old_io::fs::{File, copy, chmod, mkdir_recursive, chown, mkdir};
-use std::old_io::fs::PathExtensions;
+use std::fs::Permissions;
 use std::default::Default;
 use std::collections::BTreeMap;
 

@@ -1,11 +1,10 @@
 #![allow(dead_code)]
-use std::old_io::{IoError};
-use std::old_io::BufferedReader;
+use std::io::Error as IoError;
+use std::io::BufRead;
 use std::ffi::CString;
 use std::ptr::null;
-use std::old_io::fs::File;
+use std::fs::File;
 use std::str::FromStr;
-use std::old_path::BytesContainer;
 use libc::{c_ulong, c_int};
 
 use super::itertools::{NextValue,NextStr};

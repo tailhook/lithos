@@ -1,10 +1,8 @@
-use std::os::errno;
 use std::cmp::max;
-use std::old_io::IoError;
+use std::io::Error as IoError;
 use std::ptr::null;
 use std::time::duration::Duration;
 use std::default::Default;
-use std::old_io::process::Process;
 use libc::types::os::common::posix01::timespec;
 pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR, ECHILD};
 pub use libc::consts::os::posix88::{SIGKILL};
@@ -17,7 +15,7 @@ use self::Signal::*;
 const SIGCHLD: c_int = 17;
 const WNOHANG: c_int = 1;
 
-#[derive(Show)]
+#[derive(Debug)]
 pub enum Signal {
     Terminate(isize),  // Actual signal for termination: INT, TERM, QUIT...
     Child(pid_t, isize),  //  pid and result code
@@ -80,10 +78,11 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
                     status = 0;
                     let rc = unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
                     if rc < 0 {
-                        if errno() == EINTR {
+                        let err = Error::last_os_error().raw_os_error();
+                        if err == Some(EINTR) {
                             continue;
                         }
-                        if errno() != ECHILD {
+                        if err != Some(ECHILD) {
                             panic!("Failure '{}' not expected, on death of {}",
                                 IoError::last_error(), ptr.pid);
                         }
@@ -107,9 +106,9 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
 }
 
 pub fn send_signal(pid: pid_t, sig: isize) {
-    Process::kill(pid, sig).ok();
+    libc::kill(pid, sig);
 }
 
 pub fn is_process_alive(pid: pid_t) -> bool {
-    return Process::kill(pid, 0).is_ok();
+    return libc::kill(pid, 0) == 0;
 }

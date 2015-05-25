@@ -2,10 +2,9 @@
 
 use std::ffi::{CString};
 use std::ptr::null;
-use std::old_io::{IoError, Open, Write};
-use std::old_io::fs::File;
-use std::os::getcwd;
-use std::old_path::BytesContainer;
+use std::io::Error as IoError;
+use std::fs::File;
+use std::env::current_dir;
 use std::collections::BTreeMap;
 use collections::enum_set::{EnumSet, CLike};
 
@@ -16,7 +15,7 @@ use super::signal;
 use super::container_config::IdMap;
 pub use self::Namespace::*;
 
-#[derive(Show)]
+#[derive(Debug)]
 enum Namespace {
     NewMount,
     NewUts,
@@ -84,7 +83,7 @@ impl Command {
             chroot: None,
             tmp_old_root: None,
             old_root_relative: None,
-            workdir: CString::from_slice(getcwd()
+            workdir: CString::from_slice(current_dir()
                 .unwrap().container_as_bytes()),
             executable: CString::from_slice(cmd.container_as_bytes()),
             arguments: vec!(CString::from_slice(cmd.container_as_bytes())),
@@ -212,11 +211,11 @@ impl Command {
             None => Path::new("/proc").join(pidstr),
         };
         if let Some(ref data) = self.uid_map {
-            try!(File::open_mode(&proc_path.join("uid_map"), Open, Write)
+            try!(File::create(&proc_path.join("uid_map"))
             .and_then(|mut f| f.write(data.as_slice())));
         }
         if let Some(ref data) = self.gid_map {
-            try!(File::open_mode(&proc_path.join("gid_map"), Open, Write)
+            try!(File::create(&proc_path.join("gid_map"))
             .and_then(|mut f| f.write(data.as_slice())));
         }
 

@@ -1,8 +1,8 @@
 use std::rc::Rc;
-use std::old_io::BufferedReader;
-use std::old_io::fs::{File, mkdir, rmdir};
-use std::old_io::fs::PathExtensions;
-use std::old_io::{ALL_PERMISSIONS, Append, Write, FileNotFound};
+use std::io::BufRead;
+use std::fs::{File, create_dir, remove_dir};
+use std::io::ErrorKind::NotFound;
+use std::fs::OpenOptions;
 use std::default::Default;
 use std::collections::BTreeMap;
 use libc::pid_t;
@@ -12,7 +12,7 @@ use libc::getpid;
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct CGroupPath(pub String, pub Path);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Show)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Controller {
     Cpu,
     Memory,
@@ -112,13 +112,13 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
             new_path.path_relative_from(&root_path).unwrap());
         if !fullpath.exists() {
             debug!("Creating cgroup {}", fullpath.display());
-            try!(mkdir(&fullpath, ALL_PERMISSIONS)
+            try!(create_dir(&fullpath, ALL_PERMISSIONS)
                  .map_err(|e| format!("Error creating cgroup dir: {}", e)));
         } else {
             debug!("CGroup {} already exists", fullpath.display());
         }
         debug!("Adding task to cgroup {}", fullpath.display());
-        try!(File::open_mode(&fullpath.join("tasks"), Append, Write)
+        try!(OpenOptions::new().append(true).open(&fullpath.join("tasks"))
              .and_then(|mut f| write!(&mut f, "{}", mypid))
              .map_err(|e| format!(
                 "Error adding myself (pid: {}) to the group {}: {}",
@@ -162,7 +162,7 @@ pub fn remove_child_cgroup(child: &str, master: &String,
         let fullpath = cgroup_base.join(folder.as_slice())
             .join(path.path_relative_from(&root_path).unwrap())
             .join(master.as_slice()).join(child);
-        rmdir(&fullpath)
+        remove_dir(&fullpath)
             .map_err(|e| if e.kind != FileNotFound {
                 error!("Error removing cgroup {}: {}", fullpath.display(), e)})
             .ok();
