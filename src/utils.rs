@@ -1,4 +1,6 @@
 use std::ptr;
+use std::fs::create_dir;
+use std::path::{Path, PathBuf};
 use std::io::Error as IoError;
 use std::io::ErrorKind::AlreadyExists;
 use std::ffi::CString;
@@ -105,9 +107,9 @@ pub fn ensure_dir(dir: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    match mkdir(dir, ALL_PERMISSIONS) {
+    match create_dir(dir) {
         Ok(()) => return Ok(()),
-        Err(ref e) if e.kind == PathAlreadyExists => {
+        Err(ref e) if e.kind == AlreadyExists => {
             if dir.is_dir() {
                 return Ok(());
             } else {
@@ -131,9 +133,10 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
     // We temporarily change root, so that symlinks inside the dir
     // would do no harm. But note that dir itself can be a symlink
     try!(temporary_change_root(dir, || {
-        let dirlist = try!(readdir(&Path::new("/"))
+        let dirlist = try!(read_dir(&PathBuf::new("/"))
              .map_err(|e| format!("Can't read directory {}: {}",
-                                  dir.display(), e)));
+                                  dir.display(), e)))
+             .collect();
         for path in dirlist.into_iter() {
             if path.is_dir() {
                 try!(rmdir_recursive(&path)

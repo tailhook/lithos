@@ -3,6 +3,7 @@ use std::io::BufRead;
 use std::fs::{File, create_dir, remove_dir};
 use std::io::ErrorKind::NotFound;
 use std::fs::OpenOptions;
+use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::collections::BTreeMap;
 use libc::pid_t;
@@ -35,7 +36,7 @@ pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
                             .unwrap_or("/proc/self/cgroup".to_string()));
     let f = try!(File::open(&path)
                  .map_err(|e| format!("Error reading cgroup: {}", e)));
-    let mut f = BufferedReader::new(f);
+    let mut f = BufRead::new(f);
     let mut res: ParsedCGroups = Default::default();
     for line in f.lines() {
         let line = try!(line
@@ -112,7 +113,7 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
             new_path.path_relative_from(&root_path).unwrap());
         if !fullpath.exists() {
             debug!("Creating cgroup {}", fullpath.display());
-            try!(create_dir(&fullpath, ALL_PERMISSIONS)
+            try!(create_dir(&fullpath)
                  .map_err(|e| format!("Error creating cgroup dir: {}", e)));
         } else {
             debug!("CGroup {} already exists", fullpath.display());
@@ -141,7 +142,7 @@ pub fn remove_child_cgroup(child: &str, master: &String,
     -> Result<(), String>
 {
     // TODO(tailhook) do we need to customize cgroup mount points?
-    let cgroup_base = Path::new("/sys/fs/cgroup");
+    let cgroup_base = PathBuf::from("/sys/fs/cgroup");
     let default_controllers = vec!(
         "name".to_string(),
         "cpu".to_string(),
@@ -153,7 +154,7 @@ pub fn remove_child_cgroup(child: &str, master: &String,
         { controllers } else { &default_controllers };
     debug!("Removing cgroup {}", child);
 
-    let root_path = Path::new("/");
+    let root_path = PathBuf::from("/");
     let parent_grp = try!(parse_cgroups(Some(1)));
 
     for ctr in controllers.iter() {
@@ -163,7 +164,7 @@ pub fn remove_child_cgroup(child: &str, master: &String,
             .join(path.path_relative_from(&root_path).unwrap())
             .join(master.as_slice()).join(child);
         remove_dir(&fullpath)
-            .map_err(|e| if e.kind != FileNotFound {
+            .map_err(|e| if e.kind != NotFound {
                 error!("Error removing cgroup {}: {}", fullpath.display(), e)})
             .ok();
     }

@@ -1,5 +1,6 @@
 use std::default::Default;
 use serialize::{Decoder};
+use std::path::PathBuf;
 
 use quire::validate::{Validator, Structure, Sequence};
 use quire::validate::{Scalar};
@@ -7,11 +8,11 @@ use super::utils::ensure_dir;
 
 #[derive(RustcDecodable)]
 pub struct MasterConfig {
-    pub runtime_dir: Path,
-    pub config_dir: Path,
-    pub state_dir: Path,
-    pub mount_dir: Path,
-    pub devfs_dir: Path,
+    pub runtime_dir: PathBuf,
+    pub config_dir: PathBuf,
+    pub state_dir: PathBuf,
+    pub mount_dir: PathBuf,
+    pub devfs_dir: PathBuf,
     pub cgroup_name: Option<String>,
     pub cgroup_controllers: Vec<String>,
 }

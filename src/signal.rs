@@ -7,6 +7,7 @@ use libc::types::os::common::posix01::timespec;
 pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR, ECHILD};
 pub use libc::consts::os::posix88::{SIGKILL};
 use libc::{c_int, pid_t};
+use nix::sys::signal::kill;
 
 use super::utils::{get_time, Time};
 use self::Signal::*;
@@ -78,7 +79,7 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
                     status = 0;
                     let rc = unsafe { waitpid(ptr.pid, &mut status, WNOHANG) };
                     if rc < 0 {
-                        let err = Error::last_os_error().raw_os_error();
+                        let err = IoError::last_os_error().raw_os_error();
                         if err == Some(EINTR) {
                             continue;
                         }
@@ -106,9 +107,9 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
 }
 
 pub fn send_signal(pid: pid_t, sig: isize) {
-    libc::kill(pid, sig);
+    kill(pid, sig).ok();
 }
 
 pub fn is_process_alive(pid: pid_t) -> bool {
-    return libc::kill(pid, 0) == 0;
+    return kill(pid, 0).is_ok();
 }

@@ -3,6 +3,7 @@
 
 #[macro_use] extern crate log;
 extern crate libc;
+extern crate nix;
 extern crate quire;
 extern crate serialize;
 extern crate regex;

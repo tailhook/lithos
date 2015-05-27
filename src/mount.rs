@@ -5,6 +5,7 @@ use std::ffi::CString;
 use std::ptr::null;
 use std::fs::File;
 use std::str::FromStr;
+use std::path::PathBuf;
 use libc::{c_ulong, c_int};
 
 use super::itertools::{NextValue,NextStr};
@@ -128,7 +129,7 @@ impl<'a> MountRecord<'a> {
     }
 }
 
-pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
+pub fn mount_ro_recursive(target: &PathBuf) -> Result<(), String> {
     let none = CString::from_slice("none".as_bytes());
     debug!("Remount readonly: {}", target.display());
     let c_target = CString::from_slice(target.container_as_bytes());
@@ -143,7 +144,7 @@ pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
     return Ok(());
 }
 
-pub fn mount_private(target: &Path) -> Result<(), String> {
+pub fn mount_private(target: &PathBuf) -> Result<(), String> {
     let none = CString::from_slice("none".container_as_bytes());
     let c_target = CString::from_slice(target.container_as_bytes());
     debug!("Making private {}", target.display());
@@ -160,7 +161,7 @@ pub fn mount_private(target: &Path) -> Result<(), String> {
     }
 }
 
-pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
+pub fn bind_mount(source: &PathBuf, target: &PathBuf) -> Result<(), String> {
     let c_source = CString::from_slice(source.container_as_bytes());
     let c_target = CString::from_slice(target.container_as_bytes());
     debug!("Bind mount {} -> {}", source.display(), target.display());
@@ -176,7 +177,7 @@ pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
     }
 }
 
-pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
+pub fn mount_pseudo(target: &PathBuf, name: &str, options: &str, readonly: bool)
     -> Result<(), String>
 {
     let c_name = CString::from_slice(name.container_as_bytes());
@@ -202,7 +203,7 @@ pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
     }
 }
 
-pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
+pub fn mount_tmpfs(target: &PathBuf, options: &str) -> Result<(), String> {
     let c_tmpfs = CString::from_slice("tmpfs".as_bytes());
     let c_target = CString::from_slice(target.container_as_bytes());
     let c_opts = CString::from_slice(options.container_as_bytes());
@@ -222,7 +223,7 @@ pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
     }
 }
 
-pub fn unmount(target: &Path) -> Result<(), String> {
+pub fn unmount(target: &PathBuf) -> Result<(), String> {
     let c_target = CString::from_slice(target.container_as_bytes());
     let rc = unsafe { umount2(c_target.as_bytes().as_ptr(), MNT_DETACH) };
     if rc == 0 {

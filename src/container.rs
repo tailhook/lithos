@@ -5,6 +5,7 @@ use std::ptr::null;
 use std::io::Error as IoError;
 use std::fs::File;
 use std::env::current_dir;
+use std::path::PathBuf;
 use std::collections::BTreeMap;
 use collections::enum_set::{EnumSet, CLike};
 
@@ -77,7 +78,7 @@ pub fn compile_map(src_map: &Vec<IdMap>) -> Vec<u8> {
 }
 
 impl Command {
-    pub fn new(name: String, cmd: &Path) -> Command {
+    pub fn new(name: String, cmd: &PathBuf) -> Command {
         return Command {
             name: name,
             chroot: None,
@@ -101,29 +102,29 @@ impl Command {
         self.user_id = uid;
         self.group_id = gid;
     }
-    pub fn chroot(&mut self, dir: &Path) {
+    pub fn chroot(&mut self, dir: &PathBuf) {
         self.chroot = Some(CString::from_slice(dir.container_as_bytes()));
         self.tmp_old_root = Some(CString::from_slice(
             dir.join("tmp").container_as_bytes()));
         self.old_root_relative = Some(CString::from_slice("/tmp".as_bytes()));
     }
-    pub fn set_workdir(&mut self, dir: &Path) {
+    pub fn set_workdir(&mut self, dir: &PathBuf) {
         self.workdir = CString::from_slice(dir.container_as_bytes());
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
     }
-    pub fn arg<T:BytesContainer>(&mut self, arg: T) {
-        self.arguments.push(CString::from_slice(arg.container_as_bytes()));
+    pub fn arg<T:Into<Vec<u8>>>(&mut self, arg: T) {
+        self.arguments.push(CString::new(arg.container_as_bytes()));
     }
-    pub fn args<T:BytesContainer>(&mut self, arg: &[T]) {
+    pub fn args<T:Into<Vec<u8>>>(&mut self, arg: &[T]) {
         self.arguments.extend(arg.iter()
             .map(|v| CString::from_slice(v.container_as_bytes())));
     }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
     }
-    pub fn set_output(&mut self, filename: &Path) {
+    pub fn set_output(&mut self, filename: &PathBuf) {
         self.output = Some(CString::from_slice(filename.container_as_bytes()));
     }
 
@@ -206,9 +207,9 @@ impl Command {
     {
         let pidstr = format!("{}", pid);
         let proc_path = match self.chroot {
-            Some(ref cstr) => Path::new(cstr.as_bytes())
+            Some(ref cstr) => PathBuf::from(cstr.as_bytes())
                               .join("proc").join(pidstr),
-            None => Path::new("/proc").join(pidstr),
+            None => PathBuf::from("/proc").join(pidstr),
         };
         if let Some(ref data) = self.uid_map {
             try!(File::create(&proc_path.join("uid_map"))

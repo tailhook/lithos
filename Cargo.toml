@@ -1,0 +1,23 @@
+[package]
+
+name = "lithos"
+description = "A containerization framework for linux"
+license = "MIT"
+readme = "README.rst"
+keywords = ["linux", "namespaces", "containers"]
+homepage = "http://github.com/tailhook/lithos"
+version = "0.1.0"
+authors = ["paul@colomiets.name"]
+
+[dependencies]
+regex = "*"
+rustc-serialize = "*"
+
+[dependencies.argparse]
+path = 'rust-argparse'
+
+[dependencies.quire]
+path = 'rust-quire'
+
+[dependencies.nix]
+git = 'https://github.com/carllerche/nix-rust'

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::default::Default;
 use std::collections::BTreeMap;
 
@@ -14,7 +15,7 @@ pub struct TmpfsInfo {
 
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub struct PersistentInfo {
-    pub path: Path,
+    pub path: PathBuf,
     pub mkdir: bool,
     pub mode: u32,
     pub user: u32,
@@ -23,7 +24,7 @@ pub struct PersistentInfo {
 
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub struct StatedirInfo {
-    pub path: Path,
+    pub path: PathBuf,
     pub mode: u32,
     pub user: u32,
     pub group: u32,
@@ -31,7 +32,7 @@ pub struct StatedirInfo {
 
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub enum Volume {
-    Readonly(Path),
+    Readonly(PathBuf),
     Persistent(PersistentInfo),
     Tmpfs(TmpfsInfo),
     Statedir(StatedirInfo),
@@ -74,12 +75,12 @@ pub struct ContainerConfig {
     pub executable: String,
     pub arguments: Vec<String>,
     pub environ: BTreeMap<String, String>,
-    pub workdir: Path,
+    pub workdir: PathBuf,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
     pub uid_map: Vec<IdMap>,
     pub gid_map: Vec<IdMap>,
-    pub stdout_stderr_file: Option<Path>,
+    pub stdout_stderr_file: Option<PathBuf>,
     pub restart_process_only: bool,
 }
 

@@ -1,6 +1,7 @@
 use std::default::Default;
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use std::path::PathBuf;
 use rustc_serialize::{Decoder, Decodable};
 use regex::Regex;
 
@@ -26,7 +27,7 @@ impl Range {
     }
 }
 
-impl RustcDecodable for Range {
+impl Decodable for Range {
     fn decode<D:Decoder>(d: &mut D) -> Result<Range, D::Error> {
         match d.read_str() {
             Ok(val) => {
@@ -54,10 +55,10 @@ impl RustcDecodable for Range {
 
 #[derive(RustcDecodable)]
 pub struct TreeConfig {
-    pub config_file: Path,
-    pub image_dir: Path,
-    pub readonly_paths: BTreeMap<Path, Path>,
-    pub writable_paths: BTreeMap<Path, Path>,
+    pub config_file: PathBuf,
+    pub image_dir: PathBuf,
+    pub readonly_paths: BTreeMap<PathBuf, PathBuf>,
+    pub writable_paths: BTreeMap<PathBuf, PathBuf>,
     pub allow_users: Vec<Range>,
     pub allow_groups: Vec<Range>,
     pub additional_hosts: BTreeMap<String, String>,

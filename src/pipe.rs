@@ -1,13 +1,16 @@
 use std::io::Error as IoError;
-use std::io::ErrorKind::EndOfFile;
-use std::os::{Pipe, pipe};
+use std::io::ErrorKind::BrokenPipe;
+use nix::unistd::{pipe};
 
 use libc::{c_int, c_void};
 use libc::funcs::posix88::unistd::{close, write};
 use libc::consts::os::posix88::{EINTR, EAGAIN};
 
 
-pub struct CPipe(Pipe);
+pub struct CPipe {
+    reader: Fd,
+    writer: Fd,
+}
 
 impl CPipe {
     pub fn new() -> Result<CPipe, IoError> {
@@ -27,14 +30,14 @@ impl CPipe {
             unsafe {
                 rc = write(pipe.writer, ['x' as u8].as_ptr() as *const c_void, 1);
             }
-            let err = Error::last_os_error().raw_os_error();
+            let err = IoError::last_os_error().raw_os_error();
             if rc < 0 && (err == Some(EINTR) || err == Some(EAGAIN)) {
                 continue
             }
             break;
         }
         if rc == 0 {
-            return Err(IoError { kind: EndOfFile, detail: None,
+            return Err(IoError { kind: BrokenPipe, detail: None,
                 desc: "Pipe was closed. Probably process is dead"});
         } else if rc == -1 {
             return Err(IoError::last_error());
