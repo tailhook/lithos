@@ -1,5 +1,5 @@
 use std::ptr;
-use std::fs::create_dir;
+use std::fs::{create_dir, remove_dir_all, read_dir, remove_file, remove_dir};
 use std::path::{Path, PathBuf};
 use std::io::Error as IoError;
 use std::io::ErrorKind::AlreadyExists;
@@ -136,14 +136,15 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
         let dirlist = try!(read_dir(&PathBuf::new("/"))
              .map_err(|e| format!("Can't read directory {}: {}",
                                   dir.display(), e)))
+             .filter_map(|x| x.ok())
              .collect();
         for path in dirlist.into_iter() {
             if path.is_dir() {
-                try!(rmdir_recursive(&path)
+                try!(remove_dir_all(&path)
                     .map_err(|e| format!("Can't remove directory {}{}: {}",
                         dir.display(), path.display(), e)));
             } else {
-                try!(unlink(&path)
+                try!(remove_file(&path)
                     .map_err(|e| format!("Can't remove file {}{}: {}",
                         dir.display(), path.display(), e)));
             }
@@ -151,13 +152,15 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
         Ok(())
     }));
     if remove_dir_itself {
-        try!(rmdir(dir).map_err(|e| format!("Can't remove dir {}: {}",
-                                            dir.display(), e)));
+        try!(remove_dir(dir)
+            .map_err(|e| format!("Can't remove dir {}: {}", dir, e)));
     }
     return Ok(());
 }
 
-pub fn join<T: Str, I: Iterator<Item=T>>(array: I, delimiter: &str) -> String {
+pub fn join<T: AsRef<str>, I: Iterator<Item=T>>
+    (array: I, delimiter: &str) -> String
+{
     let mut array = array;
     let mut res = "".to_string();
     match array.next() {

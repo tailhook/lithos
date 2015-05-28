@@ -1,4 +1,5 @@
 use std::fs::Permissions;
+use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::collections::BTreeMap;
 
@@ -16,7 +17,7 @@ use super::utils::{temporary_change_root, clean_dir, set_file_mode};
 use super::cgroup;
 
 
-fn map_dir(dir: &Path, dirs: &BTreeMap<Path, Path>) -> Option<Path> {
+fn map_dir(dir: &Path, dirs: &BTreeMap<PathBuf, PathBuf>) -> Option<PathBuf> {
     assert!(dir.is_absolute());
     for (prefix, real_dir) in dirs.iter() {
         if prefix.is_ancestor_of(dir) {
@@ -36,7 +37,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     local: &ContainerConfig, state_dir: &Path)
     -> Result<(), String>
 {
-    let root = Path::new("/");
+    let root = PathBuf::from("/");
     let mntdir = master.runtime_dir.join(&master.mount_dir);
     assert!(mntdir.is_absolute());
 
@@ -44,7 +45,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
 
     for &(mp_str, volume) in volumes.iter() {
-        let tmp_mp = Path::new(mp_str.as_slice());
+        let tmp_mp = PathBuf::from(mp_str.as_slice());
         assert!(tmp_mp.is_absolute());  // should be checked earlier
 
         let dest = mntdir.join(tmp_mp.path_relative_from(&root).unwrap());
@@ -73,7 +74,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 };
                 if !path.exists() {
                     if opt.mkdir {
-                        try!(mkdir_recursive(&path, ALL_PERMISSIONS)
+                        try!(create_dir_all(&path)
                             .map_err(|e| format!("Error creating \
                                 persistent volume: {}", e)));
                         let user = try!(local.map_uid(opt.user)
