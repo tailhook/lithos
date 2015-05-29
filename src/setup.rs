@@ -1,8 +1,10 @@
-use std::fs::Permissions;
+use std::fs::{Permissions, File};
+use std::fs::{create_dir_all, copy};
 use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::collections::BTreeMap;
 
+use libc::{chmod, chown};
 use quire::parse_config;
 
 use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
@@ -102,7 +104,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                 let relative_dir = opt.path.path_relative_from(&root).unwrap();
                 let dir = state_dir.join(&relative_dir);
                 if relative_dir != Path::new(".") {
-                    try!(mkdir_recursive(&dir, ALL_PERMISSIONS)
+                    try!(create_dir_all(&dir)
                         .map_err(|e| format!("Error creating \
                             persistent volume: {}", e)));
                     let user = try!(local.map_uid(opt.user)
@@ -137,7 +139,7 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
 {
     // TODO(tailhook) chown files
     if !dir.exists() {
-        try!(mkdir_recursive(dir, ALL_PERMISSIONS)
+        try!(create_dir_all(dir)
             .map_err(|e| format!("Couldn't create state directory: {}", e)));
         try!(set_file_mode(dir, 0o1777)
             .map_err(|e| format!("Couldn't set chmod for state dir: {}", e)));
@@ -167,8 +169,7 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
                 Ok(())
             })
             .map_err(|e| format!("Error writing hosts: {}", e)));
-        try!(chmod(&fname, USER_RWX|GROUP_READ|OTHER_READ)
-            .map_err(|e| format!("Error writing hosts")));
+        chmod(&fname, 0o644); // TODO(tailhook) check error?
     }
     return Ok(());
 }

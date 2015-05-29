@@ -1,5 +1,6 @@
 use std::io::Error as IoError;
 use std::io::ErrorKind::BrokenPipe;
+use std::os::unix::io::RawFd;
 use nix::unistd::{pipe};
 
 use libc::{c_int, c_void};
@@ -8,8 +9,8 @@ use libc::consts::os::posix88::{EINTR, EAGAIN};
 
 
 pub struct CPipe {
-    reader: Fd,
-    writer: Fd,
+    reader: RawFd,
+    writer: RawFd,
 }
 
 impl CPipe {
