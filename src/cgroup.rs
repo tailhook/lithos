@@ -11,7 +11,7 @@ use libc::getpid;
 
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub struct CGroupPath(pub String, pub Path);
+pub struct CGroupPath(pub String, pub PathBuf);
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Controller {
@@ -27,7 +27,7 @@ pub struct ParsedCGroups {
 }
 
 pub struct CGroups {
-    full_paths: BTreeMap<Controller, Path>
+    full_paths: BTreeMap<Controller, PathBuf>
 }
 
 

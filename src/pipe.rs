@@ -16,20 +16,21 @@ pub struct CPipe {
 impl CPipe {
     pub fn new() -> Result<CPipe, IoError> {
         match unsafe { pipe() } {
-            Ok(pipe) => Ok(CPipe(pipe)),
+            Ok((reader, writer)) => Ok(CPipe {
+                reader: reader, writer: writer
+            }),
             Err(e) => Err(e),
         }
     }
     pub fn reader_fd(&self) -> c_int {
-        let &CPipe(ref pipe) = self;
-        return pipe.reader;
+        return self.reader;
     }
     pub fn wakeup(&self) -> Result<(), IoError> {
         let mut rc;
-        let &CPipe(ref pipe) = self;
         loop {
             unsafe {
-                rc = write(pipe.writer, ['x' as u8].as_ptr() as *const c_void, 1);
+                rc = write(self.writer,
+                    ['x' as u8].as_ptr() as *const c_void, 1);
             }
             let err = IoError::last_os_error().raw_os_error();
             if rc < 0 && (err == Some(EINTR) || err == Some(EAGAIN)) {
@@ -49,13 +50,9 @@ impl CPipe {
 
 impl Drop for CPipe {
     fn drop(&mut self) {
-        match self {
-            &mut CPipe(ref pipe) => {
-                unsafe {
-                    close(pipe.reader);
-                    close(pipe.writer);
-                }
-            }
+        unsafe {
+            close(self.reader);
+            close(self.writer);
         }
     }
 }

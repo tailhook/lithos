@@ -3,7 +3,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::TryRecvError::Empty;
 use std::str::FromStr;
 use std::default::Default;
-use serialize::Decodable;
+use rustc_serialize::Decodable;
 
 use quire::validate::{Validator, Structure, Scalar, Numeric, Mapping};
 use quire;

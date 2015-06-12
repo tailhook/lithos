@@ -69,10 +69,9 @@ pub struct Command {
 }
 
 pub fn compile_map(src_map: &Vec<IdMap>) -> Vec<u8> {
-    return src_map.iter().fold("".to_string(), |mut lines, &item| {
-        lines.push_str(format!("{} {} {}\n",
-                             item.inside, item.outside, item.count
-                     ).as_slice());
+    return src_map.iter().fold(String::new(), |mut lines, &item| {
+        lines.push_str(&format!("{} {} {}\n",
+                             item.inside, item.outside, item.count));
         lines
     }).into_bytes();
 }
@@ -84,10 +83,9 @@ impl Command {
             chroot: None,
             tmp_old_root: None,
             old_root_relative: None,
-            workdir: CString::from_slice(current_dir()
-                .unwrap().container_as_bytes()),
-            executable: CString::from_slice(cmd.container_as_bytes()),
-            arguments: vec!(CString::from_slice(cmd.container_as_bytes())),
+            workdir: CString::new(current_dir().unwrap()).unwrap(),
+            executable: CString::new(cmd).unwrap(),
+            arguments: vec!(CString::new(cmd).unwrap()),
             namespaces: EnumSet::new(),
             environment: BTreeMap::new(),
             restore_sigmask: true,
@@ -103,29 +101,28 @@ impl Command {
         self.group_id = gid;
     }
     pub fn chroot(&mut self, dir: &PathBuf) {
-        self.chroot = Some(CString::from_slice(dir.container_as_bytes()));
-        self.tmp_old_root = Some(CString::from_slice(
-            dir.join("tmp").container_as_bytes()));
-        self.old_root_relative = Some(CString::from_slice("/tmp".as_bytes()));
+        self.chroot = Some(CString::new(dir).unwrap());
+        self.tmp_old_root = Some(CString::new(dir.join("tmp")).unwrap());
+        self.old_root_relative = Some(CString::new("/tmp").unwrap());
     }
     pub fn set_workdir(&mut self, dir: &PathBuf) {
-        self.workdir = CString::from_slice(dir.container_as_bytes());
+        self.workdir = CString::new(dir);
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
     }
     pub fn arg<T:Into<Vec<u8>>>(&mut self, arg: T) {
-        self.arguments.push(CString::new(arg.container_as_bytes()));
+        self.arguments.push(CString::new(arg).unwrap());
     }
     pub fn args<T:Into<Vec<u8>>>(&mut self, arg: &[T]) {
         self.arguments.extend(arg.iter()
-            .map(|v| CString::from_slice(v.container_as_bytes())));
+            .map(|v| CString::new(v).unwrap()));
     }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
     }
     pub fn set_output(&mut self, filename: &PathBuf) {
-        self.output = Some(CString::from_slice(filename.container_as_bytes()));
+        self.output = Some(CString::new(filename).unwrap());
     }
 
     pub fn update_env<'x, I: Iterator<Item=(&'x String, &'x String)>>(

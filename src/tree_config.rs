@@ -31,13 +31,13 @@ impl Decodable for Range {
     fn decode<D:Decoder>(d: &mut D) -> Result<Range, D::Error> {
         match d.read_str() {
             Ok(val) => {
-                let num:Result<u32, _> = FromStr::from_str(val.as_slice());
+                let num:Result<u32, _> = FromStr::from_str(&val[..]);
                 match num {
                     Ok(num) => return Ok(Range::new(num, num)),
                     Err(_) => {}
                 }
                 let regex = Regex::new(r"^(\d+)-(\d+)$").unwrap();
-                match regex.captures(val.as_slice()) {
+                match regex.captures(&val[..]) {
                     Some(caps) => {
                         return Ok(Range::new(
                             caps.at(1).and_then(

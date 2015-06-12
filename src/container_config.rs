@@ -55,7 +55,7 @@ pub struct HostsFile {
     pub public_hostname: bool,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Copy)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Copy)]
 pub struct IdMap {
     pub inside: u32,
     pub outside: u32,
@@ -88,13 +88,13 @@ fn mapping_validator<'x>() -> Box<Validator + 'x> {
     return Box::new(Sequence {
         element: Box::new(Structure { members: vec!(
             ("inside".to_string(), Box::new(Numeric {
-                default: None::<u32>,
+                default: None,
                 .. Default::default() }) as Box<Validator>),
             ("outside".to_string(), Box::new(Numeric {
-                default: None::<u32>,
+                default: None,
                 .. Default::default() }) as Box<Validator>),
             ("count".to_string(), Box::new(Numeric {
-                default: None::<u32>,
+                default: None,
                 .. Default::default() }) as Box<Validator>),
             ), .. Default::default() }) as Box<Validator>,
         .. Default::default() }) as Box<Validator>;
@@ -118,13 +118,13 @@ impl ContainerConfig {
                 value_element: volume_validator(),
             .. Default::default() }) as Box<Validator>),
             ("user_id".to_string(), Box::new(Numeric {
-                default: None::<u32>,
+                default: None,
                 .. Default::default()}) as Box<Validator>),
             ("group_id".to_string(), Box::new(Numeric {
                 default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ("memory_limit".to_string(), Box::new(Numeric {
-                default: Some(0xffffffffffffffffu64),
+                default: Some(0xffffffffffffffffi64),
                 .. Default::default()}) as Box<Validator>),
             ("fileno_limit".to_string(), Box::new(Numeric {
                 default: Some(1024),
@@ -188,15 +188,15 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
                 default: Some("false".to_string()),
                 .. Default::default()}) as Box<Validator>),
             ("mode".to_string(),  Box::new(Numeric {
-                min: Some(0u32),
-                max: Some(0o700u32),
+                min: Some(0),
+                max: Some(0o700),
                 default: Some(0o766),
                 .. Default::default()}) as Box<Validator>),
             ("user".to_string(),  Box::new(Numeric {
-                default: Some(0u32),
+                default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ("group".to_string(),  Box::new(Numeric {
-                default: Some(0u32),
+                default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ),.. Default::default()}) as Box<Validator>),
         ("Readonly".to_string(), Box::new(Scalar {
