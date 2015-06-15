@@ -18,8 +18,8 @@ const WNOHANG: c_int = 1;
 
 #[derive(Debug)]
 pub enum Signal {
-    Terminate(isize),  // Actual signal for termination: INT, TERM, QUIT...
-    Child(pid_t, isize),  //  pid and result code
+    Terminate(i32),  // Actual signal for termination: INT, TERM, QUIT...
+    Child(pid_t, i32),  //  pid and result code
     Reboot,
     Timeout,  // Not actually a OS signal, but it's a signal for our app
 }
@@ -42,11 +42,11 @@ pub fn block_all() {
     unsafe { block_all_signals() };
 }
 
-fn _convert_status(status: i32) -> isize {
+fn _convert_status(status: i32) -> i32 {
     if status & 0xff == 0 {
-        return ((status & 0xff00) >> 8) as isize;
+        return ((status & 0xff00) >> 8);
     }
-    return (128 + (status & 0x7f)) as isize;  // signal
+    return (128 + (status & 0x7f));  // signal
 }
 
 pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
@@ -85,28 +85,28 @@ pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {
                         }
                         if err != Some(ECHILD) {
                             panic!("Failure '{}' not expected, on death of {}",
-                                IoError::last_error(), ptr.pid);
+                                IoError::last_os_error(), ptr.pid);
                         }
                     } else {
                         assert_eq!(rc, ptr.pid);
-                        assert_eq!(_convert_status(status), ptr.status as isize);
+                        assert_eq!(_convert_status(status), ptr.status);
                     }
                     break;
                 }
-                return Child(ptr.pid, ptr.status as isize);
+                return Child(ptr.pid, ptr.status);
             }
             SIGQUIT if reboot_supported => {
                 return Reboot;
             }
             sig@SIGTERM | sig@SIGINT | sig@SIGQUIT => {
-                return Terminate(sig as isize);
+                return Terminate(sig as i32);
             }
             _ => continue,   // TODO(tailhook) improve logging
         }
     }
 }
 
-pub fn send_signal(pid: pid_t, sig: isize) {
+pub fn send_signal(pid: pid_t, sig: i32) {
     kill(pid, sig).ok();
 }
 

@@ -139,7 +139,7 @@ impl<'a> Monitor<'a> {
             }
         }
     }
-    fn _reap_child(&mut self, name: &Rc<String>, pid: pid_t, status: isize)
+    fn _reap_child(&mut self, name: &Rc<String>, pid: pid_t, status: i32)
         -> bool
     {
         let prc = self.processes.get_mut(name).unwrap();

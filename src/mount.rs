@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use libc::{c_ulong, c_int};
 
 use super::itertools::{NextValue,NextStr};
+use super::utils::cpath;
 
 // sys/mount.h
 static MS_RDONLY: c_ulong = 1;                /* Mount read-only.  */
@@ -44,11 +45,11 @@ static UMOUNT_NOFOLLOW: c_int = 8;     /* Don't follow symlink on umount.  */
 
 
 extern {
-    fn mount(source: *const u8, target: *const u8,
-        filesystemtype: *const u8, flags: c_ulong,
-        data: *const u8) -> c_int;
-    fn umount(target: *const u8) -> c_int;
-    fn umount2(target: *const u8, flags: c_int) -> c_int;
+    fn mount(source: *const i8, target: *const i8,
+        filesystemtype: *const i8, flags: c_ulong,
+        data: *const i8) -> c_int;
+    fn umount(target: *const i8) -> c_int;
+    fn umount2(target: *const i8, flags: c_int) -> c_int;
 }
 
 
@@ -130,48 +131,48 @@ impl<'a> MountRecord<'a> {
 }
 
 pub fn mount_ro_recursive(target: &PathBuf) -> Result<(), String> {
-    let none = CString::from_slice("none".as_bytes());
-    debug!("Remount readonly: {}", target.display());
-    let c_target = CString::from_slice(target.container_as_bytes());
+    let none = CString::new("none").unwrap();
+    debug!("Remount readonly: {:?}", target);
+    let c_target = cpath(target);
     let rc = unsafe { mount(
-       none.as_bytes().as_ptr(),
-       c_target.as_bytes().as_ptr(),
+       none.as_ptr(),
+       c_target.as_ptr(),
        null(), MS_BIND|MS_REMOUNT|MS_RDONLY, null()) };
     if rc != 0 {
-        let err = IoError::last_error();
+        let err = IoError::last_os_error();
         return Err(format!("Remount readonly {}: {}", target.display(), err));
     }
     return Ok(());
 }
 
 pub fn mount_private(target: &PathBuf) -> Result<(), String> {
-    let none = CString::from_slice("none".container_as_bytes());
-    let c_target = CString::from_slice(target.container_as_bytes());
-    debug!("Making private {}", target.display());
+    let none = CString::new("none").unwrap();
+    let c_target = cpath(target);
+    debug!("Making private {:?}", target);
     let rc = unsafe { mount(
-        none.as_bytes().as_ptr(),
-        c_target.as_bytes().as_ptr(),
+        none.as_ptr(),
+        c_target.as_ptr(),
         null(), MS_REC|MS_PRIVATE, null()) };
     if rc == 0 {
         return Ok(());
     } else {
-        let err = IoError::last_error();
+        let err = IoError::last_os_error();
         return Err(format!("Can't make {} a slave: {}",
             target.display(), err));
     }
 }
 
 pub fn bind_mount(source: &PathBuf, target: &PathBuf) -> Result<(), String> {
-    let c_source = CString::from_slice(source.container_as_bytes());
-    let c_target = CString::from_slice(target.container_as_bytes());
+    let c_source = cpath(source);
+    let c_target = cpath(target);
     debug!("Bind mount {} -> {}", source.display(), target.display());
     let rc = unsafe {
-        mount(c_source.as_bytes().as_ptr(), c_target.as_bytes().as_ptr(),
+        mount(c_source.as_ptr(), c_target.as_ptr(),
         null(), MS_BIND|MS_REC, null()) };
     if rc == 0 {
         return Ok(());
     } else {
-        let err = IoError::last_error();
+        let err = IoError::last_os_error();
         return Err(format!("Can't mount bind {} to {}: {}",
             source.display(), target.display(), err));
     }
@@ -180,56 +181,56 @@ pub fn bind_mount(source: &PathBuf, target: &PathBuf) -> Result<(), String> {
 pub fn mount_pseudo(target: &PathBuf, name: &str, options: &str, readonly: bool)
     -> Result<(), String>
 {
-    let c_name = CString::from_slice(name.container_as_bytes());
-    let c_target = CString::from_slice(target.container_as_bytes());
-    let c_opts = CString::from_slice(options.container_as_bytes());
+    let c_name = CString::new(name).unwrap();
+    let c_target = cpath(target);
+    let c_opts = CString::new(options).unwrap();
     let mut flags = MS_NOSUID | MS_NOEXEC | MS_NODEV | MS_NOATIME;
     if readonly {
         flags |= MS_RDONLY;
     }
     debug!("Pseusofs mount {} {} {}", target.display(), name, options);
     let rc = unsafe { mount(
-        c_name.as_bytes().as_ptr(),
-        c_target.as_bytes().as_ptr(),
-        c_name.as_bytes().as_ptr(),
+        c_name.as_ptr(),
+        c_target.as_ptr(),
+        c_name.as_ptr(),
         flags,
-        c_opts.as_bytes().as_ptr()) };
+        c_opts.as_ptr()) };
     if rc == 0 {
         return Ok(());
     } else {
-        let err = IoError::last_error();
+        let err = IoError::last_os_error();
         return Err(format!("Can't mount pseudofs {} ({}, options: {}): {}",
             target.display(), options, name, err));
     }
 }
 
 pub fn mount_tmpfs(target: &PathBuf, options: &str) -> Result<(), String> {
-    let c_tmpfs = CString::from_slice("tmpfs".as_bytes());
-    let c_target = CString::from_slice(target.container_as_bytes());
-    let c_opts = CString::from_slice(options.container_as_bytes());
+    let c_tmpfs = CString::new("tmpfs").unwrap();
+    let c_target = cpath(target);
+    let c_opts = CString::new(options).unwrap();
     debug!("Tmpfs mount {} {}", target.display(), options);
     let rc = unsafe { mount(
-        c_tmpfs.as_bytes().as_ptr(),
-        c_target.as_bytes().as_ptr(),
-        c_tmpfs.as_bytes().as_ptr(),
+        c_tmpfs.as_ptr(),
+        c_target.as_ptr(),
+        c_tmpfs.as_ptr(),
         MS_NOSUID | MS_NODEV | MS_NOATIME,
-        c_opts.as_bytes().as_ptr()) };
+        c_opts.as_ptr()) };
     if rc == 0 {
         return Ok(());
     } else {
-        let err = IoError::last_error();
+        let err = IoError::last_os_error();
         return Err(format!("Can't mount tmpfs {} (options: {}): {}",
             target.display(), options, err));
     }
 }
 
 pub fn unmount(target: &PathBuf) -> Result<(), String> {
-    let c_target = CString::from_slice(target.container_as_bytes());
-    let rc = unsafe { umount2(c_target.as_bytes().as_ptr(), MNT_DETACH) };
+    let c_target = cpath(target);
+    let rc = unsafe { umount2(c_target.as_ptr(), MNT_DETACH) };
     if rc == 0 {
         return Ok(());
     } else {
-        let err = IoError::last_error();
+        let err = IoError::last_os_error();
         return Err(format!("Can't unmount {} : {}", target.display(), err));
     }
 }

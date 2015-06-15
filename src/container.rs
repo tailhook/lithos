@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 
-use std::ffi::{CString};
-use std::ptr::null;
 use std::io::Error as IoError;
+use std::io::Write;
 use std::fs::File;
+use std::ptr::null;
+use std::ffi::{CString};
 use std::env::current_dir;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::collections::BTreeMap;
 use collections::enum_set::{EnumSet, CLike};
 
@@ -14,6 +15,7 @@ use libc::{c_int, c_char, pid_t};
 use super::pipe::CPipe;
 use super::signal;
 use super::container_config::IdMap;
+use super::utils::cpath;
 pub use self::Namespace::*;
 
 #[derive(Debug)]
@@ -83,9 +85,9 @@ impl Command {
             chroot: None,
             tmp_old_root: None,
             old_root_relative: None,
-            workdir: CString::new(current_dir().unwrap()).unwrap(),
-            executable: CString::new(cmd).unwrap(),
-            arguments: vec!(CString::new(cmd).unwrap()),
+            workdir: cpath(&current_dir().unwrap()),
+            executable: cpath(cmd),
+            arguments: vec!(cpath(cmd)),
             namespaces: EnumSet::new(),
             environment: BTreeMap::new(),
             restore_sigmask: true,
@@ -101,12 +103,12 @@ impl Command {
         self.group_id = gid;
     }
     pub fn chroot(&mut self, dir: &PathBuf) {
-        self.chroot = Some(CString::new(dir).unwrap());
-        self.tmp_old_root = Some(CString::new(dir.join("tmp")).unwrap());
+        self.chroot = Some(cpath(dir));
+        self.tmp_old_root = Some(cpath(&dir.join("tmp")));
         self.old_root_relative = Some(CString::new("/tmp").unwrap());
     }
     pub fn set_workdir(&mut self, dir: &PathBuf) {
-        self.workdir = CString::new(dir);
+        self.workdir = cpath(dir);
     }
     pub fn keep_sigmask(&mut self) {
         self.restore_sigmask = false;
@@ -116,13 +118,13 @@ impl Command {
     }
     pub fn args<T:Into<Vec<u8>>>(&mut self, arg: &[T]) {
         self.arguments.extend(arg.iter()
-            .map(|v| CString::new(v).unwrap()));
+            .map(|v| CString::new(*v).unwrap()));
     }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
     }
     pub fn set_output(&mut self, filename: &PathBuf) {
-        self.output = Some(CString::new(filename).unwrap());
+        self.output = Some(cpath(filename));
     }
 
     pub fn update_env<'x, I: Iterator<Item=(&'x String, &'x String)>>(
@@ -152,18 +154,16 @@ impl Command {
             .map(|a| a.as_bytes().as_ptr()).collect();
         exec_args.push(null());
         let environ_cstr: Vec<CString> = self.environment.iter()
-            .map(|(k, v)| CString::from_slice(
-                            (k.clone() + "=" + v.as_slice()).as_bytes()))
+            .map(|(k, v)| CString::new(&(k.clone() + "=" + v)[..]).unwrap())
             .collect();
         let mut exec_environ: Vec<*const u8> = environ_cstr.iter()
             .map(|p| p.as_bytes().as_ptr()).collect();
         exec_environ.push(null());
 
         let pipe = try!(CPipe::new());
-        let logprefix = CString::from_slice(format!(
+        let logprefix = CString::new(&format!(
             // Only errors are logged from C code
-            "ERROR:lithos::container.c: [{}]", self.name
-            ).as_bytes());
+            "ERROR:lithos::container.c: [{}]", self.name)[..]).unwrap();
         let pid = unsafe { execute_command(&CCommand {
             pipe_reader: pipe.reader_fd(),
             logprefix: logprefix.as_bytes().as_ptr(),
@@ -190,10 +190,10 @@ impl Command {
             output: self.output.as_ref().map(|x| x.as_ptr()).unwrap_or(null()),
         }) };
         if pid < 0 {
-            return Err(IoError::last_error());
+            return Err(IoError::last_os_error());
         }
         if let Err(e) = self._init_container(pid, &pipe) {
-            signal::send_signal(pid, signal::SIGKILL as isize);
+            signal::send_signal(pid, signal::SIGKILL);
             return Err(e);
         }
         return Ok(pid)
@@ -204,8 +204,9 @@ impl Command {
     {
         let pidstr = format!("{}", pid);
         let proc_path = match self.chroot {
-            Some(ref cstr) => PathBuf::from(cstr.as_bytes())
-                              .join("proc").join(pidstr),
+            Some(ref cstr)
+            => Path::new(&String::from_utf8(cstr.as_bytes().to_vec()).unwrap())
+               .join("proc").join(pidstr),
             None => PathBuf::from("/proc").join(pidstr),
         };
         if let Some(ref data) = self.uid_map {
