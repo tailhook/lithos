@@ -135,16 +135,16 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
         let dirlist = try!(read_dir("/")
              .map_err(|e| format!("Can't read directory {:?}: {}", dir, e)))
              .filter_map(|x| x.ok())
-             .collect();
-        for path in dirlist.into_iter() {
-            if path.is_dir() {
-                try!(remove_dir_all(&path)
+             .collect::<Vec<_>>();
+        for entry in dirlist.into_iter() {
+            if entry.path().is_dir() {
+                try!(remove_dir_all(entry.path())
                     .map_err(|e| format!("Can't remove directory {:?}{:?}: {}",
-                        dir, path, e)));
+                        dir, entry.path(), e)));
             } else {
-                try!(remove_file(&path)
+                try!(remove_file(entry.path())
                     .map_err(|e| format!("Can't remove file {:?}{:?}: {}",
-                        dir, path, e)));
+                        dir, entry.path(), e)));
             }
         }
         Ok(())
@@ -178,10 +178,10 @@ pub fn get_time() -> Time {
 }
 
 pub fn set_file_mode(path: &Path, mode: mode_t) -> Result<(), IoError> {
-    let cpath = CString::new(path).unwrap();
+    let cpath = cpath(path);
     let rc = unsafe { chmod(cpath.as_ptr(), mode) };
     if rc < 0 {
-        return Err(IoError::last_error());
+        return Err(IoError::last_os_error());
     }
     return Ok(());
 }
