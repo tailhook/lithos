@@ -14,7 +14,7 @@
 
 use std::iter::repeat;
 use std::slice::bytes::{MutableByteVector, copy_memory};
-use serialize::hex::ToHex;
+use rustc_serialize::hex::ToHex;
 
 /// Write a u32 into a vector, which must be 4 bytes long. The value is written in big-endian
 /// format.

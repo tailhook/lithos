@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::BinaryHeap;
 use std::mem::swap;
-use std::time::Duration;
 use libc::pid_t;
 
 use super::container::Command;
@@ -33,7 +32,7 @@ pub struct Process<'a> {
     name: Rc<String>,
     current_pid: Option<pid_t>,
     start_time: Option<Time>,
-    restart_timeout: Duration,
+    restart_timeout: i64,
     executor: Box<Executor + 'a>,
 }
 
@@ -63,7 +62,7 @@ impl<'a> Monitor<'a> {
         self.allow_reboot = true;
     }
     pub fn add(&mut self, name: Rc<String>, executor: Box<Executor + 'a>,
-        timeout: Duration, current: Option<(pid_t, Time)>)
+        timeout: i64, current: Option<(pid_t, Time)>)
     {
         if let Some((pid, _)) = current {
             info!("[{}] Registered process pid: {} as name: {}",
@@ -104,7 +103,7 @@ impl<'a> Monitor<'a> {
                         error!("Can't run container {}: {}", prc.name, e);
                         self.start_queue.push((
                             -((get_time()*1000.) as i64 +
-                              prc.restart_timeout.num_milliseconds()),
+                              prc.restart_timeout),
                             prc.name.clone(),
                             ));
                     }
@@ -113,7 +112,7 @@ impl<'a> Monitor<'a> {
             Error(_) => {
                 self.start_queue.push((
                     -((get_time()*1000.) as i64 +
-                        prc.restart_timeout.num_milliseconds()),
+                        prc.restart_timeout),
                     prc.name.clone(),
                     ));
             }
@@ -150,7 +149,7 @@ impl<'a> Monitor<'a> {
         }
         self.start_queue.push((
             -((prc.start_time.unwrap()*1000.0) as i64 +
-                prc.restart_timeout.num_milliseconds()),
+                prc.restart_timeout),
             prc.name.clone(),
             ));
         prc.current_pid = None;

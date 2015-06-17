@@ -1,6 +1,6 @@
 use std::rc::Rc;
-use std::io::BufRead;
-use std::fs::{File, create_dir, remove_dir};
+use std::io::{Write, BufRead, BufReader};
+use std::fs::{PathExt, File, create_dir, remove_dir};
 use std::io::ErrorKind::NotFound;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -8,6 +8,9 @@ use std::default::Default;
 use std::collections::BTreeMap;
 use libc::pid_t;
 use libc::getpid;
+
+use super::utils::relative;
+
 
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -32,17 +35,17 @@ pub struct CGroups {
 
 
 pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
-    let path = Path::new(pid.map(|x| format!("/proc/{}/cgroup", x))
-                            .unwrap_or("/proc/self/cgroup".to_string()));
+    let path = pid.map(|x| format!("/proc/{}/cgroup", x))
+                   .unwrap_or("/proc/self/cgroup".to_string());
     let f = try!(File::open(&path)
                  .map_err(|e| format!("Error reading cgroup: {}", e)));
-    let mut f = BufRead::new(f);
+    let mut f = BufReader::new(f);
     let mut res: ParsedCGroups = Default::default();
     for line in f.lines() {
         let line = try!(line
                        .map_err(|e| format!("Can't read CGroup file: {}", e)));
         // Line is in form of "123:ctr1[,ctr2][=folder]:/group/path"
-        let mut chunks = line.as_slice().splitn(2, ':');
+        let mut chunks = line[..].splitn(2, ':');
         let num = try!(chunks.next()
                        .ok_or(format!("CGroup num expected")));
         let namechunk = try!(chunks.next()
@@ -54,7 +57,8 @@ pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
         let group_path = Path::new(try!(chunks.next()
                                    .ok_or(format!("CGroup path expected")))
                                    .trim());
-        let grp = Rc::new(CGroupPath(group_name.clone(), group_path.clone()));
+        let grp = Rc::new(CGroupPath(group_name.clone(),
+                                     group_path.to_owned()));
         res.all_groups.push(grp.clone());
         for name in names.split(',') {
             if res.by_name.insert(name.to_string(), grp.clone()).is_some() {
@@ -103,14 +107,14 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
 
         // TODO(tailhook) do we need to customize nested groups?
         // TODO(tailhook) what if we *are* init process?
-        let new_path = rpath.join(name.as_slice());
+        let new_path = rpath.join(&name);
 
         if new_path == *opath {
             debug!("Already in cgroup {}:{}", ctr, new_path.display());
             continue;
         }
-        let fullpath = cgroup_base.join(ofolder.as_slice()).join(
-            new_path.path_relative_from(&root_path).unwrap());
+        let fullpath = cgroup_base.join(&ofolder).join(
+            relative(&new_path, &root_path));
         if !fullpath.exists() {
             debug!("Creating cgroup {}", fullpath.display());
             try!(create_dir(&fullpath)
@@ -122,9 +126,9 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
         try!(OpenOptions::new().append(true).open(&fullpath.join("tasks"))
              .and_then(|mut f| write!(&mut f, "{}", mypid))
              .map_err(|e| format!(
-                "Error adding myself (pid: {}) to the group {}: {}",
-                mypid, fullpath.display(), e)));
-        match ctr.as_slice() {
+                "Error adding myself (pid: {}) to the group {:?}: {}",
+                mypid, fullpath, e)));
+        match &ctr[..] {
             "cpu" => {
                 res.full_paths.insert(Controller::Cpu, fullpath);
             }
@@ -160,11 +164,11 @@ pub fn remove_child_cgroup(child: &str, master: &String,
     for ctr in controllers.iter() {
         let CGroupPath(ref folder, ref path) = **parent_grp.by_name.get(ctr)
             .expect("CGroups already checked");
-        let fullpath = cgroup_base.join(folder.as_slice())
-            .join(path.path_relative_from(&root_path).unwrap())
-            .join(master.as_slice()).join(child);
+        let fullpath = cgroup_base.join(&folder)
+            .join(relative(path, &root_path))
+            .join(&master).join(child);
         remove_dir(&fullpath)
-            .map_err(|e| if e.kind != NotFound {
+            .map_err(|e| if e.kind() != NotFound {
                 error!("Error removing cgroup {}: {}", fullpath.display(), e)})
             .ok();
     }
@@ -178,7 +182,7 @@ impl CGroups {
         let path = try!(self.full_paths.get(&ctr)
             .ok_or(format!("Controller {:?} is not initialized", ctr)));
         File::create(&path.join(key))
-            .and_then(|mut f| f.write_str(value))
+            .and_then(|mut f| f.write_all(value.as_bytes()))
             .map_err(|e| format!("Can't write to cgroup path {:?}/{}: {}",
                 path, key, e))
     }

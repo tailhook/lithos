@@ -12,6 +12,13 @@ authors = ["paul@colomiets.name"]
 [dependencies]
 regex = "*"
 rustc-serialize = "*"
+libc = "*"
+
+[dependencies.log]
+git = "git://github.com/rust-lang/log"
+
+[dependencies.env_logger]
+git = "git://github.com/rust-lang/log"
 
 [dependencies.argparse]
 path = 'rust-argparse'

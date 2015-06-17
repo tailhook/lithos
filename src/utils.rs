@@ -2,12 +2,13 @@ use std::ptr;
 use std::fs::{create_dir, remove_dir_all, read_dir, remove_file, remove_dir};
 use std::fs::PathExt;
 use std::path::{Path, PathBuf};
+use std::path::Component::Normal;
 use std::io::Error as IoError;
 use std::io::ErrorKind::AlreadyExists;
 use std::ffi::CString;
 use std::env::current_dir;
-use libc::{c_int, c_char, timeval, c_void, mode_t};
-use libc::{chmod, chdir};
+use libc::{c_int, c_char, timeval, c_void, mode_t, uid_t, gid_t};
+use libc::{chmod, chdir, chown};
 
 use super::tree_config::Range;
 use super::container_config::IdMap;
@@ -177,6 +178,17 @@ pub fn get_time() -> Time {
     return (tv.tv_sec as f64 +  tv.tv_usec as f64 * 0.000001)
 }
 
+pub fn set_file_owner(path: &Path, owner: uid_t, group: gid_t)
+    -> Result<(), IoError>
+{
+    let cpath = cpath(path);
+    let rc = unsafe { chown(cpath.as_ptr(), owner, group) };
+    if rc < 0 {
+        return Err(IoError::last_os_error());
+    }
+    return Ok(());
+}
+
 pub fn set_file_mode(path: &Path, mode: mode_t) -> Result<(), IoError> {
     let cpath = cpath(path);
     let rc = unsafe { chmod(cpath.as_ptr(), mode) };
@@ -188,5 +200,19 @@ pub fn set_file_mode(path: &Path, mode: mode_t) -> Result<(), IoError> {
 
 pub fn cpath(path: &Path) -> CString {
     CString::new(path.to_str().unwrap()).unwrap()
+}
+
+pub fn relative(mut child: &Path, base: &Path) -> PathBuf {
+    assert!(child.starts_with(base));
+    let mut res = PathBuf::new();
+    for cmp in child.components().skip(base.components().count()) {
+        if let Normal(ref chunk) = cmp {
+            res.push(chunk);
+        } else {
+            panic!("Bad path for relative ({:?} from {:?} against {:?})",
+                cmp, child, base);
+        }
+    }
+    return res
 }
 

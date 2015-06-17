@@ -19,7 +19,7 @@ pub fn set_fileno_limit(limit: u64) -> Result<(), IoError> {
         rlim_max: limit,
     }) };
     if res != 0 {
-        return Err(IoError::last_error());
+        return Err(IoError::last_os_error());
     }
     return Ok(());
 }

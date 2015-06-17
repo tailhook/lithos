@@ -1,5 +1,5 @@
 use std::default::Default;
-use serialize::{Decoder};
+use rustc_serialize::{Decoder};
 use std::path::PathBuf;
 
 use quire::validate::{Validator, Structure, Sequence};

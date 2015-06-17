@@ -1,6 +1,6 @@
-use std::str::from_utf8;
+use std::str::{from_utf8, FromStr};
 use std::ptr::null;
-use std::ffi::CString;
+use std::ffi::{CString, CStr};
 use std::io::Error as IoError;
 use std::io::Result as IoResult;
 use std::io::ErrorKind::InvalidInput;
@@ -17,14 +17,14 @@ struct hostent {
 }
 
 extern {
-    pub fn gethostname(name: *mut c_char, size: size_t) -> c_int;
-    pub fn gethostbyname(name: *const c_char) -> *const hostent;
+    fn gethostname(name: *mut c_char, size: size_t) -> c_int;
+    fn gethostbyname(name: *const c_char) -> *const hostent;
 }
 
 pub fn get_host_ip() -> IoResult<IpAddr> {
     let host = try!(get_host_name());
     let addr = try!(get_host_address(&host[..]));
-    return Ok(addr);
+    return Ok(FromStr::from_str(&addr[..]).unwrap());
 }
 
 pub fn get_host_name() -> IoResult<String> {
@@ -45,15 +45,17 @@ pub fn get_host_name() -> IoResult<String> {
 }
 
 pub fn get_host_address(val: &str) -> IoResult<String> {
-    let cval = CString::new(val);
+    let cval = CString::new(val).unwrap();
     unsafe {
         let hostent = gethostbyname(cval.as_ptr());
         if hostent == null() {
             return Err(IoError::last_os_error());
         }
-        if hostent.h_length == 0 {
-            return Err(IoError::from_raw_os_error(InvalidInput));
+        if (*hostent).h_length == 0 {
+            return Err(IoError::from_raw_os_error(EINVAL));
         }
-        return Ok(CString::from_ptr(hostent.h_addr_list[0]));
+        return Ok(String::from_utf8(
+            CStr::from_ptr(*(*hostent).h_addr_list).to_bytes().to_vec()
+            ).unwrap());
     }
 }

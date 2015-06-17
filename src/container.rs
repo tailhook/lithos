@@ -7,8 +7,7 @@ use std::ptr::null;
 use std::ffi::{CString};
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
-use std::collections::BTreeMap;
-use collections::enum_set::{EnumSet, CLike};
+use std::collections::{BTreeMap, HashSet};
 
 use libc::{c_int, c_char, pid_t};
 
@@ -18,7 +17,7 @@ use super::container_config::IdMap;
 use super::utils::cpath;
 pub use self::Namespace::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 enum Namespace {
     NewMount,
     NewUts,
@@ -26,30 +25,6 @@ enum Namespace {
     NewUser,
     NewPid,
     NewNet,
-}
-
-impl CLike for Namespace {
-    fn to_usize(&self) -> usize {
-        match *self {
-            NewMount => 0,
-            NewUts => 1,
-            NewIpc => 2,
-            NewUser => 3,
-            NewPid => 4,
-            NewNet => 5,
-        }
-    }
-    fn from_usize(val: usize) -> Namespace {
-        match val {
-            0 => NewMount,
-            1 => NewUts,
-            2 => NewIpc,
-            3 => NewUser,
-            4 => NewPid,
-            5 => NewNet,
-            _ => unreachable!(),
-        }
-    }
 }
 
 pub struct Command {
@@ -60,7 +35,7 @@ pub struct Command {
     executable: CString,
     arguments: Vec<CString>,
     environment: BTreeMap<String, String>,
-    namespaces: EnumSet<Namespace>,
+    namespaces: HashSet<Namespace>,
     restore_sigmask: bool,
     user_id: u32,
     group_id: u32,
@@ -88,7 +63,7 @@ impl Command {
             workdir: cpath(&current_dir().unwrap()),
             executable: cpath(cmd),
             arguments: vec!(cpath(cmd)),
-            namespaces: EnumSet::new(),
+            namespaces: HashSet::new(),
             environment: BTreeMap::new(),
             restore_sigmask: true,
             user_id: 0,
@@ -116,9 +91,9 @@ impl Command {
     pub fn arg<T:Into<Vec<u8>>>(&mut self, arg: T) {
         self.arguments.push(CString::new(arg).unwrap());
     }
-    pub fn args<T:Into<Vec<u8>>>(&mut self, arg: &[T]) {
+    pub fn args<T:Into<Vec<u8>>+Clone>(&mut self, arg: &[T]) {
         self.arguments.extend(arg.iter()
-            .map(|v| CString::new(*v).unwrap()));
+            .map(|v| CString::new(v.clone()).unwrap()));
     }
     pub fn set_env(&mut self, key: String, value: String) {
         self.environment.insert(key, value);
@@ -182,7 +157,7 @@ impl Command {
             exec_path: self.executable.as_bytes().as_ptr(),
             exec_args: exec_args.as_slice().as_ptr(),
             exec_environ: exec_environ.as_slice().as_ptr(),
-            namespaces: convert_namespaces(self.namespaces),
+            namespaces: convert_namespaces(&self.namespaces),
             user_id: self.user_id as i32,
             group_id: self.group_id as i32,
             restore_sigmask: if self.restore_sigmask { 1 } else { 0 },
@@ -224,9 +199,9 @@ impl Command {
 }
 
 
-fn convert_namespaces(set: EnumSet<Namespace>) -> c_int {
+fn convert_namespaces(set: &HashSet<Namespace>) -> c_int {
     let mut ns = 0;
-    for i in set.iter() {
+    for &i in set.iter() {
         ns |= match i {
             NewMount => CLONE_NEWNS,
             NewUts => CLONE_NEWUTS,

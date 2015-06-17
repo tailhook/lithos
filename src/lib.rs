@@ -2,12 +2,11 @@
 #![crate_type="lib"]
 
 #[macro_use] extern crate log;
+extern crate env_logger;
 extern crate libc;
 extern crate nix;
 extern crate quire;
-extern crate serialize;
 extern crate regex;
-extern crate collections;
 extern crate rustc_serialize;
 
 pub mod master_config;

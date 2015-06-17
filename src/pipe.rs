@@ -2,6 +2,8 @@ use std::io::Error as IoError;
 use std::io::ErrorKind::BrokenPipe;
 use std::os::unix::io::RawFd;
 use nix::unistd::{pipe};
+use nix::Error::{Sys, InvalidPath};
+use nix::errno::Errno::EPIPE;
 
 use libc::{c_int, c_void};
 use libc::funcs::posix88::unistd::{close, write};
@@ -19,7 +21,8 @@ impl CPipe {
             Ok((reader, writer)) => Ok(CPipe {
                 reader: reader, writer: writer
             }),
-            Err(e) => Err(e),
+            Err(Sys(code)) => Err(IoError::from_raw_os_error(code as i32)),
+            Err(InvalidPath) => unreachable!(),
         }
     }
     pub fn reader_fd(&self) -> c_int {
@@ -39,10 +42,9 @@ impl CPipe {
             break;
         }
         if rc == 0 {
-            return Err(IoError { kind: BrokenPipe, detail: None,
-                desc: "Pipe was closed. Probably process is dead"});
+            return Err(IoError::from_raw_os_error(EPIPE as i32));
         } else if rc == -1 {
-            return Err(IoError::last_error());
+            return Err(IoError::last_os_error());
         }
         return Ok(());
     }

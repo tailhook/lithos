@@ -1,4 +1,5 @@
-use std::fs::{Permissions, File};
+use std::io::Write;
+use std::fs::{Permissions, File, PathExt};
 use std::fs::{create_dir_all, copy};
 use std::path::{Path, PathBuf};
 use std::default::Default;
@@ -15,21 +16,17 @@ use super::tree_config::TreeConfig;
 use super::container_config::{ContainerConfig, Volume};
 use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
 use super::child_config::ChildConfig;
-use super::utils::{temporary_change_root, clean_dir, set_file_mode};
+use super::utils::{temporary_change_root, clean_dir};
+use super::utils::{set_file_mode, set_file_owner};
+use super::utils::{relative, cpath};
 use super::cgroup;
 
 
 fn map_dir(dir: &Path, dirs: &BTreeMap<PathBuf, PathBuf>) -> Option<PathBuf> {
     assert!(dir.is_absolute());
     for (prefix, real_dir) in dirs.iter() {
-        if prefix.is_ancestor_of(dir) {
-            match dir.path_relative_from(prefix) {
-                Some(tail) => {
-                    assert!(!tail.is_absolute());
-                    return Some(real_dir.join(tail));
-                }
-                None => continue,
-            }
+        if dir.starts_with(prefix) {
+            return Some(real_dir.join(relative(dir, prefix)));
         }
     }
     return None;
@@ -47,10 +44,10 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
 
     for &(mp_str, volume) in volumes.iter() {
-        let tmp_mp = PathBuf::from(mp_str.as_slice());
+        let tmp_mp = PathBuf::from(&mp_str[..]);
         assert!(tmp_mp.is_absolute());  // should be checked earlier
 
-        let dest = mntdir.join(tmp_mp.path_relative_from(&root).unwrap());
+        let dest = mntdir.join(relative(&tmp_mp, &root));
         match volume {
             &Readonly(ref dir) => {
                 let path = match map_dir(dir, &tree.readonly_paths).or_else(
@@ -85,7 +82,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                         let group = try!(local.map_gid(opt.group)
                             .ok_or(format!("Non-mapped group {} for volume {}",
                                 opt.group, mp_str)));
-                        try!(chown(&path, user as isize, group as isize)
+                        try!(set_file_owner(&path, user, group)
                             .map_err(|e| format!("Error chowning \
                                 persistent volume: {}", e)));
                         try!(set_file_mode(&path, opt.mode)
@@ -97,13 +94,12 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
             }
             &Tmpfs(ref opt) => {
                 try!(mount_tmpfs(&dest,
-                    format!("size={},mode=0{:o}",
-                            opt.size, opt.mode).as_slice()));
+                    &format!("size={},mode=0{:o}", opt.size, opt.mode)));
             }
             &Statedir(ref opt) => {
-                let relative_dir = opt.path.path_relative_from(&root).unwrap();
+                let relative_dir = relative(&opt.path, &root);
                 let dir = state_dir.join(&relative_dir);
-                if relative_dir != Path::new(".") {
+                if Path::new(&relative_dir) != Path::new(".") {
                     try!(create_dir_all(&dir)
                         .map_err(|e| format!("Error creating \
                             persistent volume: {}", e)));
@@ -113,7 +109,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                     let group = try!(local.map_gid(opt.group)
                         .ok_or(format!("Non-mapped group {} for volume {}",
                             opt.group, mp_str)));
-                    try!(chown(&dir, user as isize, group as isize)
+                    try!(set_file_owner(&dir, user, group)
                         .map_err(|e| format!("Error chowning \
                             persistent volume: {}", e)));
                     try!(set_file_mode(&dir, opt.mode)
@@ -155,8 +151,9 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
         let mut file = try!(File::create(&fname)
             .and_then(|mut file| {
                 if local.hosts_file.localhost {
-                    try!(file.write_str(
-                        "127.0.0.1 localhost.localdomain localhost\n"));
+                    try!(file.write_all(
+                        "127.0.0.1 localhost.localdomain localhost\n"
+                        .as_bytes()));
                 }
                 if local.hosts_file.public_hostname {
                     try!(writeln!(&mut file, "{} {}",
@@ -169,7 +166,7 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
                 Ok(())
             })
             .map_err(|e| format!("Error writing hosts: {}", e)));
-        chmod(&fname, 0o644); // TODO(tailhook) check error?
+        set_file_mode(&fname, 0o644).ok(); // TODO(tailhook) check error?
     }
     return Ok(());
 }
@@ -178,20 +175,20 @@ pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
     -> Result<ContainerConfig, String>
 {
     return temporary_change_root(root, || {
-        parse_config(&Path::new(child_cfg.config.as_slice()),
+        parse_config(&Path::new(&child_cfg.config),
             &*ContainerConfig::validator(), Default::default())
     });
 }
 
 pub fn clean_child(name: &String, master: &MasterConfig) {
     let st_dir = master.runtime_dir
-        .join(&master.state_dir).join(name.as_slice());
+        .join(&master.state_dir).join(name);
     clean_dir(&st_dir, true)
         .map_err(|e| error!("Error removing state dir for {}: {}", name, e))
         .ok();
     if let Some(ref master_grp) = master.cgroup_name {
         let cgname = name.replace("/", ":") + ".scope";
-        cgroup::remove_child_cgroup(cgname.as_slice(), master_grp,
+        cgroup::remove_child_cgroup(&cgname, master_grp,
                                     &master.cgroup_controllers)
             .map_err(|e| error!("Error removing cgroup: {}", e))
             .ok();
