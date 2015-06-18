@@ -8,11 +8,14 @@ keywords = ["linux", "namespaces", "containers"]
 homepage = "http://github.com/tailhook/lithos"
 version = "0.1.0"
 authors = ["paul@colomiets.name"]
+links = "container"
 
 [dependencies]
 regex = "*"
 rustc-serialize = "*"
 libc = "*"
+shaman = "*"
+rand = "*"
 
 [dependencies.log]
 git = "git://github.com/rust-lang/log"

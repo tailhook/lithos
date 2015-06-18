@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::str::{FromStr, CharIndices};
 use std::borrow::Borrow;
 
 
@@ -37,4 +37,49 @@ impl<'a, I> NextStr<'a> for I
     fn nth_str(&mut self, i: usize) -> Result<&'a str, ()> {
         return self.nth(i).ok_or(());
     }
+}
+
+pub struct Words<'a> {
+    src: &'a str,
+    iter: CharIndices<'a>,
+}
+
+impl<'a> Words<'a> {
+    fn skip_ws(&mut self) -> Option<(usize, char)> {
+        loop {
+            if let Some((idx, ch)) = self.iter.next() {
+                if !ch.is_whitespace() {
+                    return Some((idx, ch));
+                }
+            } else {
+                return None
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for Words<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<&'a str> {
+        if let Some((start_idx, _)) = self.skip_ws() {
+            loop {
+                if let Some((idx, ch)) = self.iter.next() {
+                    if ch.is_whitespace() {
+                        return Some(&self.src[start_idx..idx]);
+                    }
+                } else {
+                    return Some(&self.src[start_idx..]);
+                }
+            }
+        } else {
+            return None;
+        }
+    }
+}
+
+pub fn words<'a, 'b: 'a, B: Borrow<str> + ?Sized + 'a>(src: &'b B) -> Words<'a> {
+    return Words {
+        src: src.borrow(),
+        iter: src.borrow().char_indices(),
+        };
 }

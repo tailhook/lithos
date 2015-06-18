@@ -1,11 +1,10 @@
 use std::io::Write;
-use std::fs::{Permissions, File, PathExt};
-use std::fs::{create_dir_all, copy};
+use std::fs::{File};
+use std::fs::{create_dir_all, copy, metadata};
 use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::collections::BTreeMap;
 
-use libc::{chmod, chown};
 use quire::parse_config;
 
 use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
@@ -18,7 +17,7 @@ use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
 use super::child_config::ChildConfig;
 use super::utils::{temporary_change_root, clean_dir};
 use super::utils::{set_file_mode, set_file_owner};
-use super::utils::{relative, cpath};
+use super::utils::{relative};
 use super::cgroup;
 
 
@@ -71,7 +70,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
                     }
                     Some(path) => path,
                 };
-                if !path.exists() {
+                if metadata(&path).is_err() {
                     if opt.mkdir {
                         try!(create_dir_all(&path)
                             .map_err(|e| format!("Error creating \
@@ -134,7 +133,7 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
     -> Result<(), String>
 {
     // TODO(tailhook) chown files
-    if !dir.exists() {
+    if metadata(dir).is_err() {
         try!(create_dir_all(dir)
             .map_err(|e| format!("Couldn't create state directory: {}", e)));
         try!(set_file_mode(dir, 0o1777)
@@ -148,7 +147,7 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
         || tree.additional_hosts.len() > 0
     {
         let fname = dir.join("hosts");
-        let mut file = try!(File::create(&fname)
+        try!(File::create(&fname)
             .and_then(|mut file| {
                 if local.hosts_file.localhost {
                     try!(file.write_all(

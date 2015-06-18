@@ -103,7 +103,7 @@ impl Command {
     }
 
     pub fn update_env<'x, I: Iterator<Item=(&'x String, &'x String)>>(
-        &mut self, mut env: I)
+        &mut self, env: I)
     {
         for (k, v) in env {
             self.environment.insert(k.clone(), v.clone());
@@ -155,8 +155,8 @@ impl Command {
                 None => null(),
             },
             exec_path: self.executable.as_bytes().as_ptr(),
-            exec_args: exec_args.as_slice().as_ptr(),
-            exec_environ: exec_environ.as_slice().as_ptr(),
+            exec_args: exec_args[..].as_ptr(),
+            exec_environ: exec_environ[..].as_ptr(),
             namespaces: convert_namespaces(&self.namespaces),
             user_id: self.user_id as i32,
             group_id: self.group_id as i32,
@@ -186,11 +186,11 @@ impl Command {
         };
         if let Some(ref data) = self.uid_map {
             try!(File::create(&proc_path.join("uid_map"))
-            .and_then(|mut f| f.write(data.as_slice())));
+            .and_then(|mut f| f.write(&data)));
         }
         if let Some(ref data) = self.gid_map {
             try!(File::create(&proc_path.join("gid_map"))
-            .and_then(|mut f| f.write(data.as_slice())));
+            .and_then(|mut f| f.write(&data)));
         }
 
         try!(pipe.wakeup());

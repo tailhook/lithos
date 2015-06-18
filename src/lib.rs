@@ -7,6 +7,7 @@ extern crate libc;
 extern crate nix;
 extern crate quire;
 extern crate regex;
+extern crate shaman;
 extern crate rustc_serialize;
 
 pub mod master_config;
@@ -22,7 +23,6 @@ pub mod network;
 pub mod setup;
 pub mod pipe;
 pub mod limits;
-pub mod sha256;
 pub mod cgroup;
 pub mod itertools;
 #[cfg(test)] pub mod ascii;  // actually a lithos_ps module

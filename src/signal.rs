@@ -1,9 +1,5 @@
-use std::cmp::max;
 use std::io::Error as IoError;
-use std::ptr::null;
-use std::time::duration::Duration;
 use std::default::Default;
-use libc::types::os::common::posix01::timespec;
 pub use libc::consts::os::posix88::{SIGTERM, SIGINT, SIGQUIT, EINTR, ECHILD};
 pub use libc::consts::os::posix88::{SIGKILL};
 use libc::{c_int, pid_t};
@@ -44,9 +40,9 @@ pub fn block_all() {
 
 fn _convert_status(status: i32) -> i32 {
     if status & 0xff == 0 {
-        return ((status & 0xff00) >> 8);
+        return (status & 0xff00) >> 8;
     }
-    return (128 + (status & 0x7f));  // signal
+    return 128 + (status & 0x7f);  // signal
 }
 
 pub fn wait_next(reboot_supported: bool, timeout: Option<Time>) -> Signal {

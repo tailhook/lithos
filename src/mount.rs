@@ -1,14 +1,11 @@
 #![allow(dead_code)]
 use std::io::Error as IoError;
-use std::io::BufRead;
 use std::ffi::CString;
 use std::ptr::null;
-use std::fs::File;
-use std::str::FromStr;
 use std::path::PathBuf;
 use libc::{c_ulong, c_int};
 
-use super::itertools::{NextValue,NextStr};
+use super::itertools::{NextValue, NextStr, words};
 use super::utils::cpath;
 
 // sys/mount.h
@@ -71,7 +68,7 @@ pub struct MountRecord<'a> {
 
 impl<'a> MountRecord<'a> {
     pub fn from_str<'x>(line: &'x str) -> Result<MountRecord<'x>, ()> {
-        let mut parts = line.words();
+        let mut parts = words(line);
         let mount_id = try!(parts.next_value());
         let parent_id = try!(parts.next_value());
         let device = try!(parts.next_str());

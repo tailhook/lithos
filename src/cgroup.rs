@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::io::{Write, BufRead, BufReader};
-use std::fs::{PathExt, File, create_dir, remove_dir};
+use std::fs::{File, create_dir, remove_dir, metadata};
 use std::io::ErrorKind::NotFound;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
@@ -39,15 +39,14 @@ pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
                    .unwrap_or("/proc/self/cgroup".to_string());
     let f = try!(File::open(&path)
                  .map_err(|e| format!("Error reading cgroup: {}", e)));
-    let mut f = BufReader::new(f);
+    let f = BufReader::new(f);
     let mut res: ParsedCGroups = Default::default();
     for line in f.lines() {
         let line = try!(line
                        .map_err(|e| format!("Can't read CGroup file: {}", e)));
         // Line is in form of "123:ctr1[,ctr2][=folder]:/group/path"
         let mut chunks = line[..].splitn(2, ':');
-        let num = try!(chunks.next()
-                       .ok_or(format!("CGroup num expected")));
+        try!(chunks.next().ok_or(format!("CGroup num expected")));
         let namechunk = try!(chunks.next()
                              .ok_or(format!("CGroup name expected")));
         let mut namepair = namechunk.splitn(2, '=');
@@ -115,8 +114,8 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
         }
         let fullpath = cgroup_base.join(&ofolder).join(
             relative(&new_path, &root_path));
-        if !fullpath.exists() {
-            debug!("Creating cgroup {}", fullpath.display());
+        if metadata(&fullpath).is_err() {
+            debug!("Creating cgroup {:?}", fullpath);
             try!(create_dir(&fullpath)
                  .map_err(|e| format!("Error creating cgroup dir: {}", e)));
         } else {

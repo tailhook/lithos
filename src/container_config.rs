@@ -124,7 +124,7 @@ impl ContainerConfig {
                 default: Some(0),
                 .. Default::default()}) as Box<Validator>),
             ("memory_limit".to_string(), Box::new(Numeric {
-                default: Some(0xffffffffffffffffi64),
+                default: Some(0x7fffffffffffffffi64),
                 .. Default::default()}) as Box<Validator>),
             ("fileno_limit".to_string(), Box::new(Numeric {
                 default: Some(1024),

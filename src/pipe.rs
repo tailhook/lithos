@@ -1,5 +1,4 @@
 use std::io::Error as IoError;
-use std::io::ErrorKind::BrokenPipe;
 use std::os::unix::io::RawFd;
 use nix::unistd::{pipe};
 use nix::Error::{Sys, InvalidPath};
@@ -17,7 +16,7 @@ pub struct CPipe {
 
 impl CPipe {
     pub fn new() -> Result<CPipe, IoError> {
-        match unsafe { pipe() } {
+        match pipe() {
             Ok((reader, writer)) => Ok(CPipe {
                 reader: reader, writer: writer
             }),

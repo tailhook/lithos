@@ -1,10 +1,8 @@
-use std::str::{from_utf8, FromStr};
+use std::str::{from_utf8};
 use std::ptr::null;
 use std::ffi::{CString, CStr};
 use std::io::Error as IoError;
 use std::io::Result as IoResult;
-use std::io::ErrorKind::InvalidInput;
-use std::net::IpAddr;
 use libc::{c_int, size_t, c_char, EINVAL};
 
 #[repr(C)]
@@ -21,10 +19,10 @@ extern {
     fn gethostbyname(name: *const c_char) -> *const hostent;
 }
 
-pub fn get_host_ip() -> IoResult<IpAddr> {
+pub fn get_host_ip() -> IoResult<String> {
     let host = try!(get_host_name());
     let addr = try!(get_host_address(&host[..]));
-    return Ok(FromStr::from_str(&addr[..]).unwrap());
+    return Ok(addr);
 }
 
 pub fn get_host_name() -> IoResult<String> {
@@ -32,13 +30,13 @@ pub fn get_host_name() -> IoResult<String> {
     let nbytes = unsafe {
         buf.set_len(256);
         gethostname(
-            buf.as_mut_slice().as_mut_ptr() as *mut i8,
+            (&mut buf[..]).as_ptr() as *mut i8,
             256)
     };
     if nbytes != 0 {
         return Err(IoError::last_os_error());
     }
-    return buf.as_slice().splitn(1, |x| *x == 0u8)
+    return buf[..].splitn(1, |x| *x == 0u8)
            .next()
            .and_then(|x| String::from_utf8(x.to_vec()).ok())
            .ok_or(IoError::from_raw_os_error(EINVAL));

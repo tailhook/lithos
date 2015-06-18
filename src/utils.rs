@@ -1,6 +1,6 @@
 use std::ptr;
 use std::fs::{create_dir, remove_dir_all, read_dir, remove_file, remove_dir};
-use std::fs::PathExt;
+use std::fs::{metadata};
 use std::path::{Path, PathBuf};
 use std::path::Component::Normal;
 use std::io::Error as IoError;
@@ -99,8 +99,8 @@ pub fn change_root(new_root: &Path, put_old: &Path) -> Result<(), String>
 }
 
 pub fn ensure_dir(dir: &Path) -> Result<(), String> {
-    if dir.exists() {
-        if !dir.is_dir() {
+    if let Ok(dmeta) = metadata(dir) {
+        if !dmeta.is_dir() {
             return Err(format!(concat!("Can't create dir {:?}, ",
                 "path already exists but not a directory"), dir));
         }
@@ -110,24 +110,24 @@ pub fn ensure_dir(dir: &Path) -> Result<(), String> {
     match create_dir(dir) {
         Ok(()) => return Ok(()),
         Err(ref e) if e.kind() == AlreadyExists => {
-            if dir.is_dir() {
+            let dmeta = metadata(dir);
+            if dmeta.is_ok() && dmeta.unwrap().is_dir() {
                 return Ok(());
             } else {
-                return Err(format!(concat!("Can't create dir {}, ",
+                return Err(format!(concat!("Can't create dir {:?}, ",
                     "path already exists but not a directory"),
-                    dir.display()));
+                    dir));
             }
         }
         Err(ref e) => {
-            return Err(format!(concat!("Can't create dir {}: {} ",
-                "path already exists but not a directory"),
-                dir.display(), e));
+            return Err(format!(concat!("Can't create dir {:?}: {} ",
+                "path already exists but not a directory"), dir, e));
         }
     }
 }
 
 pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
-    if !dir.exists() {
+    if metadata(dir).is_ok() {
         return Ok(());
     }
     // We temporarily change root, so that symlinks inside the dir
@@ -138,14 +138,20 @@ pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
              .filter_map(|x| x.ok())
              .collect::<Vec<_>>();
         for entry in dirlist.into_iter() {
-            if entry.path().is_dir() {
-                try!(remove_dir_all(entry.path())
-                    .map_err(|e| format!("Can't remove directory {:?}{:?}: {}",
-                        dir, entry.path(), e)));
-            } else {
-                try!(remove_file(entry.path())
-                    .map_err(|e| format!("Can't remove file {:?}{:?}: {}",
-                        dir, entry.path(), e)));
+            match metadata(entry.path()) {
+                Ok(ref meta) if meta.is_dir() => {
+                    try!(remove_dir_all(entry.path())
+                        .map_err(|e| format!("Can't remove directory {:?}{:?}: {}",
+                            dir, entry.path(), e)));
+                }
+                Ok(_) => {
+                    try!(remove_file(entry.path())
+                        .map_err(|e| format!("Can't remove file {:?}{:?}: {}",
+                            dir, entry.path(), e)));
+                }
+                Err(_) => {
+                    return Err(format!("Can't stat file {:?}", entry.path()));
+                }
             }
         }
         Ok(())
@@ -175,7 +181,7 @@ pub fn join<S1, S2, I>(mut iter: I, sep: S2) -> String
 pub fn get_time() -> Time {
     let mut tv = timeval { tv_sec: 0, tv_usec: 0 };
     unsafe { gettimeofday(&mut tv, ptr::null_mut()) };
-    return (tv.tv_sec as f64 +  tv.tv_usec as f64 * 0.000001)
+    return tv.tv_sec as f64 +  tv.tv_usec as f64 * 0.000001;
 }
 
 pub fn set_file_owner(path: &Path, owner: uid_t, group: gid_t)
@@ -202,7 +208,7 @@ pub fn cpath(path: &Path) -> CString {
     CString::new(path.to_str().unwrap()).unwrap()
 }
 
-pub fn relative(mut child: &Path, base: &Path) -> PathBuf {
+pub fn relative(child: &Path, base: &Path) -> PathBuf {
     assert!(child.starts_with(base));
     let mut res = PathBuf::new();
     for cmp in child.components().skip(base.components().count()) {
