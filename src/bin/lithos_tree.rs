@@ -12,11 +12,10 @@ use std::env;
 use std::rc::Rc;
 use std::io::Error as IoError;
 use std::fs::{File, metadata};
-use std::io::{stdout, stderr};
-use std::str::FromStr;
+use std::io::{stdout, stderr, Read, Write};
+use std::str::{FromStr};
 use std::fs::{read_dir, create_dir, remove_dir};
 use std::ptr::null;
-use std::time::Duration;
 use std::path::{Path, PathBuf};
 use std::ffi::{CString};
 use std::default::Default;
@@ -38,7 +37,7 @@ use lithos::container_config::ContainerKind::Daemon;
 use lithos::monitor::{Monitor, Executor};
 use lithos::monitor::MonitorResult::{Killed, Reboot};
 use lithos::container::Command;
-use lithos::utils::{clean_dir, get_time};
+use lithos::utils::{clean_dir, get_time, relative, cpath};
 use lithos::signal;
 use lithos::cgroup;
 use lithos_tree_options::Options;
@@ -104,8 +103,8 @@ impl Executor for UnidentifiedChild {
 fn check_master_config(cfg: &MasterConfig) -> Result<(), String> {
     if metadata(&cfg.devfs_dir).is_err() {
         return Err(format!(
-            "Devfs dir ({}) must exist and contain device nodes",
-            cfg.devfs_dir.display()));
+            "Devfs dir ({:?}) must exist and contain device nodes",
+            cfg.devfs_dir));
     }
     return Ok(());
 }
@@ -129,15 +128,16 @@ fn discard<E>(_: E) { }
 fn _read_args(pid: pid_t, global_config: &Path)
     -> Result<(String, String), ()>
 {
-    let line = try!(File::open(&format!("/proc/{}/cmdline", pid))
-                    .and_then(|mut f| f.read_to_string())
-                    .map_err(discard));
-    let args: Vec<&str> = line[..].splitn(7, '\0').collect();
+    let mut buf = String::with_capacity(4096);
+    try!(File::open(&format!("/proc/{}/cmdline", pid))
+         .and_then(|mut f| f.read_to_string(&mut buf))
+         .map_err(discard));
+    let args: Vec<&str> = buf[..].splitn(7, '\0').collect();
     if args.len() != 8
-       || Path::new(args[0]).filename_str() != Some("lithos_knot")
+       || Path::new(args[0]).file_name().and_then(|x| x.to_str()) != Some("lithos_knot")
        || args[1] != "--name"
        || args[3] != "--master"
-       || args[4].as_bytes() != global_config.container_as_bytes()
+       || Path::new(args[4]) != global_config
        || args[5] != "--config"
        || args[7] != ""
     {
@@ -147,14 +147,14 @@ fn _read_args(pid: pid_t, global_config: &Path)
 }
 
 fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
+    let mut buf = String::with_capacity(256);
     let ppid_regex = Regex::new(r"^\d+\s+\([^)]*\)\s+\S+\s+(\d+)\s").unwrap();
-    let stat = File::open(&format!("/proc/{}/stat", pid))
-               .and_then(|mut f| f.read_to_string());
-    if stat.is_err() {
+    if File::open(&format!("/proc/{}/stat", pid))
+       .and_then(|mut f| f.read_to_string(&mut buf))
+       .is_err() {
         return false;
     }
-    let stat = stat.unwrap();
-    return Some(ppid) == ppid_regex.captures(&stat)
+    return Some(ppid) == ppid_regex.captures(&buf)
                      .and_then(|c| FromStr::from_str(c.at(1).unwrap()).ok());
 }
 
@@ -162,11 +162,12 @@ fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
 fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     let mypid = unsafe { getpid() };
     let pid_file = cfg.runtime_dir.join("master.pid");
-    if pid_file.exists() {
+    if metadata(&pid_file).is_ok() {
+        let mut buf = String::with_capacity(50);
         match File::open(&pid_file)
-            .and_then(|mut f| f.read_to_string())
+            .and_then(|mut f| f.read_to_string(&mut buf))
             .map_err(|_| ())
-            .and_then(|s| FromStr::from_str(&s[..])
+            .and_then(|_| FromStr::from_str(&buf[..])
                             .map_err(|_| ()))
         {
             Ok::<pid_t, ()>(pid) if pid == mypid => {
@@ -186,9 +187,8 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
         }
     }
     try!(File::create(&pid_file)
-        .and_then(|mut f| f.write_uint(unsafe { getpid() } as usize))
-        .map_err(|e| format!("Can't write file {}: {}",
-                             pid_file.display(), e)));
+        .and_then(|mut f| write!(f, "{}\n", unsafe { getpid() }))
+        .map_err(|e| format!("Can't write file {:?}: {}", pid_file, e)));
     return Ok(());
 }
 
@@ -200,10 +200,13 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
     // Recover old workers
     for pid in read_dir(&"/proc")
         .map_err(|e| format!("Can't read procfs: {}", e))
+        .map(|x| x.collect())
         .unwrap_or(Vec::new())
         .into_iter()
-        .filter_map(|p| p.filename_str()
-                        .and_then(|e| FromStr::from_str(e).ok()))
+        .filter_map(|p| p.ok())
+        .filter_map(|p| p.path().file_name()
+            .and_then(|x| x.to_str())
+            .and_then(|x| FromStr::from_str(x).ok()))
     {
         if !_is_child(pid, mypid) {
             continue;
@@ -220,9 +223,9 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
                     if Some(&*child.child_config) != cfg.as_ref() {
                         warn!("Config mismatch: {}, pid: {}. Upgrading...",
                               name, pid);
-                        signal::send_signal(pid, signal::SIGTERM as isize);
+                        signal::send_signal(pid, signal::SIGTERM);
                     }
-                    mon.add(name.clone(), Box::new(child), Duration::seconds(1),
+                    mon.add(name.clone(), Box::new(child), 1000,
                         Some((pid, get_time())));
                 }
                 None => {
@@ -231,15 +234,15 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
                     mon.add(name.clone(), Box::new(UnidentifiedChild {
                         name: name,
                         master_config: master.clone(),
-                        }), Duration::seconds(0),
+                        }), 0,
                         Some((pid, get_time())));
-                    signal::send_signal(pid, signal::SIGTERM as isize);
+                    signal::send_signal(pid, signal::SIGTERM);
                 }
             };
         } else {
             warn!("Undefined child, pid: {}. Sending SIGTERM...",
                   pid);
-            signal::send_signal(pid, signal::SIGTERM as isize);
+            signal::send_signal(pid, signal::SIGTERM);
             continue;
         }
     }
@@ -247,20 +250,28 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
 
 fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
     let pid_regex = Regex::new(r"\.\(\d+\)$").unwrap();
-    for tree in read_dir(&master.runtime_dir.join(&master.state_dir))
+    for entry in read_dir(&master.runtime_dir.join(&master.state_dir))
         .map_err(|e| error!("Can't read state dir: {}", e))
+        .map(|x| x.collect())
         .unwrap_or(Vec::new())
         .into_iter()
+        .filter_map(|e| e.ok())
     {
-        debug!("Checking tree dir: {}", tree.display());
+        debug!("Checking tree dir: {:?}", entry.path());
         let mut valid_dirs = 0usize;
-        if let Some(tree_name) = tree.filename_str() {
-            for cont in read_dir(&tree)
+        if let Some(tree_name) = entry.path().file_name()
+                                .and_then(|x| x.to_str())
+        {
+            for cont in read_dir(entry.path())
                 .map_err(|e| format!("Can't read state dir: {}", e))
+                .map(|x| x.collect())
                 .unwrap_or(Vec::new())
                 .into_iter()
+                .filter_map(|e| e.ok())
             {
-                if let Some(proc_name) = cont.filename_str() {
+                if let Some(proc_name) = cont.path().file_name()
+                                        .and_then(|x| x.to_str())
+                {
                     let name = Rc::new(format!("{}/{}", tree_name, proc_name));
                     debug!("Checking process dir: {}", name);
                     if mon.has(&name) {
@@ -278,32 +289,34 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
                         }
                     }
                 }
-                warn!("Dangling state dir {}. Deleting...", cont.display());
-                clean_dir(&cont, true)
+                warn!("Dangling state dir {:?}. Deleting...", cont.path());
+                clean_dir(&cont.path(), true)
                     .map_err(|e| error!(
-                        "Can't remove dangling state dir {}: {}",
-                        cont.display(), e))
+                        "Can't remove dangling state dir {:?}: {}",
+                        cont.path(), e))
                     .ok();
             }
         }
-        debug!("Tree dir {} has {} valid subdirs", tree.display(), valid_dirs);
+        debug!("Tree dir {:?} has {} valid subdirs", entry.path(), valid_dirs);
         if valid_dirs > 0 {
             continue;
         }
-        warn!("Empty tree dir {}. Deleting...", tree.display());
-        clean_dir(&tree, true)
-            .map_err(|e| error!("Can't empty state dir {}: {}",
-                tree.display(), e))
+        warn!("Empty tree dir {:?}. Deleting...", entry.path());
+        clean_dir(&entry.path(), true)
+            .map_err(|e| error!("Can't empty state dir {:?}: {}",
+                entry.path(), e))
             .ok();
     }
 }
 
 fn _rm_cgroup(dir: &Path) {
     if let Err(e) = remove_dir(dir) {
-        let procs = File::open(&dir.join("cgroup.procs"))
-            .and_then(|mut f| f.read_to_string());
+        let mut buf = String::with_capacity(1024);
+        File::open(&dir.join("cgroup.procs"))
+            .and_then(|mut f| f.read_to_string(&mut buf))
+            .ok();
         error!("Error removing cgroup: {} (processes {:?})",
-            e, procs);
+            e, buf);
     }
 }
 
@@ -331,58 +344,64 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
     for cgrp in cgroups.all_groups.iter() {
         let cgroup::CGroupPath(ref folder, ref path) = **cgrp;
         let ctr_dir = cgroup_base.join(&folder).join(
-            &path.path_relative_from(&root_path).unwrap());
-        if path.filename_str() == cgroup_filename {
-            debug!("Checking controller dir: {}", ctr_dir.display());
+            &relative(path, &root_path));
+        if path.file_name().and_then(|x| x.to_str()) == cgroup_filename {
+            debug!("Checking controller dir: {:?}", ctr_dir);
         } else {
-            debug!("Skipping controller dir: {}", ctr_dir.display());
+            debug!("Skipping controller dir: {:?}", ctr_dir);
             continue;
         }
         for child_dir in read_dir(&ctr_dir)
-            .map_err(|e| debug!("Can't read controller {} dir: {}",
-                                ctr_dir.display(), e))
+            .map_err(|e| debug!("Can't read controller {:?} dir: {}",
+                                ctr_dir, e))
+            .map(|x| x.collect())
             .unwrap_or(Vec::new())
             .into_iter()
+            .filter_map(|x| x.ok())
         {
-            if !child_dir.is_dir() {
+            if !metadata(child_dir.path())
+                         .map(|x| x.is_dir()).unwrap_or(false)
+            {
                 continue;
             }
-            let filename = child_dir.filename_str();
+            let filename = child_dir.path().file_name()
+                           .and_then(|x| x.to_str())
+                           .map(|x| x.to_string());
             if filename.is_none() {
-                warn!("Wrong filename in cgroup: {}", child_dir.display());
+                warn!("Wrong filename in cgroup: {:?}", child_dir.path());
                 continue;
             }
             let filename = filename.unwrap();
-            if let Some(capt) = child_group_regex.captures(filename) {
+            if let Some(capt) = child_group_regex.captures(&filename) {
                 let name = format!("{}/{}",
                     capt.at(1).unwrap(), capt.at(2).unwrap());
                 if !mon.has(&Rc::new(name)) {
-                    _rm_cgroup(&child_dir);
+                    _rm_cgroup(&child_dir.path());
                 }
-            } else if let Some(capt) = cmd_group_regex.captures(filename) {
+            } else if let Some(capt) = cmd_group_regex.captures(&filename) {
                 let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
                 if pid.is_none() || !signal::is_process_alive(pid.unwrap()) {
-                    _rm_cgroup(&child_dir);
+                    _rm_cgroup(&child_dir.path());
                 }
             } else {
-                warn!("Skipping wrong group {}", child_dir.display());
+                warn!("Skipping wrong group {:?}", child_dir.path());
                 continue;
             }
         }
     }
 }
 
-fn run(config_file: Path, bin: &Binaries) -> Result<(), String> {
+fn run(config_file: &Path, bin: &Binaries) -> Result<(), String> {
     let master: Rc<MasterConfig> = Rc::new(try!(parse_config(&config_file,
         &*MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e))));
     try!(check_master_config(&*master));
     try!(global_init(&*master));
 
-    let config_file = Rc::new(config_file);
+    let config_file = Rc::new(config_file.to_owned());
     let mut mon = Monitor::new("lithos-tree".to_string());
 
-    info!("Reading tree configs from {}", master.config_dir.display());
+    info!("Reading tree configs from {:?}", master.config_dir);
     let mut configs = read_configs(&master, bin, &config_file);
 
     info!("Recovering Processes");
@@ -418,17 +437,21 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
     let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     read_dir(&master.config_dir)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
+        .map(|x| x.collect())
         .unwrap_or(Vec::new())
         .into_iter()
+        .filter_map(|f| f.ok())
         .filter_map(|f| {
-            let name = match f.filename_str().and_then(|s| name_re.captures(s))
+            let name = match f.path().file_name()
+                            .and_then(|f| f.to_str())
+                            .and_then(|s| name_re.captures(s))
             {
-                Some(capt) => capt.at(1).unwrap(),
+                Some(capt) => capt.at(1).unwrap().to_string(),
                 None => return None,
             };
-            debug!("Reading config: {}", f.display());
-            parse_config(&f, &*tree_validator, Default::default())
-                .map_err(|e| warn!("Can't read config {}: {}", f.display(), e))
+            debug!("Reading config: {:?}", f.path());
+            parse_config(&f.path(), &*tree_validator, Default::default())
+                .map_err(|e| warn!("Can't read config {:?}: {}", f.path(), e))
                 .map(|cfg: TreeConfig| (name.to_string(), cfg))
                 .ok()
         })
@@ -446,7 +469,7 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
 {
     let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let child_validator = ChildConfig::validator();
-    debug!("Reading child config {}", tree.config_file.display());
+    debug!("Reading child config {:?}", tree.config_file);
     parse_config(&tree.config_file,
         &*ChildConfig::mapping_validator(), Default::default())
         .map_err(|e| warn!("Can't read config {:?}: {}", tree.config_file, e))
@@ -487,24 +510,24 @@ fn schedule_new_workers(mon: &mut Monitor,
         if mon.has(&name) {
             continue;
         }
-        mon.add(name.clone(), Box::new(child), Duration::seconds(2), None);
+        mon.add(name.clone(), Box::new(child), 2000, None);
     }
 }
 
 fn reexec_myself(lithos_tree: &Path) -> ! {
-    let args = env::args();
-    let c_exe = CString::from_slice(lithos_tree.container_as_bytes());
-    let c_args: Vec<CString> = args.iter()
-        .map(|x| CString::from_slice(x.as_bytes()))
+    let c_exe = cpath(lithos_tree);
+    let c_args: Vec<CString> = env::args()
+        .map(|x| CString::new(x).unwrap())
         .collect();
     let mut c_argv: Vec<*const u8>;
     c_argv = c_args.iter().map(|x| x.as_bytes().as_ptr()).collect();
     c_argv.push(null());
-    debug!("Executing {} {:?}", lithos_tree.display(), args);
+    debug!("Executing {:?} {:?}", lithos_tree,
+        env::args().collect::<Vec<_>>());
     unsafe {
         execv(c_exe.as_ptr(), c_argv.as_ptr() as *mut *const i8);
     }
-    panic!("Can't reexec myself: {}", IoError::last_error());
+    panic!("Can't reexec myself: {}", IoError::last_os_error());
 }
 
 struct Binaries {
@@ -514,18 +537,18 @@ struct Binaries {
 
 fn get_binaries() -> Option<Binaries> {
     let dir = match env::current_exe() {
-        Some(dir) => dir,
-        None => return None,
+        Ok(dir) => dir,
+        Err(_) => return None,
     };
     let bin = Binaries {
         lithos_tree: Rc::new(dir.join("lithos_tree")),
         lithos_knot: Rc::new(dir.join("lithos_knot")),
     };
-    if !bin.lithos_tree.is_file() {
+    if metadata(&*bin.lithos_tree).map(|x| x.is_file()).unwrap_or(false) {
         error!("Can't find lithos_tree binary");
         return None;
     }
-    if !bin.lithos_knot.is_file() {
+    if metadata(&*bin.lithos_knot).map(|x| x.is_file()).unwrap_or(false) {
         error!("Can't find lithos_knot binary");
         return None;
     }
@@ -548,7 +571,7 @@ fn main() {
             exit(x);
         }
     };
-    match run(options.config_file, &bin) {
+    match run(&options.config_file, &bin) {
         Ok(()) => {
             exit(0);
         }

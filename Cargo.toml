@@ -15,8 +15,7 @@ build = "build.rs"
 regex = "*"
 rustc-serialize = "*"
 libc = "*"
-shaman = "*"
-rand = "*"
+crypto = "*"
 
 [dependencies.log]
 git = "git://github.com/rust-lang/log"
