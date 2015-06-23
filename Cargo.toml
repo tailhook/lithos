@@ -16,18 +16,14 @@ regex = "*"
 rustc-serialize = "*"
 libc = "*"
 crypto = "*"
+argparse = "*"
+quire = "*"
 
 [dependencies.log]
 git = "git://github.com/rust-lang/log"
 
 [dependencies.env_logger]
 git = "git://github.com/rust-lang/log"
-
-[dependencies.argparse]
-path = 'rust-argparse'
-
-[dependencies.quire]
-path = 'rust-quire'
 
 [dependencies.nix]
 git = 'https://github.com/carllerche/nix-rust'
