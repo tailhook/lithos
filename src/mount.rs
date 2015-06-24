@@ -2,7 +2,7 @@
 use std::io::Error as IoError;
 use std::ffi::CString;
 use std::ptr::null;
-use std::path::PathBuf;
+use std::path::Path;
 use libc::{c_ulong, c_int};
 
 use super::itertools::{NextValue, NextStr, words};
@@ -127,7 +127,7 @@ impl<'a> MountRecord<'a> {
     }
 }
 
-pub fn mount_ro_recursive(target: &PathBuf) -> Result<(), String> {
+pub fn mount_ro_recursive(target: &Path) -> Result<(), String> {
     let none = CString::new("none").unwrap();
     debug!("Remount readonly: {:?}", target);
     let c_target = cpath(target);
@@ -142,7 +142,7 @@ pub fn mount_ro_recursive(target: &PathBuf) -> Result<(), String> {
     return Ok(());
 }
 
-pub fn mount_private(target: &PathBuf) -> Result<(), String> {
+pub fn mount_private(target: &Path) -> Result<(), String> {
     let none = CString::new("none").unwrap();
     let c_target = cpath(target);
     debug!("Making private {:?}", target);
@@ -159,7 +159,7 @@ pub fn mount_private(target: &PathBuf) -> Result<(), String> {
     }
 }
 
-pub fn bind_mount(source: &PathBuf, target: &PathBuf) -> Result<(), String> {
+pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
     let c_source = cpath(source);
     let c_target = cpath(target);
     debug!("Bind mount {} -> {}", source.display(), target.display());
@@ -175,7 +175,7 @@ pub fn bind_mount(source: &PathBuf, target: &PathBuf) -> Result<(), String> {
     }
 }
 
-pub fn mount_pseudo(target: &PathBuf, name: &str, options: &str, readonly: bool)
+pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
     -> Result<(), String>
 {
     let c_name = CString::new(name).unwrap();
@@ -201,7 +201,7 @@ pub fn mount_pseudo(target: &PathBuf, name: &str, options: &str, readonly: bool)
     }
 }
 
-pub fn mount_tmpfs(target: &PathBuf, options: &str) -> Result<(), String> {
+pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
     let c_tmpfs = CString::new("tmpfs").unwrap();
     let c_target = cpath(target);
     let c_opts = CString::new(options).unwrap();
@@ -221,7 +221,7 @@ pub fn mount_tmpfs(target: &PathBuf, options: &str) -> Result<(), String> {
     }
 }
 
-pub fn unmount(target: &PathBuf) -> Result<(), String> {
+pub fn unmount(target: &Path) -> Result<(), String> {
     let c_target = cpath(target);
     let rc = unsafe { umount2(c_target.as_ptr(), MNT_DETACH) };
     if rc == 0 {

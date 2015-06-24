@@ -54,14 +54,14 @@ pub fn compile_map(src_map: &Vec<IdMap>) -> Vec<u8> {
 }
 
 impl Command {
-    pub fn new(name: String, cmd: &PathBuf) -> Command {
+    pub fn new<P:AsRef<Path>>(name: String, cmd: P) -> Command {
         return Command {
             name: name,
             chroot: None,
             tmp_old_root: None,
             old_root_relative: None,
             workdir: cpath(&current_dir().unwrap()),
-            executable: cpath(cmd),
+            executable: cpath(&cmd),
             arguments: vec!(cpath(cmd)),
             namespaces: HashSet::new(),
             environment: BTreeMap::new(),

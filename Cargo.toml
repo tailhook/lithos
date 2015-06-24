@@ -32,7 +32,7 @@ git = 'https://github.com/carllerche/nix-rust'
 name = "lithos_tree"
 path = "src/bin/lithos_tree.rs"
 
-#[[bin]]
-#name = "lithos_knot"
-#path = "src/bin/lithos_knot.rs"
+[[bin]]
+name = "lithos_knot"
+path = "src/bin/lithos_knot.rs"
 

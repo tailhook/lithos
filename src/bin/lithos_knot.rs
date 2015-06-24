@@ -1,4 +1,4 @@
-extern crate serialize;
+extern crate rustc_serialize;
 extern crate libc;
 #[macro_use] extern crate log;
 
@@ -7,11 +7,11 @@ extern crate quire;
 #[macro_use] extern crate lithos;
 
 use std::rc::Rc;
-use std::env::{set_exit_status};
-use std::os::{getenv, args};
-use std::old_io::stdio::{stdout, stderr};
-use std::time::Duration;
+use std::env;
+use std::io::{stderr, Write};
+use std::path::{Path};
 use std::default::Default;
+use std::process::exit;
 
 use quire::parse_config;
 
@@ -42,21 +42,21 @@ impl Executor for Target {
     fn command(&self) -> Command
     {
         let mut cmd = Command::new((*self.name).clone(),
-            &Path::new(self.local.executable.as_slice()));
+            &Path::new(&self.local.executable));
         cmd.set_user(self.local.user_id, self.local.group_id);
         cmd.set_workdir(&self.local.workdir);
 
         // Should we propagate TERM?
         cmd.set_env("TERM".to_string(),
-                    getenv("TERM").unwrap_or("dumb".to_string()));
+                    env::var("TERM").unwrap_or("dumb".to_string()));
         cmd.update_env(self.local.environ.iter());
         cmd.set_env("LITHOS_NAME".to_string(), (*self.name).clone());
         if let Some(ref path) = self.local.stdout_stderr_file {
             cmd.set_output(path);
         }
 
-        cmd.args(self.local.arguments.as_slice());
-        cmd.args(self.args.as_slice());
+        cmd.args(&self.local.arguments);
+        cmd.args(&self.args);
         if self.local.uid_map.len() > 0 || self.local.gid_map.len() > 0 {
             cmd.user_ns(&self.local.uid_map, &self.local.gid_map);
         }
@@ -69,20 +69,20 @@ impl Executor for Target {
     }
 }
 
-fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
+fn run(name: String, master_file: &Path, config: ChildConfig, args: Vec<String>)
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&master_file,
         &*MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
-    let tree_name = name.as_slice().splitn(1, '/').next().unwrap();
+    let tree_name = name[..].splitn(1, '/').next().unwrap();
     let tree: TreeConfig = try!(parse_config(
         &master.config_dir.join(tree_name.to_string() + ".yaml"),
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
     try!(mount_private(&Path::new("/")));
-    let image_path = tree.image_dir.join(config.image.as_slice());
+    let image_path = tree.image_dir.join(&config.image);
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
     try!(bind_mount(&image_path, &mount_dir));
     try!(mount_ro_recursive(&mount_dir));
@@ -127,7 +127,7 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
     info!("[{}] Starting container", name);
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
-        .join(name.as_slice());
+        .join(&name);
     try!(prepare_state_dir(state_dir, &local, &tree));
     try!(setup_filesystem(&master, &tree, &local, state_dir));
     if let Some(cgroup_parent) = master.cgroup_name {
@@ -135,28 +135,28 @@ fn run(name: String, master_file: Path, config: ChildConfig, args: Vec<String>)
         // if we ever want to restart lithos_knot in-place
         let cgroups = try!(cgroup::ensure_in_group(
             &(cgroup_parent + "/" +
-              name.replace("/", ":").as_slice() + ".scope"),
+              &name.replace("/", ":") + ".scope"),
             &master.cgroup_controllers));
         cgroups.set_value(cgroup::Controller::Memory,
             "memory.limit_in_bytes",
-            format!("{}", local.memory_limit).as_slice())
-            .map_err(|e| error!("Error setting cgroup limit: {}", e));
+            &format!("{}", local.memory_limit))
+            .map_err(|e| error!("Error setting cgroup limit: {}", e)).ok();
         cgroups.set_value(cgroup::Controller::Cpu,
                 "cpu.shares",
-                format!("{}", local.cpu_shares).as_slice())
-            .map_err(|e| error!("Error setting cgroup limit: {}", e));
+                &format!("{}", local.cpu_shares))
+            .map_err(|e| error!("Error setting cgroup limit: {}", e)).ok();
     }
 
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
     try!(change_root(&mount_dir, &mount_dir.join("tmp")));
-    try!(unmount(&Path::new("/tmp")));
+    try!(unmount(Path::new("/tmp")));
 
     try!(set_fileno_limit(local.fileno_limit)
         .map_err(|e| format!("Error setting file limit: {}", e)));
 
     let mut mon = Monitor::new(name.clone());
     let name = Rc::new(name.clone() + ".main");
-    let timeo = Duration::milliseconds((local.restart_timeout*1000.) as i64);
+    let timeo = (local.restart_timeout*1000.) as i64;
     mon.add(name.clone(), Box::new(Target {
         name: name,
         local: local,
@@ -175,19 +175,18 @@ fn main() {
     let options = match Options::parse_args() {
         Ok(options) => options,
         Err(x) => {
-            set_exit_status(x);
-            return;
+            exit(x);
         }
     };
-    match run(options.name, options.master_config,
+    match run(options.name, &options.master_config,
               options.config, options.args)
     {
         Ok(()) => {
-            set_exit_status(0);
+            exit(0);
         }
         Err(e) => {
-            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
-            set_exit_status(1);
+            write!(&mut stderr(), "Fatal error: {}\n", e).unwrap();
+            exit(1);
         }
     }
 }

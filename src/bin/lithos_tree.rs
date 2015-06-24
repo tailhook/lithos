@@ -12,9 +12,9 @@ use std::env;
 use std::rc::Rc;
 use std::io::Error as IoError;
 use std::fs::{File, metadata};
-use std::io::{stdout, stderr, Read, Write};
+use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
-use std::fs::{read_dir, create_dir, remove_dir};
+use std::fs::{read_dir, remove_dir};
 use std::ptr::null;
 use std::path::{Path, PathBuf};
 use std::ffi::{CString};
@@ -467,8 +467,6 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     tree_name: &String, tree: Rc<TreeConfig>)
     -> Vec<(Rc<String>, Child)>
 {
-    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
-    let child_validator = ChildConfig::validator();
     debug!("Reading child config {:?}", tree.config_file);
     parse_config(&tree.config_file,
         &*ChildConfig::mapping_validator(), Default::default())

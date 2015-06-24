@@ -204,8 +204,8 @@ pub fn set_file_mode(path: &Path, mode: mode_t) -> Result<(), IoError> {
     return Ok(());
 }
 
-pub fn cpath(path: &Path) -> CString {
-    CString::new(path.to_str().unwrap()).unwrap()
+pub fn cpath<P:AsRef<Path>>(path: P) -> CString {
+    CString::new(path.as_ref().to_str().unwrap()).unwrap()
 }
 
 pub fn relative(child: &Path, base: &Path) -> PathBuf {

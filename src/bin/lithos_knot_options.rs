@@ -1,14 +1,16 @@
-use std::os::{set_exit_status, getenv, args};
-use std::old_io::stdio::{stdout, stderr};
+use std::env;
+use std::io::{Write};
+use std::io::{stdout, stderr};
+use std::path::{PathBuf};
 
-use argparse::{ArgumentParser, Store, List};
+use argparse::{ArgumentParser, Store, Parse, List};
 
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
 
 
 pub struct Options {
-    pub master_config: Path,
+    pub master_config: PathBuf,
     pub config: ChildConfig,
     pub name: String,
     pub args: Vec<String>,
@@ -16,14 +18,15 @@ pub struct Options {
 
 impl Options {
     pub fn parse_args() -> Result<Options, i32> {
-        Options::parse_specific_args(args(), &mut stdout(), &mut stderr())
+        Options::parse_specific_args(env::args().collect(),
+                                     &mut stdout(), &mut stderr())
     }
     pub fn parse_specific_args(args: Vec<String>,
-        stdout: &mut Writer, stderr: &mut Writer)
+        stdout: &mut Write, stderr: &mut Write)
         -> Result<Options, i32>
     {
         let mut options = Options {
-            master_config: Path::new("/etc/lithos.yaml"),
+            master_config: PathBuf::from("/etc/lithos.yaml"),
             config: ChildConfig {
                 instances: 0,
                 image: "".to_string(),
@@ -40,7 +43,7 @@ impl Options {
               .add_option(&["--name"], Store,
                 "The process name");
             ap.refer(&mut options.master_config)
-              .add_option(&["--master"], Store,
+              .add_option(&["--master"], Parse,
                 "Name of the master configuration file \
                  (default /etc/lithos.yaml)")
               .metavar("FILE");
