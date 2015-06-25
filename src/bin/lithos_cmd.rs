@@ -1,4 +1,4 @@
-extern crate serialize;
+extern crate rustc_serialize;
 extern crate libc;
 #[macro_use] extern crate log;
 extern crate regex;
@@ -8,19 +8,19 @@ extern crate quire;
 #[macro_use] extern crate lithos;
 
 
-use regex::Regex;
+use std::env;
 use std::rc::Rc;
-use std::env::{set_exit_status};
-use std::os::{self_exe_path, getenv};
-use std::old_io::stderr;
-use std::time::Duration;
+use std::process::exit;
+use std::path::{Path, PathBuf};
+use std::io::{stderr, Write};
 use std::default::Default;
 use std::collections::BTreeMap;
-use serialize::json;
-use libc::funcs::posix88::unistd::getpid;
 
-use argparse::{ArgumentParser, Store, List};
+use regex::Regex;
 use quire::parse_config;
+use argparse::{ArgumentParser, Parse, List};
+use rustc_serialize::json;
+use libc::funcs::posix88::unistd::getpid;
 
 use lithos::setup::clean_child;
 use lithos::master_config::{MasterConfig, create_master_dirs};
@@ -34,10 +34,10 @@ use lithos::signal;
 
 struct Child<'a> {
     name: Rc<String>,
-    master_file: Path,
+    master_file: PathBuf,
     master_config: &'a MasterConfig,
     child_config_serialized: String,
-    root_binary: Path,
+    root_binary: PathBuf,
     args: Vec<String>,
 }
 
@@ -49,21 +49,21 @@ impl<'a> Executor for Child<'a> {
 
         // Name is first here, so it's easily visible in ps
         cmd.arg("--name");
-        cmd.arg(self.name.as_slice());
+        cmd.arg(&self.name[..]);
 
         cmd.arg("--master");
-        cmd.arg(&self.master_file);
+        cmd.arg(&self.master_file.to_str().unwrap()[..]);
         cmd.arg("--config");
-        cmd.arg(self.child_config_serialized.as_slice());
+        cmd.arg(&self.child_config_serialized[..]);
         cmd.set_env("TERM".to_string(),
-                    getenv("TERM").unwrap_or("dumb".to_string()));
-        if let Some(x) = getenv("RUST_LOG") {
+                    env::var("TERM").unwrap_or("dumb".to_string()));
+        if let Ok(x) = env::var("RUST_LOG") {
             cmd.set_env("RUST_LOG".to_string(), x);
         }
-        if let Some(x) = getenv("RUST_BACKTRACE") {
+        if let Ok(x) = env::var("RUST_BACKTRACE") {
             cmd.set_env("RUST_BACKTRACE".to_string(), x);
         }
-        cmd.args(self.args.as_slice());
+        cmd.args(&self.args);
         cmd.container();
         return cmd;
     }
@@ -73,7 +73,7 @@ impl<'a> Executor for Child<'a> {
     }
 }
 
-fn run(master_cfg: Path, tree_name: String,
+fn run(master_cfg: &Path, tree_name: String,
     command_name: String, args: Vec<String>)
     -> Result<(), String>
 {
@@ -82,10 +82,10 @@ fn run(master_cfg: Path, tree_name: String,
         .map_err(|e| format!("Error reading master config: {}", e)));
     try!(create_master_dirs(&master));
 
-    if !Regex::new(r"^[\w-]+$").unwrap().is_match(tree_name.as_slice()) {
+    if !Regex::new(r"^[\w-]+$").unwrap().is_match(&tree_name) {
         return Err(format!("Wrong tree name: {}", tree_name));
     }
-    if !Regex::new(r"^[\w-]+$").unwrap().is_match(command_name.as_slice()) {
+    if !Regex::new(r"^[\w-]+$").unwrap().is_match(&command_name) {
         return Err(format!("Wrong command name: {}", command_name));
     }
 
@@ -113,15 +113,16 @@ fn run(master_cfg: Path, tree_name: String,
         command_name, unsafe { getpid() }));
     info!("[{}] Running command with args {:?}", name, args);
     let mut mon = Monitor::new((*name).clone());
-    let timeo = Duration::milliseconds(0);
+    let timeo = 0;
     let mut args = args;
     args.insert(0, "--".to_string());
     mon.add(name.clone(), Box::new(Child {
         name: name,
-        master_file: master_cfg,
+        master_file: PathBuf::from(master_cfg),
         master_config: &master,
         child_config_serialized: json::encode(&child_cfg).unwrap(),
-        root_binary: self_exe_path().unwrap().join("lithos_knot"),
+        root_binary: env::current_exe().unwrap()
+                     .parent().unwrap().join("lithos_knot"),
         args: args,
     }), timeo, None);
     mon.run();
@@ -133,7 +134,7 @@ fn main() {
 
     signal::block_all();
 
-    let mut master_config = Path::new("/etc/lithos.yaml");
+    let mut master_config = PathBuf::from("/etc/lithos.yaml");
     let mut command_name = "".to_string();
     let mut tree_name = "".to_string();
     let mut args = vec!();
@@ -141,15 +142,15 @@ fn main() {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
         ap.refer(&mut master_config)
-          .add_option(&["--master"], Store,
+          .add_option(&["--master"], Parse,
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut tree_name)
-          .add_argument("subtree", Store,
+          .add_argument("subtree", Parse,
             "Name of the tree to run command for")
           .required();
         ap.refer(&mut command_name)
-          .add_argument("name", Store,
+          .add_argument("name", Parse,
             "Name of the command to run")
           .required();
         ap.refer(&mut args)
@@ -159,18 +160,17 @@ fn main() {
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
-                set_exit_status(x);
-                return;
+                exit(x);
             }
         }
     }
-    match run(master_config, tree_name, command_name, args) {
+    match run(&master_config, tree_name, command_name, args) {
         Ok(()) => {
-            set_exit_status(0);
+            exit(0);
         }
         Err(e) => {
-            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
-            set_exit_status(1);
+            write!(&mut stderr(), "Fatal error: {}\n", e).unwrap();
+            exit(1);
         }
     }
 }

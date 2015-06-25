@@ -36,3 +36,7 @@ path = "src/bin/lithos_tree.rs"
 name = "lithos_knot"
 path = "src/bin/lithos_knot.rs"
 
+[[bin]]
+name = "lithos_cmd"
+path = "src/bin/lithos_cmd.rs"
+
