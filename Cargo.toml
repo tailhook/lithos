@@ -40,3 +40,7 @@ path = "src/bin/lithos_knot.rs"
 name = "lithos_cmd"
 path = "src/bin/lithos_cmd.rs"
 
+[[bin]]
+name = "lithos_check"
+path = "src/bin/lithos_check.rs"
+
