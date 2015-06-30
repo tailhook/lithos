@@ -16,6 +16,7 @@ test: lithos_test
 	./lithos_test
 
 bin:
+	rm -rf run/.cargo/registry/src/github.com-1ecc6299db9ec823/
 	cargo build
 
 

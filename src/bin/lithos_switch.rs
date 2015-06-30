@@ -1,62 +1,66 @@
-extern crate serialize;
+extern crate rustc_serialize;
 extern crate libc;
 #[macro_use] extern crate log;
 extern crate regex;
-
+extern crate shaman;
 extern crate argparse;
 extern crate quire;
 #[macro_use] extern crate lithos;
 
 
-use regex::Regex;
-use std::old_io::stderr;
-use std::old_io::IoError;
-use std::old_io::ALL_PERMISSIONS;
-use std::env::{set_exit_status};
-use std::os::{self_exe_path};
-use std::old_path::BytesContainer;
+use std::env;
+use std::io::{stderr, Read, Write};
+use std::io::Error as IoError;
+use std::process::exit;
+use std::path::{Path, PathBuf};
+use std::path::Component::Normal;
 use std::str::FromStr;
-use std::old_io::fs::{copy, rmdir_recursive, mkdir, readdir, rename};
-use std::old_io::fs::{readlink, symlink, File};
-use std::old_io::fs::PathExtensions;
+use std::ffi::{OsStr, OsString};
+use std::fs::{File};
+use std::fs::{copy, rename, metadata, read_link};
+use std::os::unix::fs::symlink;
+use std::os::unix::ffi::OsStrExt;
 use std::default::Default;
-use std::old_io::process::{Command, InheritFd, ExitStatus};
+use std::process::{Command, Stdio};
 
-use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
+use shaman::digest::Digest;
+use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue};
 use quire::parse_config;
 
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
 use lithos::signal;
-use lithos::sha256::{Sha256,Digest};
 
 
 fn hash_file(file: &Path) -> Result<String, IoError> {
-    let mut hash = Sha256::new();
+    let mut hash = shaman::sha2::Sha256::new();
     // We assume that file is small enough so we don't care reading it
     // to memory
-    hash.input(try!(try!(File::open(file)).read_to_end()).as_slice());
-    return Ok(hash.result_str().as_slice().slice_to(8).to_string());
+    let mut buf = Vec::with_capacity(1024);
+    try!(try!(File::open(file)).read_to_end(&mut buf));
+    hash.input(&buf);
+    Ok(hash.result_str())
 }
 
 
-fn switch_config(master_cfg: Path, tree_name: String, config_file: Path,
+fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
     name_prefix: Option<String>)
     -> Result<(), String>
 {
-    match Command::new(self_exe_path().unwrap().join("lithos_check"))
-        .stdin(InheritFd(0))
-        .stdout(InheritFd(1))
-        .stderr(InheritFd(2))
+    match Command::new(env::current_exe().unwrap()
+                       .parent().unwrap().join("lithos_check"))
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .arg("--config")
         .arg(&master_cfg)
         .arg("--tree")
-        .arg(tree_name.as_slice())
+        .arg(&tree_name)
         .arg("--alternate-config")
         .arg(&config_file)
         .output()
     {
-        Ok(ref po) if po.status == ExitStatus(0) => { }
+        Ok(ref po) if po.status.code() == Some(0) => { }
         Ok(ref po) => {
             return Err(format!(
                 "Configuration check failed with exit status: {}",
@@ -86,33 +90,34 @@ fn switch_config(master_cfg: Path, tree_name: String, config_file: Path,
         }
     };
 
-    let config_fn = if let Some(prefix) = name_prefix {
-        prefix.to_string() + try!(hash_file(&config_file)
-            .map_err(|e| format!("Can't read file: {}", e))).as_slice() +
-            ".yaml"
+    let config_fn: OsString = if let Some(prefix) = name_prefix {
+        let hash = try!(hash_file(&config_file)
+            .map_err(|e| format!("Can't read file: {}", e)));
+        OsString::from(prefix + &hash + ".yaml")
     } else {
-        config_file.filename_str().unwrap().to_string()
+        config_file.file_name().unwrap().to_owned()
     };
-    let target_fn = Path::new(tree.config_file.dirname())
-                    .join(config_fn.as_slice());
+    let target_fn = tree.config_file.parent().unwrap()
+                    .join(&config_fn);
     if target_fn == tree.config_file {
         return Err(format!("Target config file ({:?}) \
             is the current file ({:?}). You must have unique \
             name for each new configuration",
             target_fn, tree.config_file));
     }
-    let lnk = readlink(&tree.config_file);
-    match lnk.as_ref().map(|f| f.dirname()) {
-        Ok(b".") => {},
+    let lnk = try!(read_link(&tree.config_file)
+       .map_err(|e| format!("Can't read link {:?}: {}", tree.config_file, e)));
+    match lnk.components().rev().nth(1) {
+        Some(Normal(_)) => {},
         _ => return Err(format!("The path {:?} must be a symlink \
             which points to the file at the same level of hierarchy.",
             tree.config_file)),
     };
-    if lnk.unwrap().filename() == target_fn.filename() {
+    if lnk.file_name() == target_fn.file_name() {
         warn!("Target config dir is the active one. Nothing to do.");
         return Ok(());
     }
-    if target_fn.exists() {
+    if metadata(&target_fn).is_ok() {
         warn!("Target file {:?} exists. \
             Probably already copied. Skipping copying step.",
             target_fn);
@@ -122,21 +127,23 @@ fn switch_config(master_cfg: Path, tree_name: String, config_file: Path,
             .map_err(|e| format!("Error copying: {}", e)));
     }
     info!("Ok files are there. Making symlink");
-    let symlink_fn = tree.config_file.with_filename(
-        b".tmp.".to_vec() + tree.config_file.filename().unwrap());
-    try!(symlink(&Path::new(config_fn.as_slice()), &symlink_fn)
+    let mut tmpname = OsStr::from_bytes(b".tmp.").to_owned();
+    tmpname.push(tree.config_file.file_name().unwrap());
+    let symlink_fn = tree.config_file.with_file_name(tmpname);
+    try!(symlink(&Path::new(&config_fn), &symlink_fn)
         .map_err(|e| format!("Error symlinking dir: {}", e)));
     try!(rename(&symlink_fn, &tree.config_file)
         .map_err(|e| format!("Error replacing symlink: {}", e)));
 
     info!("Done. Sending SIGQUIT to lithos_tree");
     let pid_file = master.runtime_dir.join("master.pid");
-    match File::open(&pid_file)
-            .and_then(|mut f| f.read_to_string())
-            .ok()
-            .and_then(|s| FromStr::from_str(s.as_slice()).ok()) {
+    let mut buf = String::with_capacity(50);
+    let read = File::open(&pid_file)
+            .and_then(|mut f| f.read_to_string(&mut buf))
+            .ok();
+    match read.and_then(|_| FromStr::from_str(&buf).ok()) {
         Some(pid) if signal::is_process_alive(pid) => {
-            signal::send_signal(pid, signal::SIGQUIT as isize);
+            signal::send_signal(pid, signal::SIGQUIT);
         }
         Some(pid) => {
             warn!("Process with pid {} is not running...", pid);
@@ -152,34 +159,34 @@ fn switch_config(master_cfg: Path, tree_name: String, config_file: Path,
 
 
 fn main() {
-    let mut master_config = Path::new("/etc/lithos.yaml");
+    let mut master_config = PathBuf::from("/etc/lithos.yaml");
     let mut verbose = false;
     let mut name_prefix = None;
-    let mut config_file = Path::new("");
+    let mut config_file = PathBuf::from("");
     let mut tree_name = "".to_string();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut master_config)
-          .add_option(&["--master"], Store,
+          .add_option(&["--master"], Parse,
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], StoreTrue,
             "Verbose configuration");
         ap.refer(&mut name_prefix)
-          .add_option(&["--hashed-name"], StoreOption, "
+          .add_option(&["--hashed-name"], ParseOption, "
             Do not use last component of FILE as a name, but create an unique
             name based on the PREFIX and hash of the contents.
             ")
           .metavar("PREFIX");
         ap.refer(&mut tree_name)
-          .add_argument("tree", Store,
+          .add_argument("tree", Parse,
             "Name of the tree which configuration will be switched for")
           .required()
           .metavar("NAME");
         ap.refer(&mut config_file)
-          .add_argument("new_config", Store, "
+          .add_argument("new_config", Parse, "
             Name of the configuration directory to switch to. It doesn't
             have to be a directory inside `config-dir`, and it will be copied
             there. However, if directory with the same name exists in the
@@ -191,18 +198,18 @@ fn main() {
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
-                set_exit_status(x);
-                return;
+                exit(x);
             }
         }
     }
-    match switch_config(master_config, tree_name, config_file, name_prefix) {
+    match switch_config(&master_config, tree_name, &config_file, name_prefix)
+    {
         Ok(()) => {
-            set_exit_status(0);
+            exit(0);
         }
         Err(e) => {
-            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
-            set_exit_status(1);
+            write!(&mut stderr(), "Fatal error: {}\n", e).unwrap();
+            exit(1);
         }
     }
 }

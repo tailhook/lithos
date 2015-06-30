@@ -7,7 +7,6 @@ extern crate libc;
 extern crate nix;
 extern crate quire;
 extern crate regex;
-extern crate crypto;
 extern crate rustc_serialize;
 
 pub mod master_config;

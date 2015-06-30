@@ -15,9 +15,9 @@ build = "build.rs"
 regex = "*"
 rustc-serialize = "*"
 libc = "*"
-crypto = "*"
 argparse = "*"
 quire = "*"
+shaman = "*"
 
 [dependencies.log]
 git = "git://github.com/rust-lang/log"
@@ -43,4 +43,8 @@ path = "src/bin/lithos_cmd.rs"
 [[bin]]
 name = "lithos_check"
 path = "src/bin/lithos_check.rs"
+
+[[bin]]
+name = "lithos_switch"
+path = "src/bin/lithos_switch.rs"
 
