@@ -44,8 +44,11 @@ pub fn parse_cgroups(pid: Option<pid_t>) -> Result<ParsedCGroups, String> {
     for line in f.lines() {
         let line = try!(line
                        .map_err(|e| format!("Can't read CGroup file: {}", e)));
+        if line.len() == 0 {
+            continue;
+        }
         // Line is in form of "123:ctr1[,ctr2][=folder]:/group/path"
-        let mut chunks = line[..].splitn(2, ':');
+        let mut chunks = line[..].splitn(3, ':');
         try!(chunks.next().ok_or(format!("CGroup num expected")));
         let namechunk = try!(chunks.next()
                              .ok_or(format!("CGroup name expected")));
@@ -122,7 +125,7 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
             debug!("CGroup {} already exists", fullpath.display());
         }
         debug!("Adding task to cgroup {}", fullpath.display());
-        try!(OpenOptions::new().append(true).open(&fullpath.join("tasks"))
+        try!(OpenOptions::new().write(true).open(&fullpath.join("tasks"))
              .and_then(|mut f| write!(&mut f, "{}", mypid))
              .map_err(|e| format!(
                 "Error adding myself (pid: {}) to the group {:?}: {}",

@@ -2,10 +2,11 @@ extern crate rustc_serialize;
 extern crate libc;
 #[macro_use] extern crate log;
 extern crate regex;
-
 extern crate argparse;
 extern crate quire;
 extern crate lithos;
+extern crate time;
+extern crate fern;
 
 
 use std::env;
@@ -29,7 +30,7 @@ use regex::Regex;
 use quire::parse_config;
 use rustc_serialize::json;
 
-use lithos::setup::clean_child;
+use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
@@ -52,6 +53,8 @@ struct Child {
     master_config: Rc<MasterConfig>,
     child_config: Rc<ChildConfig>,
     root_binary: Rc<PathBuf>,
+    log_level: log::LogLevel,
+    log_stderr: bool,
 }
 
 impl Executor for Child {
@@ -68,6 +71,10 @@ impl Executor for Child {
         cmd.arg(&self.master_file.to_str().unwrap()[..]);
         cmd.arg("--config");
         cmd.arg(&self.child_config_serialized[..]);
+        if self.log_stderr {
+            cmd.arg("--log-stderr");
+        }
+        cmd.arg(format!("--log-level={}", self.log_level));
         cmd.set_env("TERM".to_string(),
                     env::var("TERM").unwrap_or("dumb".to_string()));
         if let Ok(x) = env::var("RUST_LOG") {
@@ -109,8 +116,12 @@ fn check_master_config(cfg: &MasterConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn global_init(master: &MasterConfig) -> Result<(), String> {
+fn global_init(master: &MasterConfig, options: &Options)
+    -> Result<(), String>
+{
     try!(create_master_dirs(&*master));
+    try!(init_logging(&master.default_log_dir.join(&master.log_file),
+                      options.log_level, options.log_stderr));
     try!(check_process(&*master));
     if let Some(ref name) = master.cgroup_name {
         try!(cgroup::ensure_in_group(name, &master.cgroup_controllers));
@@ -132,7 +143,7 @@ fn _read_args(pid: pid_t, global_config: &Path)
     try!(File::open(&format!("/proc/{}/cmdline", pid))
          .and_then(|mut f| f.read_to_string(&mut buf))
          .map_err(discard));
-    let args: Vec<&str> = buf[..].splitn(7, '\0').collect();
+    let args: Vec<&str> = buf[..].splitn(8, '\0').collect();
     if args.len() != 8
        || Path::new(args[0]).file_name().and_then(|x| x.to_str()) != Some("lithos_knot")
        || args[1] != "--name"
@@ -391,18 +402,20 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
     }
 }
 
-fn run(config_file: &Path, bin: &Binaries) -> Result<(), String> {
+fn run(config_file: &Path, bin: &Binaries, options: &Options)
+    -> Result<(), String>
+{
     let master: Rc<MasterConfig> = Rc::new(try!(parse_config(&config_file,
         &*MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e))));
     try!(check_master_config(&*master));
-    try!(global_init(&*master));
+    try!(global_init(&*master, &options));
 
     let config_file = Rc::new(config_file.to_owned());
     let mut mon = Monitor::new("lithos-tree".to_string());
 
     info!("Reading tree configs from {:?}", master.config_dir);
-    let mut configs = read_configs(&master, bin, &config_file);
+    let mut configs = read_configs(&master, bin, &config_file, options);
 
     info!("Recovering Processes");
     recover_processes(&master, &mut mon, &mut configs, &config_file);
@@ -430,7 +443,7 @@ fn run(config_file: &Path, bin: &Binaries) -> Result<(), String> {
 }
 
 fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
-    master_file: &Rc<PathBuf>)
+    master_file: &Rc<PathBuf>, options: &Options)
     -> HashMap<Rc<String>, Child>
 {
     let tree_validator = TreeConfig::validator();
@@ -456,7 +469,8 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
                 .ok()
         })
         .flat_map(|(name, tree)| {
-            read_subtree(master, bin, master_file, &name, Rc::new(tree))
+            read_subtree(master, bin, master_file, &name,
+                         Rc::new(tree), options)
             .into_iter()
         })
         .collect()
@@ -464,7 +478,8 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
 
 fn read_subtree<'x>(master: &Rc<MasterConfig>,
     bin: &Binaries, master_file: &Rc<PathBuf>,
-    tree_name: &String, tree: Rc<TreeConfig>)
+    tree_name: &String, tree: Rc<TreeConfig>,
+    options: &Options)
     -> Vec<(Rc<String>, Child)>
 {
     debug!("Reading child config {:?}", tree.config_file);
@@ -494,6 +509,8 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
                         master_config: master.clone(),
                         child_config: child.clone(),
                         root_binary: bin.lithos_knot.clone(),
+                        log_stderr: options.log_stderr,
+                        log_level: options.log_level,
                     })
                 })
                 .collect();
@@ -569,7 +586,7 @@ fn main() {
             exit(x);
         }
     };
-    match run(&options.config_file, &bin) {
+    match run(&options.config_file, &bin, &options) {
         Ok(()) => {
             exit(0);
         }

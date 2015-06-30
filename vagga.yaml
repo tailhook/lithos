@@ -41,6 +41,7 @@ containers:
     # This one is used as a container inside the lithos example
     setup:
     - !Alpine v3.1
+    - !EnsureDir /config
     - !Sh |
         cat <<END > /config/sleep.yaml
         kind: Daemon

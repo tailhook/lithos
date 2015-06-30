@@ -1,8 +1,8 @@
 sleep:
   instances: 2
-  image: busybox.92a3985
+  image: busybox.fd75e74c
   config: /config/sleep.yaml
 busybox:
   kind: Command
-  image: busybox.92a3985
+  image: busybox.fd75e74c
   config: /config/busybox.yaml

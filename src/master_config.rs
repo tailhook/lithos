@@ -13,6 +13,8 @@ pub struct MasterConfig {
     pub state_dir: PathBuf,
     pub mount_dir: PathBuf,
     pub devfs_dir: PathBuf,
+    pub default_log_dir: PathBuf,
+    pub log_file: PathBuf,
     pub cgroup_name: Option<String>,
     pub cgroup_controllers: Vec<String>,
 }
@@ -35,6 +37,12 @@ impl MasterConfig {
             ("devfs_dir".to_string(), Box::new(Scalar {
                 default: Some("/var/lib/lithos/dev".to_string()),
                 .. Default::default() }) as Box<Validator>),
+            ("default_log_dir".to_string(), Box::new(Scalar {
+                default: Some("/var/log/lithos".to_string()),
+                .. Default::default() }) as Box<Validator>),
+            ("log_file".to_string(), Box::new(Scalar {
+                default: Some("master.log".to_string()),
+                .. Default::default() }) as Box<Validator>),
             ("cgroup_name".to_string(), Box::new(Scalar {
                 optional: true,
                 default: Some("lithos.slice".to_string()),
@@ -53,6 +61,8 @@ pub fn create_master_dirs(cfg: &MasterConfig) -> Result<(), String> {
     try!(ensure_dir(&cfg.runtime_dir.join(&cfg.state_dir))
         .map_err(|e| format!("Cant create state-dir: {}", e)));
     try!(ensure_dir(&cfg.runtime_dir.join(&cfg.mount_dir))
+        .map_err(|e| format!("Cant create mount-dir: {}", e)));
+    try!(ensure_dir(&cfg.default_log_dir)
         .map_err(|e| format!("Cant create mount-dir: {}", e)));
     return Ok(());
 }

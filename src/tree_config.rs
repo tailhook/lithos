@@ -57,6 +57,7 @@ impl Decodable for Range {
 pub struct TreeConfig {
     pub config_file: PathBuf,
     pub image_dir: PathBuf,
+    pub log_file: Option<PathBuf>,
     pub readonly_paths: BTreeMap<PathBuf, PathBuf>,
     pub writable_paths: BTreeMap<PathBuf, PathBuf>,
     pub allow_users: Vec<Range>,
@@ -72,6 +73,9 @@ impl TreeConfig {
                 .. Default::default() }) as Box<Validator>),
             ("image_dir".to_string(), Box::new(Scalar {
                 default: Some("/var/lib/lithos/containers".to_string()),
+                .. Default::default() }) as Box<Validator>),
+            ("log_file".to_string(), Box::new(Scalar {
+                optional: true,
                 .. Default::default() }) as Box<Validator>),
             ("readonly_paths".to_string(), Box::new(Mapping {
                 key_element: Box::new(Scalar { .. Default::default()}),

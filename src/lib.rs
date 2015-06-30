@@ -2,7 +2,8 @@
 #![crate_type="lib"]
 
 #[macro_use] extern crate log;
-extern crate env_logger;
+extern crate fern;
+extern crate time;
 extern crate libc;
 extern crate nix;
 extern crate quire;

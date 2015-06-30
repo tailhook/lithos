@@ -126,7 +126,7 @@ struct GroupTotals {
 }
 
 fn parse_mem_size(value: &str) -> usize {
-    let mut pair = value.splitn(1, ' ');
+    let mut pair = value.splitn(2, ' ');
     let val: usize = FromStr::from_str(pair.next().unwrap())
         .ok().expect("Memory should be integer");
     let unit = pair.next().unwrap_or("kB");
@@ -192,7 +192,7 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
     result.cmdline = try!(read_cmdline(pid));
     for line in f.lines() {
         let line = try!(line);
-        let mut pair = line[..].splitn(1, ':');
+        let mut pair = line[..].splitn(2, ':');
         let name = pair.next().unwrap().trim();
         let value = pair.next().expect("Colon and value expected").trim();
         match &name[..] {

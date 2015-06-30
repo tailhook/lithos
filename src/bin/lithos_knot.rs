@@ -20,12 +20,12 @@ use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
-use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::container::{Command};
 use lithos::monitor::{Monitor, Executor};
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
+use lithos::setup::{init_logging};
 use lithos::mount::{unmount, mount_private, bind_mount, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
 use lithos_knot_options::Options;
@@ -69,29 +69,36 @@ impl Executor for Target {
     }
 }
 
-fn run(name: String, master_file: &Path, config: ChildConfig, args: Vec<String>)
-    -> Result<(), String>
+fn run(options: Options) -> Result<(), String>
 {
-    let master: MasterConfig = try!(parse_config(&master_file,
+    let master: MasterConfig = try!(parse_config(&options.master_config,
         &*MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
-    let tree_name = name[..].splitn(1, '/').next().unwrap();
+    let tree_name = options.name[..].splitn(2, '/').next().unwrap();
     let tree: TreeConfig = try!(parse_config(
         &master.config_dir.join(tree_name.to_string() + ".yaml"),
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
+    let mut log_file;
+    if let Some(ref fname) = tree.log_file {
+        log_file = master.default_log_dir.join(fname);
+    } else {
+        log_file = master.default_log_dir.join(format!("{}.log", tree_name));
+    }
+    try!(init_logging(&log_file, options.log_level, options.log_stderr));
+
     try!(mount_private(&Path::new("/")));
-    let image_path = tree.image_dir.join(&config.image);
+    let image_path = tree.image_dir.join(&options.config.image);
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
     try!(bind_mount(&image_path, &mount_dir));
     try!(mount_ro_recursive(&mount_dir));
 
     let local: ContainerConfig;
-    local = try!(read_local_config(&mount_dir, &config));
-    if local.kind != config.kind {
+    local = try!(read_local_config(&mount_dir, &options.config));
+    if local.kind != options.config.kind {
         return Err(format!("Container type mismatch {:?} != {:?}",
-              local.kind, config.kind));
+              local.kind, options.config.kind));
     }
     if local.uid_map.len() > 0 {
         if !in_mapping(&local.uid_map, local.user_id) {
@@ -124,10 +131,10 @@ fn run(name: String, master_file: &Path, config: ChildConfig, args: Vec<String>)
             .to_string());
     }
 
-    info!("[{}] Starting container", name);
+    info!("[{}] Starting container", options.name);
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
-        .join(&name);
+        .join(&options.name);
     try!(prepare_state_dir(state_dir, &local, &tree));
     try!(setup_filesystem(&master, &tree, &local, state_dir));
     if let Some(cgroup_parent) = master.cgroup_name {
@@ -135,7 +142,7 @@ fn run(name: String, master_file: &Path, config: ChildConfig, args: Vec<String>)
         // if we ever want to restart lithos_knot in-place
         let cgroups = try!(cgroup::ensure_in_group(
             &(cgroup_parent + "/" +
-              &name.replace("/", ":") + ".scope"),
+              &options.name.replace("/", ":") + ".scope"),
             &master.cgroup_controllers));
         cgroups.set_value(cgroup::Controller::Memory,
             "memory.limit_in_bytes",
@@ -154,13 +161,13 @@ fn run(name: String, master_file: &Path, config: ChildConfig, args: Vec<String>)
     try!(set_fileno_limit(local.fileno_limit)
         .map_err(|e| format!("Error setting file limit: {}", e)));
 
-    let mut mon = Monitor::new(name.clone());
-    let name = Rc::new(name.clone() + ".main");
+    let mut mon = Monitor::new(options.name.clone());
+    let name = Rc::new(options.name.clone() + ".main");
     let timeo = (local.restart_timeout*1000.) as i64;
     mon.add(name.clone(), Box::new(Target {
         name: name,
         local: local,
-        args: args,
+        args: options.args,
     }), timeo, None);
     mon.run();
 
@@ -178,8 +185,7 @@ fn main() {
             exit(x);
         }
     };
-    match run(options.name, &options.master_config,
-              options.config, options.args)
+    match run(options)
     {
         Ok(()) => {
             exit(0);

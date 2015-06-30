@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::collections::BTreeMap;
 
+use log;
+use fern;
+use time;
 use quire::parse_config;
 
 use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
@@ -192,4 +195,35 @@ pub fn clean_child(name: &String, master: &MasterConfig) {
             .map_err(|e| error!("Error removing cgroup: {}", e))
             .ok();
     }
+}
+
+pub fn init_logging(path: &Path,
+    log_level: log::LogLevel, log_stderr: bool)
+    -> Result<(), String>
+{
+    let mut output = vec![
+        fern::OutputConfig::file(path)
+        ];
+    if log_stderr {
+        output.push(fern::OutputConfig::stderr());
+    }
+    let logger_config = fern::DispatchConfig {
+        format: Box::new(|msg: &str, level: &log::LogLevel,
+                          location: &log::LogLocation| {
+            if *level >= log::LogLevel::Debug {
+                format!("[{}][{}]{}:{}: {}",
+                    time::now().strftime("%Y-%m-%d %H:%M:%S").unwrap(),
+                    level, location.file(), location.line(),
+                    msg)
+            } else {
+                format!("[{}][{}] {}",
+                    time::now().strftime("%Y-%m-%d %H:%M:%S").unwrap(),
+                    level, msg)
+            }
+        }),
+        output: output,
+        level: log_level.to_log_level_filter(),
+    };
+    fern::init_global_logger(logger_config, log::LogLevelFilter::Trace)
+        .map_err(|e| format!("Can't initialize logging: {}", e))
 }

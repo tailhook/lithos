@@ -12,18 +12,15 @@ links = "container"
 build = "build.rs"
 
 [dependencies]
-regex = "*"
-rustc-serialize = "*"
-libc = "*"
-argparse = "*"
-quire = "*"
-shaman = "*"
-
-[dependencies.log]
-git = "git://github.com/rust-lang/log"
-
-[dependencies.env_logger]
-git = "git://github.com/rust-lang/log"
+regex = "0.1"
+rustc-serialize = "0.3"
+libc = "0.1"
+argparse = "0.2"
+quire = "0.1"
+shaman = "0.1"
+fern = "0.3"
+time = "0.1"
+log = "0.3"
 
 [dependencies.nix]
 git = 'https://github.com/carllerche/nix-rust'
