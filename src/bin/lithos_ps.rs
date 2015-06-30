@@ -1,4 +1,4 @@
-extern crate serialize;
+extern crate rustc_serialize;
 extern crate libc;
 #[macro_use] extern crate log;
 extern crate regex;
@@ -10,34 +10,34 @@ extern crate quire;
 
 use regex::Regex;
 use std::rc::Rc;
-use std::os::args;
-use std::old_io::{stdout, stderr};
-use std::old_io::{IoError, EndOfFile};
+use std::env::args;
+use std::io::{stdout, stderr, Write, Read, BufRead};
+use std::io::Error as IoError;
 use std::mem::swap;
-use std::old_io::fs::File;
-use std::old_io::timer::sleep;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::thread::sleep_ms;
 use std::str::FromStr;
-use std::old_io::fs::{readdir};
-use std::old_io::{BufferedReader, MemWriter};
-use std::env::{set_exit_status};
+use std::fs::{read_dir};
+use std::io::BufReader;
 use std::default::Default;
+use std::process::exit;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::duration::Duration;
+
 use libc::pid_t;
 use libc::consts::os::sysconf::_SC_CLK_TCK;
 use libc::funcs::posix88::unistd::sysconf;
 use lithos::utils::get_time;
-use serialize::json::Json;
-use serialize::json;
-use ascii::Column;
-
+use rustc_serialize::json::Json;
+use rustc_serialize::json;
 use argparse::{ArgumentParser, StoreConst};
 
+use ascii::Column;
 use self::LithosInfo::*;
 use self::Action::*;
 
-mod lithos_tree_options;
-mod lithos_knot_options;
+#[allow(unused)] mod lithos_tree_options;
+#[allow(unused)] mod lithos_knot_options;
 
 #[path = "../ascii.rs"] mod ascii;
 
@@ -50,7 +50,7 @@ struct Options {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 enum LithosInfo {
-    TreeInfo(Path),
+    TreeInfo(PathBuf),
     KnotInfo(String, String, usize),
 }
 
@@ -100,7 +100,7 @@ struct Tree {
 
 struct Master {
     pid: pid_t,
-    config: Path,
+    config: PathBuf,
     totals: GroupTotals,
     trees: BTreeMap<String, Tree>,
 }
@@ -111,8 +111,7 @@ struct ScanResult {
     totals: GroupTotals,
 }
 
-#[derive(Default)]
-#[derive(Copy)]
+#[derive(Default, Clone, Copy)]
 struct GroupTotals {
     processes: usize,
     threads: usize,
@@ -127,7 +126,7 @@ struct GroupTotals {
 }
 
 fn parse_mem_size(value: &str) -> usize {
-    let mut pair = value.as_slice().splitn(1, ' ');
+    let mut pair = value.splitn(1, ' ');
     let val: usize = FromStr::from_str(pair.next().unwrap())
         .ok().expect("Memory should be integer");
     let unit = pair.next().unwrap_or("kB");
@@ -143,25 +142,25 @@ fn parse_mem_size(value: &str) -> usize {
 
 fn read_cmdline(pid: pid_t) -> Result<Vec<String>, IoError> {
     let mut f = try!(File::open(
-        &Path::new(format!("/proc/{}/cmdline", pid).as_slice())));
-    let mut args: Vec<String> = try!(f.read_to_string())
-              .as_slice().split('\0')
+        &Path::new(&format!("/proc/{}/cmdline", pid))));
+    let mut buf = String::with_capacity(100);
+    try!(f.read_to_string(&mut buf));
+    let mut args: Vec<String> = buf[..].split('\0')
               .map(|x| x.to_string())
               .collect();
     if args[args.len() - 1] == "" {
         args.pop();  // empty arg at the end
     }
     if args.len() == 0 {
-        return Err(IoError { kind: EndOfFile, detail: None,
-            desc: "Unexpected Eof. Probably process is zombie" });
+        return Err(IoError::from_raw_os_error(libc::ENAVAIL));
     }
     return Ok(args);
 }
 
 fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
     let args = cmdline.clone();
-    let mut out = MemWriter::new();
-    let mut err = MemWriter::new();
+    let mut out = Vec::new();
+    let mut err = Vec::new();
     lithos_tree_options::Options::parse_specific_args(args, &mut out, &mut err)
         .map(|opt| TreeInfo(opt.config_file))
         .map_err(|_| debug!("Can't parse lithos_tree cmdline for {}", pid))
@@ -170,13 +169,13 @@ fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
 fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
     let fullname_re = Regex::new(r"^([\w-]+)/([\w-]+)\.(\d+)$").unwrap();
     let args = cmdline.clone();
-    let mut out = MemWriter::new();
-    let mut err = MemWriter::new();
+    let mut out = Vec::new();
+    let mut err = Vec::new();
     let opt = try!(
         lithos_knot_options::Options::parse_specific_args(
             args, &mut out, &mut err)
         .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid)));
-    fullname_re.captures(opt.name.as_slice())
+    fullname_re.captures(&opt.name)
         .map(|c| KnotInfo(
             c.at(1).unwrap().to_string(),
             c.at(2).unwrap().to_string(),
@@ -186,17 +185,17 @@ fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
 }
 
 fn read_process(pid: pid_t) -> Result<Process, IoError> {
-    let mut f = BufferedReader::new(try!(File::open(
-        &Path::new(format!("/proc/{}/status", pid).as_slice()))));
+    let f = BufReader::new(try!(File::open(
+        &Path::new(&format!("/proc/{}/status", pid)))));
     let mut result: Process = Default::default();
     result.pid = pid;
     result.cmdline = try!(read_cmdline(pid));
     for line in f.lines() {
         let line = try!(line);
-        let mut pair = line.as_slice().splitn(1, ':');
+        let mut pair = line[..].splitn(1, ':');
         let name = pair.next().unwrap().trim();
         let value = pair.next().expect("Colon and value expected").trim();
-        match name.as_slice(){
+        match &name[..] {
             "PPid" => {
                 result.parent_id = FromStr::from_str(value)
                     .ok().expect("Ppid should be integer");
@@ -227,9 +226,10 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
             _ => {}
         }
     }
-    let mut f = BufferedReader::new(try!(File::open(
-        &Path::new(format!("/proc/{}/stat", pid).as_slice()))));
-    let line = try!(f.read_line());
+    let mut f = BufReader::new(try!(File::open(
+        &Path::new(&format!("/proc/{}/stat", pid)))));
+    let mut line = String::with_capacity(1024);
+    try!(f.read_line(&mut line));
     let stat_re = Regex::new(
         // We parse bracketed executable and double-bracketed, still
         // if executable name itself contains bracket we would fail
@@ -242,18 +242,18 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
             r"\s+(?P<start_time>\d+)\b")).unwrap();
         // TODO(tailhook) we can get executable name from /status and match
         // it here, the executable in /status is escaped!
-    match stat_re.captures(line.as_slice()) {
+    match stat_re.captures(&line) {
         Some(c) => {
             FromStr::from_str(c.name("start_time").unwrap())
-                .map(|v| result.start_time = v);
+                .map(|v| result.start_time = v).ok();
             FromStr::from_str(c.name("utime").unwrap())
-                .map(|v| result.user_time = v);
+                .map(|v| result.user_time = v).ok();
             FromStr::from_str(c.name("stime").unwrap())
-                .map(|v| result.system_time = v);
+                .map(|v| result.system_time = v).ok();
             FromStr::from_str(c.name("cutime").unwrap())
-                .map(|v| result.child_user_time = v);
+                .map(|v| result.child_user_time = v).ok();
             FromStr::from_str(c.name("cstime").unwrap())
-                .map(|v| result.child_system_time = v);
+                .map(|v| result.child_system_time = v).ok();
         }
         None => {
             warn!("Error getting start_time for pid {}", pid);
@@ -354,10 +354,11 @@ fn scan_processes() -> Result<ScanResult, IoError>
     let mut children = BTreeMap::<pid_t, Vec<Rc<Process>>>::new();
     let mut roots = BTreeSet::<Rc<Process>>::new();
 
-    for pid in try!(readdir(&Path::new("/proc")))
+    for pid in try!(read_dir(&Path::new("/proc")))
         .into_iter()
-        .filter_map(|p| p.filename_str()
-                         .and_then(|x| FromStr::from_str(x).ok()))
+        .filter_map(|p| p.ok())
+        .filter_map(|p| p.file_name().to_str()
+                        .and_then(|p| FromStr::from_str(p).ok()))
     {
         match read_process(pid) {
             Ok(prc) => {
@@ -476,7 +477,7 @@ fn print_child(name: &String, child: &Child, opt: &Options)
     -> ascii::TreeNode
 {
     if child.instances.len() == 1 {
-        return print_instance(&child.instances[0], opt);
+        return print_instance(&child.instances[&0], opt);
     } else {
         return ascii::TreeNode {
             head: opt.printer_factory.new()
@@ -589,9 +590,9 @@ fn print_json(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
 
 
     let mut out = stdout();
-    return out.write_str(json::encode(&Json::Object(vec!(
+    return write!(out, "{}", json::as_json(&Json::Object(vec!(
         ("trees".to_string(), Json::Array(trees)),
-        ).into_iter().collect())).unwrap().as_slice());
+        ).into_iter().collect())));
 }
 
 fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
@@ -603,7 +604,7 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
         .collect();
     let mut old_time = get_time();
     loop {
-        sleep(Duration::seconds(1));
+        sleep_ms(1000);
 
         let new_children: BTreeMap<String, Instance> = try!(scan_processes())
             .masters.into_iter()
@@ -628,8 +629,8 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
                 pids.push(0);
             }
             let ticks = old_children.get(name)
-                .map(|old| inst.totals.cpu_time - old.totals.cpu_time)
-                .map(|x| if x < 0 { 0 } else { x })
+                .map(|old| inst.totals.cpu_time
+                           .saturating_sub(old.totals.cpu_time))
                 .unwrap_or(0);
             names.push(inst.name.to_string());
             cpus.push((ticks as f64/delta_ticks) * 100.);
@@ -657,20 +658,20 @@ fn read_global_consts() {
     unsafe {
         clock_ticks = sysconf(_SC_CLK_TCK) as u64;
         boot_time =
-            BufferedReader::new(
+            BufReader::new(
                 File::open(&Path::new("/proc/stat"))
                 .ok().expect("Can't read /proc/stat"))
             .lines()
             .map(|line| line.ok().expect("Can't read /proc/stat"))
-            .filter(|line| line.as_slice().starts_with("btime "))
+            .filter(|line| line[..].starts_with("btime "))
             .next()
             .and_then(|line| FromStr::from_str(
-                            line.as_slice()[5..].trim()).ok())
+                            line[5..].trim()).ok())
             .expect("No boot time in /proc/stat");
     }
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 enum Action {
     PrintFullTree,
     PrintJson,
@@ -683,7 +684,7 @@ fn main() {
 
     let mut action = PrintFullTree;
     let mut options = Options {
-        printer_factory: ascii::Printer::factory(stdout().get_ref()),
+        printer_factory: ascii::Printer::color_factory(),
     };
 
     {
@@ -704,8 +705,7 @@ fn main() {
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
-                set_exit_status(x);
-                return;
+                exit(x);
             }
         }
     }
@@ -717,11 +717,11 @@ fn main() {
         }
     }) {
         Ok(()) => {
-            set_exit_status(0);
+            exit(0);
         }
         Err(e) => {
-            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
-            set_exit_status(1);
+            write!(&mut stderr(), "Fatal error: {}\n", e).unwrap();
+            exit(1);
         }
     }
 }

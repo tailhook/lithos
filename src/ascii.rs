@@ -1,7 +1,6 @@
 // This is a part of lithos_ps not lithos library
-use std::old_io::IoError;
-use std::old_io::Writer;
-use std::old_io::stdio::StdWriter;
+use std::io::Error as IoError;
+use std::io::Write;
 use std::cmp::max;
 use std::fmt::Display;
 use self::Column::*;
@@ -11,7 +10,7 @@ pub struct Printer {
     buf: Vec<u8>,
 }
 
-#[derive(Copy)]
+#[derive(Clone, Copy)]
 pub struct PrinterFactory(bool);
 
 pub struct TreeNode {
@@ -37,9 +36,6 @@ impl PrinterFactory {
 }
 
 impl Printer {
-    pub fn factory(wr: &StdWriter) -> PrinterFactory {
-        return PrinterFactory(wr.isatty());
-    }
     pub fn color_factory() -> PrinterFactory {
         return PrinterFactory(true);
     }
@@ -100,31 +96,24 @@ impl Printer {
 }
 
 impl TreeNode {
-    pub fn print<T:Writer>(&self, writer: &mut T) -> Result<(), IoError> {
-        try!(writer.write_str(self.head.as_slice()));
-        try!(writer.write_char('\n'));
+    pub fn print<T:Write>(&self, writer: &mut T) -> Result<(), IoError> {
+        try!(write!(writer, "{}\n", self.head));
         self._print_children(writer, "  ")
     }
-    pub fn _print_children<T:Writer>(&self, writer: &mut T, indent: &str)
+    pub fn _print_children<T:Write>(&self, writer: &mut T, indent: &str)
         -> Result<(), IoError>
     {
         if self.children.len() >= 2 {
             let childindent = indent.to_string() + "│   ";
             for child in self.children[..self.children.len()-1].iter() {
-                try!(writer.write_str(indent));
-                try!(writer.write_str("├─"));
-                try!(writer.write_str(child.head.as_slice()));
-                try!(writer.write_char('\n'));
-                try!(child._print_children(writer, childindent.as_slice()));
+                try!(write!(writer, "{}├─{}\n", indent, child.head));
+                try!(child._print_children(writer, &childindent[..]));
             }
         }
         if let Some(child) = self.children.last() {
             let childindent = indent.to_string() + "    ";
-            try!(writer.write_str(indent));
-            try!(writer.write_str("└─"));
-            try!(writer.write_str(child.head.as_slice()));
-            try!(writer.write_char('\n'));
-            try!(child._print_children(writer, childindent.as_slice()));
+            try!(write!(writer, "{}└─{}\n", indent, child.head));
+            try!(child._print_children(writer, &childindent[..]));
         }
         return Ok(());
     }

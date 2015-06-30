@@ -48,3 +48,7 @@ path = "src/bin/lithos_check.rs"
 name = "lithos_switch"
 path = "src/bin/lithos_switch.rs"
 
+[[bin]]
+name = "lithos_ps"
+path = "src/bin/lithos_ps.rs"
+
