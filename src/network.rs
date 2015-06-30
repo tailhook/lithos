@@ -36,7 +36,7 @@ pub fn get_host_name() -> IoResult<String> {
     if nbytes != 0 {
         return Err(IoError::last_os_error());
     }
-    return buf[..].splitn(1, |x| *x == 0u8)
+    return buf[..].splitn(2, |x| *x == 0u8)
            .next()
            .and_then(|x| String::from_utf8(x.to_vec()).ok())
            .ok_or(IoError::from_raw_os_error(EINVAL));

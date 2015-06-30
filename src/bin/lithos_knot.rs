@@ -73,7 +73,9 @@ fn run(options: Options) -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&options.master_config,
         &*MasterConfig::validator(), Default::default())
-        .map_err(|e| format!("Error reading master config: {}", e)));
+        .map_err(|e| {
+            println!("CURDIR {:?}", env::current_dir());
+        format!("Error reading master config: {}", e)}));
     let tree_name = options.name[..].splitn(2, '/').next().unwrap();
     let tree: TreeConfig = try!(parse_config(
         &master.config_dir.join(tree_name.to_string() + ".yaml"),

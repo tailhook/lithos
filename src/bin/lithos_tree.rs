@@ -145,7 +145,8 @@ fn _read_args(pid: pid_t, global_config: &Path)
          .map_err(discard));
     let args: Vec<&str> = buf[..].splitn(8, '\0').collect();
     if args.len() != 8
-       || Path::new(args[0]).file_name().and_then(|x| x.to_str()) != Some("lithos_knot")
+       || Path::new(args[0]).file_name()
+          .and_then(|x| x.to_str()) != Some("lithos_knot")
        || args[1] != "--name"
        || args[3] != "--master"
        || Path::new(args[4]) != global_config
@@ -402,7 +403,7 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
     }
 }
 
-fn run(config_file: &Path, bin: &Binaries, options: &Options)
+fn run(config_file: &Path, options: &Options)
     -> Result<(), String>
 {
     let master: Rc<MasterConfig> = Rc::new(try!(parse_config(&config_file,
@@ -411,11 +412,18 @@ fn run(config_file: &Path, bin: &Binaries, options: &Options)
     try!(check_master_config(&*master));
     try!(global_init(&*master, &options));
 
+    let bin = match get_binaries() {
+        Some(bin) => bin,
+        None => {
+            exit(127);
+        }
+    };
+
     let config_file = Rc::new(config_file.to_owned());
     let mut mon = Monitor::new("lithos-tree".to_string());
 
     info!("Reading tree configs from {:?}", master.config_dir);
-    let mut configs = read_configs(&master, bin, &config_file, options);
+    let mut configs = read_configs(&master, &bin, &config_file, options);
 
     info!("Recovering Processes");
     recover_processes(&master, &mut mon, &mut configs, &config_file);
@@ -433,7 +441,7 @@ fn run(config_file: &Path, bin: &Binaries, options: &Options)
     match mon.run() {
         Killed => {}
         Reboot => {
-            reexec_myself(&*bin.lithos_tree);
+            reexec_myself(&bin.lithos_tree);
         }
     }
 
@@ -551,20 +559,22 @@ struct Binaries {
 }
 
 fn get_binaries() -> Option<Binaries> {
-    let dir = match env::current_exe() {
-        Ok(dir) => dir,
-        Err(_) => return None,
+    let dir = match env::current_exe().ok()
+        .and_then(|x| x.parent().map(|y| y.to_path_buf()))
+    {
+        Some(dir) => dir,
+        None => return None,
     };
     let bin = Binaries {
         lithos_tree: Rc::new(dir.join("lithos_tree")),
         lithos_knot: Rc::new(dir.join("lithos_knot")),
     };
-    if metadata(&*bin.lithos_tree).map(|x| x.is_file()).unwrap_or(false) {
-        error!("Can't find lithos_tree binary");
+    if !metadata(&*bin.lithos_tree).map(|x| x.is_file()).unwrap_or(false) {
+        write!(&mut stderr(), "Can't find lithos_tree binary").unwrap();
         return None;
     }
-    if metadata(&*bin.lithos_knot).map(|x| x.is_file()).unwrap_or(false) {
-        error!("Can't find lithos_knot binary");
+    if !metadata(&*bin.lithos_knot).map(|x| x.is_file()).unwrap_or(false) {
+        write!(&mut stderr(), "Can't find lithos_knot binary").unwrap();
         return None;
     }
     return Some(bin);
@@ -574,19 +584,13 @@ fn main() {
 
     signal::block_all();
 
-    let bin = match get_binaries() {
-        Some(bin) => bin,
-        None => {
-            exit(127);
-        }
-    };
     let options = match Options::parse_args() {
         Ok(options) => options,
         Err(x) => {
             exit(x);
         }
     };
-    match run(&options.config_file, &bin, &options) {
+    match run(&options.config_file, &options) {
         Ok(()) => {
             exit(0);
         }
