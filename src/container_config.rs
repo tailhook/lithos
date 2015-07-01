@@ -55,7 +55,7 @@ pub struct HostsFile {
     pub public_hostname: bool,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone, Copy)]
+#[derive(RustcDecodable, RustcEncodable, Clone, Copy, Debug)]
 pub struct IdMap {
     pub inside: u32,
     pub outside: u32,
@@ -101,11 +101,11 @@ fn mapping_validator<'x>() -> Box<Validator + 'x> {
 }
 
 impl ContainerConfig {
-    pub fn map_uid(&self, uid: u32) -> Option<u32> {
-        _map_id(&self.uid_map, uid)
+    pub fn map_uid(&self, internal_uid: u32) -> Option<u32> {
+        _map_id(&self.uid_map, internal_uid)
     }
-    pub fn map_gid(&self, gid: u32) -> Option<u32> {
-        _map_id(&self.gid_map, gid)
+    pub fn map_gid(&self, internal_gid: u32) -> Option<u32> {
+        _map_id(&self.gid_map, internal_gid)
     }
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
@@ -231,13 +231,13 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
         ), .. Default::default()}) as Box<Validator>;
 }
 
-fn _map_id(map: &Vec<IdMap>, id: u32) -> Option<u32> {
+fn _map_id(map: &Vec<IdMap>, /*internal*/id: u32) -> Option<u32> {
     if map.len() == 0 {
         return Some(id);
     }
     for rng in map.iter() {
-        if id >= rng.outside && id <= rng.outside + rng.count {
-            return Some(rng.inside + (id - rng.outside));
+        if id >= rng.inside && id <= rng.inside + rng.count {
+            return Some(rng.outside + (id - rng.inside));
         }
     }
     None
