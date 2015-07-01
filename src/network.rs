@@ -1,8 +1,9 @@
 use std::str::{from_utf8};
-use std::ptr::null;
-use std::ffi::{CString, CStr};
+use std::ptr::{null, copy};
+use std::ffi::{CString};
 use std::io::Error as IoError;
 use std::io::Result as IoResult;
+use std::net::Ipv4Addr;
 use libc::{c_int, size_t, c_char, EINVAL};
 
 #[repr(C)]
@@ -52,8 +53,9 @@ pub fn get_host_address(val: &str) -> IoResult<String> {
         if (*hostent).h_length == 0 {
             return Err(IoError::from_raw_os_error(EINVAL));
         }
-        return Ok(String::from_utf8(
-            CStr::from_ptr(*(*hostent).h_addr_list).to_bytes().to_vec()
-            ).unwrap());
+        let mut addr = [0u8; 4];
+        copy(*(*hostent).h_addr_list, addr.as_mut_ptr() as *mut i8, 4);
+        return Ok(format!("{}",
+                  Ipv4Addr::new(addr[0], addr[1], addr[2], addr[3])));
     }
 }
