@@ -1,7 +1,7 @@
 use std::default::Default;
-use rustc_serialize::{Decoder};
 use std::path::PathBuf;
 
+use rustc_serialize::{Decoder};
 use quire::validate::{Validator, Structure, Sequence};
 use quire::validate::{Scalar};
 use super::utils::ensure_dir;
@@ -15,6 +15,7 @@ pub struct MasterConfig {
     pub devfs_dir: PathBuf,
     pub default_log_dir: PathBuf,
     pub log_file: PathBuf,
+    pub log_level: String,
     pub cgroup_name: Option<String>,
     pub cgroup_controllers: Vec<String>,
 }
@@ -42,6 +43,9 @@ impl MasterConfig {
                 .. Default::default() }) as Box<Validator>),
             ("log_file".to_string(), Box::new(Scalar {
                 default: Some("master.log".to_string()),
+                .. Default::default() }) as Box<Validator>),
+            ("log_level".to_string(), Box::new(Scalar {
+                default: Some(String::from("warn")),
                 .. Default::default() }) as Box<Validator>),
             ("cgroup_name".to_string(), Box::new(Scalar {
                 optional: true,

@@ -2,9 +2,9 @@ use std::default::Default;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::path::PathBuf;
+
 use rustc_serialize::{Decoder, Decodable};
 use regex::Regex;
-
 use quire::validate::{Validator, Structure};
 use quire::validate::{Sequence, Mapping, Scalar};
 
@@ -58,6 +58,7 @@ pub struct TreeConfig {
     pub config_file: PathBuf,
     pub image_dir: PathBuf,
     pub log_file: Option<PathBuf>,
+    pub log_level: Option<String>,
     pub readonly_paths: BTreeMap<PathBuf, PathBuf>,
     pub writable_paths: BTreeMap<PathBuf, PathBuf>,
     pub allow_users: Vec<Range>,
@@ -75,6 +76,9 @@ impl TreeConfig {
                 default: Some("/var/lib/lithos/containers".to_string()),
                 .. Default::default() }) as Box<Validator>),
             ("log_file".to_string(), Box::new(Scalar {
+                optional: true,
+                .. Default::default() }) as Box<Validator>),
+            ("log_level".to_string(), Box::new(Scalar {
                 optional: true,
                 .. Default::default() }) as Box<Validator>),
             ("readonly_paths".to_string(), Box::new(Mapping {

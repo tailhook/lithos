@@ -4,7 +4,7 @@ use std::io::{stdout, stderr};
 use std::path::{PathBuf};
 
 use log;
-use argparse::{ArgumentParser, Store, Parse, List, StoreTrue};
+use argparse::{ArgumentParser, StoreOption, Store, Parse, List, StoreTrue};
 
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
@@ -16,7 +16,7 @@ pub struct Options {
     pub name: String,
     pub args: Vec<String>,
     pub log_stderr: bool,
-    pub log_level: log::LogLevel,
+    pub log_level: Option<log::LogLevel>,
 }
 
 impl Options {
@@ -39,7 +39,7 @@ impl Options {
             name: "".to_string(),
             args: vec!(),
             log_stderr: false,
-            log_level: log::LogLevel::Warn,
+            log_level: None,
         };
         let parse_result = {
             let mut ap = ArgumentParser::new();
@@ -64,7 +64,7 @@ impl Options {
               .add_option(&["--log-stderr"], StoreTrue,
                 "Print debugging info to stderr");
             ap.refer(&mut options.log_level)
-              .add_option(&["--log-level"], Store,
+              .add_option(&["--log-level"], StoreOption,
                 "Set log level (default info for now)");
             ap.stop_on_first_argument(true);
             ap.parse(args, stdout, stderr)

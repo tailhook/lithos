@@ -53,7 +53,7 @@ struct Child {
     master_config: Rc<MasterConfig>,
     child_config: Rc<ChildConfig>,
     root_binary: Rc<PathBuf>,
-    log_level: log::LogLevel,
+    log_level: Option<log::LogLevel>,
     log_stderr: bool,
 }
 
@@ -74,7 +74,9 @@ impl Executor for Child {
         if self.log_stderr {
             cmd.arg("--log-stderr");
         }
-        cmd.arg(format!("--log-level={}", self.log_level));
+        if let Some(log_level) = self.log_level {
+            cmd.arg(format!("--log-level={}", log_level));
+        }
         cmd.set_env("TERM".to_string(),
                     env::var("TERM").unwrap_or("dumb".to_string()));
         if let Ok(x) = env::var("RUST_LOG") {
@@ -121,7 +123,10 @@ fn global_init(master: &MasterConfig, options: &Options)
 {
     try!(create_master_dirs(&*master));
     try!(init_logging(&master.default_log_dir.join(&master.log_file),
-                      options.log_level, options.log_stderr));
+          options.log_level
+            .or_else(|| FromStr::from_str(&master.log_level).ok())
+            .unwrap_or(log::LogLevel::Warn),
+          options.log_stderr));
     try!(check_process(&*master));
     if let Some(ref name) = master.cgroup_name {
         try!(cgroup::ensure_in_group(name, &master.cgroup_controllers));

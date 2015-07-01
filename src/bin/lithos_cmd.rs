@@ -10,6 +10,7 @@ extern crate quire;
 
 use std::env;
 use std::rc::Rc;
+use std::str::FromStr;
 use std::process::exit;
 use std::path::{Path, PathBuf};
 use std::io::{stderr, Write};
@@ -18,7 +19,7 @@ use std::collections::BTreeMap;
 
 use regex::Regex;
 use quire::parse_config;
-use argparse::{ArgumentParser, Parse, List, StoreTrue, Store};
+use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
 
@@ -75,7 +76,7 @@ impl<'a> Executor for Child<'a> {
 
 fn run(master_cfg: &Path, tree_name: String,
     command_name: String, args: Vec<String>,
-    log_stderr: bool, log_level: log::LogLevel)
+    log_stderr: bool, log_level: Option<log::LogLevel>)
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&master_cfg,
@@ -101,7 +102,13 @@ fn run(master_cfg: &Path, tree_name: String,
     } else {
         log_file = master.default_log_dir.join(format!("{}.log", tree_name));
     }
-    try!(init_logging(&log_file, log_level, log_stderr));
+    try!(init_logging(&log_file,
+          log_level
+            .or(tree.log_level
+                .and_then(|x| FromStr::from_str(&x).ok()))
+            .or_else(|| FromStr::from_str(&master.log_level).ok())
+            .unwrap_or(log::LogLevel::Warn),
+        log_stderr));
 
     debug!("Children config {:?}", tree.config_file);
     let tree_children: BTreeMap<String, ChildConfig>;
@@ -148,7 +155,7 @@ fn main() {
     let mut tree_name = "".to_string();
     let mut args = vec!();
     let mut log_stderr: bool = false;
-    let mut log_level: log::LogLevel = log::LogLevel::Warn;
+    let mut log_level: Option<log::LogLevel> = None;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
@@ -160,7 +167,7 @@ fn main() {
           .add_option(&["--log-stderr"], StoreTrue,
             "Print debugging info to stderr");
         ap.refer(&mut log_level)
-          .add_option(&["--log-level"], Store,
+          .add_option(&["--log-level"], StoreOption,
             "Set log level (default info for now)");
         ap.refer(&mut tree_name)
           .add_argument("subtree", Parse,

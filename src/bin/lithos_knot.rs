@@ -8,6 +8,7 @@ extern crate quire;
 
 use std::rc::Rc;
 use std::env;
+use std::str::FromStr;
 use std::io::{stderr, Write};
 use std::path::{Path};
 use std::default::Default;
@@ -88,7 +89,13 @@ fn run(options: Options) -> Result<(), String>
     } else {
         log_file = master.default_log_dir.join(format!("{}.log", tree_name));
     }
-    try!(init_logging(&log_file, options.log_level, options.log_stderr));
+    try!(init_logging(&log_file,
+          options.log_level
+            .or(tree.log_level.as_ref()
+                .and_then(|x| FromStr::from_str(&x).ok()))
+            .or_else(|| FromStr::from_str(&master.log_level).ok())
+            .unwrap_or(log::LogLevel::Warn),
+          options.log_stderr));
 
     try!(mount_private(&Path::new("/")));
     let image_path = tree.image_dir.join(&options.config.image);

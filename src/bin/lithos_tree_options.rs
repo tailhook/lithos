@@ -2,13 +2,13 @@ use log;
 use std::env;
 use std::path::PathBuf;
 use std::io::{Write, stdout, stderr};
-use argparse::{ArgumentParser, Parse, Store, StoreTrue};
+use argparse::{ArgumentParser, Parse, StoreOption, StoreTrue};
 
 
 pub struct Options {
     pub config_file: PathBuf,
     pub log_stderr: bool,
-    pub log_level: log::LogLevel,
+    pub log_level: Option<log::LogLevel>,
 }
 
 impl Options {
@@ -23,7 +23,7 @@ impl Options {
         let mut options = Options {
             config_file: PathBuf::from("/etc/lithos.yaml"),
             log_stderr: false,
-            log_level: log::LogLevel::Warn,
+            log_level: None,
         };
         let parse_result = {
             let mut ap = ArgumentParser::new();
@@ -37,7 +37,7 @@ impl Options {
               .add_option(&["--log-stderr"], StoreTrue,
                 "Print debugging info to stderr");
             ap.refer(&mut options.log_level)
-              .add_option(&["--log-level"], Store,
+              .add_option(&["--log-level"], StoreOption,
                 "Set log level (default info for now)");
             ap.parse(args, stdout, stderr)
         };
