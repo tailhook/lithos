@@ -18,11 +18,11 @@ use std::collections::BTreeMap;
 
 use regex::Regex;
 use quire::parse_config;
-use argparse::{ArgumentParser, Parse, List};
+use argparse::{ArgumentParser, Parse, List, StoreTrue, Store};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
 
-use lithos::setup::clean_child;
+use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerKind::{Command};
@@ -74,7 +74,8 @@ impl<'a> Executor for Child<'a> {
 }
 
 fn run(master_cfg: &Path, tree_name: String,
-    command_name: String, args: Vec<String>)
+    command_name: String, args: Vec<String>,
+    log_stderr: bool, log_level: log::LogLevel)
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&master_cfg,
@@ -93,6 +94,14 @@ fn run(master_cfg: &Path, tree_name: String,
         &master.config_dir.join(tree_name.clone() + ".yaml"),
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
+
+    let mut log_file;
+    if let Some(ref fname) = tree.log_file {
+        log_file = master.default_log_dir.join(fname);
+    } else {
+        log_file = master.default_log_dir.join(format!("{}.log", tree_name));
+    }
+    try!(init_logging(&log_file, log_level, log_stderr));
 
     debug!("Children config {:?}", tree.config_file);
     let tree_children: BTreeMap<String, ChildConfig>;
@@ -138,6 +147,8 @@ fn main() {
     let mut command_name = "".to_string();
     let mut tree_name = "".to_string();
     let mut args = vec!();
+    let mut log_stderr: bool = false;
+    let mut log_level: log::LogLevel = log::LogLevel::Warn;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Runs tree of processes");
@@ -145,6 +156,12 @@ fn main() {
           .add_option(&["--master"], Parse,
             "Name of the master configuration file (default /etc/lithos.yaml)")
           .metavar("FILE");
+        ap.refer(&mut log_stderr)
+          .add_option(&["--log-stderr"], StoreTrue,
+            "Print debugging info to stderr");
+        ap.refer(&mut log_level)
+          .add_option(&["--log-level"], Store,
+            "Set log level (default info for now)");
         ap.refer(&mut tree_name)
           .add_argument("subtree", Parse,
             "Name of the tree to run command for")
@@ -164,7 +181,9 @@ fn main() {
             }
         }
     }
-    match run(&master_config, tree_name, command_name, args) {
+    match run(&master_config, tree_name, command_name, args,
+              log_stderr, log_level)
+    {
         Ok(()) => {
             exit(0);
         }
