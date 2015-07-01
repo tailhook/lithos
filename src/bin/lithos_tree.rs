@@ -600,7 +600,8 @@ fn main() {
             exit(0);
         }
         Err(e) => {
-            (write!(&mut stderr(), "Fatal error: {}\n", e)).ok();
+            write!(&mut stderr(), "Fatal error: {}\n", e).ok();
+            error!("Fatal error: {}", e);
             exit(1);
         }
     }
