@@ -189,8 +189,8 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
                 .. Default::default()}) as Box<Validator>),
             ("mode".to_string(),  Box::new(Numeric {
                 min: Some(0),
-                max: Some(0o700),
-                default: Some(0o766),
+                max: Some(0o1777),
+                default: Some(0o777),
                 .. Default::default()}) as Box<Validator>),
             ("user".to_string(),  Box::new(Numeric {
                 default: Some(0),
@@ -209,7 +209,7 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
             ("mode".to_string(),  Box::new(Numeric {
                 min: Some(0),
                 max: Some(0o1777),
-                default: Some(0o766),
+                default: Some(0o777),
                 .. Default::default()}) as Box<Validator>),
             ),.. Default::default()}) as Box<Validator>),
         ("Statedir".to_string(),  Box::new(Structure { members: vec!(
@@ -218,8 +218,8 @@ pub fn volume_validator<'a>() -> Box<Validator + 'a> {
                 .. Default::default()}) as Box<Validator>),
             ("mode".to_string(),  Box::new(Numeric {
                 min: Some(0),
-                max: Some(0o700),
-                default: Some(0o766),
+                max: Some(0o1777),
+                default: Some(0o777),
                 .. Default::default()}) as Box<Validator>),
             ("user".to_string(),  Box::new(Numeric {
                 default: Some(0),
