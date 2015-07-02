@@ -21,6 +21,7 @@ shaman = "0.1"
 fern = "0.3"
 time = "0.1"
 log = "0.3"
+env_logger = "0.3"
 
 [dependencies.nix]
 git = 'https://github.com/carllerche/nix-rust'
