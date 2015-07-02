@@ -1,10 +1,11 @@
 extern crate rustc_serialize;
 extern crate libc;
-#[macro_use] extern crate log;
 extern crate regex;
 
 extern crate argparse;
 extern crate quire;
+extern crate env_logger;
+#[macro_use] extern crate log;
 #[macro_use] extern crate lithos;
 
 
@@ -14,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::default::Default;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
 use regex::Regex;
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue};
@@ -26,6 +28,17 @@ use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::network::{get_host_name, get_host_ip};
 
+static EXIT_STATUS: AtomicUsize = ATOMIC_USIZE_INIT;
+
+macro_rules! err {
+    ( $( $x:expr ),* ) => {
+        {
+            error!($($x),*);
+            EXIT_STATUS.store(1,  Ordering::SeqCst);
+        }
+    }
+}
+
 
 fn check_master_config(master: &MasterConfig, verbose: bool) {
     // TODO(tailhook) maybe check host only if we need it for hosts file
@@ -36,8 +49,7 @@ fn check_master_config(master: &MasterConfig, verbose: bool) {
             }
         }
         Err(e) => {
-            warn!("Can't get hostname: {}", e);
-            exit(1); // TODO(tailhook) set exit status but don't exit
+            err!("Can't get hostname: {}", e);
         }
     }
     match get_host_ip() {
@@ -47,26 +59,22 @@ fn check_master_config(master: &MasterConfig, verbose: bool) {
             }
         }
         Err(e) => {
-            warn!("Can't get IPAddress: {}", e);
-            exit(1); // TODO(tailhook) set exit status but don't exit
+            err!("Can't get IPAddress: {}", e);
         }
     }
 
     if metadata(&master.devfs_dir).is_err() {
-        error!("Devfs dir ({:?}) must exist and contain device nodes",
+        err!("Devfs dir ({:?}) must exist and contain device nodes",
             master.devfs_dir);
-        exit(1); // TODO(tailhook) set exit status but don't exit
     }
 }
 
 fn check_tree_config(tree: &TreeConfig) {
     if tree.allow_users.len() == 0 {
-        error!("No allowed users range. Please add `allow-users: [1-1000]`");
-        exit(1); // TODO(tailhook) set exit status but don't exit
+        err!("No allowed users range. Please add `allow-users: [1-1000]`");
     }
     if tree.allow_groups.len() == 0 {
-        error!("No allowed groups range. Please add `allow-groups: [1-1000]`");
-        exit(1); // TODO(tailhook) set exit status but don't exit
+        err!("No allowed groups range. Please add `allow-groups: [1-1000]`");
     }
 }
 
@@ -79,9 +87,8 @@ fn check(config_file: &Path, verbose: bool,
         &*MasterConfig::validator(), Default::default()) {
         Ok(cfg) => cfg,
         Err(e) => {
-            error!("Can't parse config: {}", e);
-            exit(1); // TODO(tailhook) set exit status but don't exit
-            //return;
+            err!("Can't parse config: {}", e);
+            return;
         }
     };
 
@@ -90,9 +97,8 @@ fn check(config_file: &Path, verbose: bool,
     for tree_fn in read_dir(&master.config_dir)
         .map(|v| v.collect())
         .map_err(|e| {
-            error!("Can't open config directory {:?}: {}",
+            err!("Can't open config directory {:?}: {}",
                 master.config_dir, e);
-            exit(1);
         })
         .unwrap_or(Vec::new())
         .into_iter()
@@ -105,9 +111,8 @@ fn check(config_file: &Path, verbose: bool,
             &*TreeConfig::validator(), Default::default()) {
             Ok(cfg) => cfg,
             Err(e) => {
-                error!("Can't parse config: {}", e);
-                exit(1); // TODO(tailhook) set exit status but don't exit
-                //continue;
+                err!("Can't parse config: {}", e);
+                continue;
             }
         };
         check_tree_config(&tree);
@@ -126,17 +131,15 @@ fn check(config_file: &Path, verbose: bool,
             &*ChildConfig::mapping_validator(), Default::default()) {
             Ok(cfg) => cfg,
             Err(e) => {
-                error!("Can't read child config {:?}: {}", config_file, e);
-                exit(1); // TODO(tailhook) set exit status but don't exit
-                //continue;
+                err!("Can't read child config {:?}: {}", config_file, e);
+                continue;
             }
         };
         for (ref child_name, ref child_cfg) in all_children.iter() {
             let cfg_path = Path::new(&child_cfg.config);
             if !cfg_path.is_absolute() {
-                error!("Config path must be absolute");
-                exit(1); // TODO(tailhook) set exit status but don't exit
-                //continue;
+                err!("Config path must be absolute");
+                continue;
             }
             debug!("Opening config for {:?}", child_name);
             let config: ContainerConfig = match parse_config(
@@ -146,54 +149,46 @@ fn check(config_file: &Path, verbose: bool,
                 &*ContainerConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    error!("Can't read child config {:?}: {}.\n\
+                    err!("Can't read child config {:?}: {}.\n\
                         Sometimes the reason of reading configuration is \
                         absolute symlinks for config, in that case it may \
                         work in real daemon, but better fix it.",
                         child_name, e);
-                    exit(1); // TODO(tailhook) set exit status but don't exit
-                    //continue;
+                    continue;
                 }
             };
             if config.uid_map.len() > 0 {
                 if !in_mapping(&config.uid_map, config.user_id) {
-                    error!("User is not in mapped range (uid: {})",
+                    err!("User is not in mapped range (uid: {})",
                         config.user_id);
-                    exit(1); // TODO(tailhook) set exit status but don't exit
                 }
             } else {
                 if !in_range(&tree.allow_users, config.user_id) {
-                    error!("User is not in allowed range (uid: {})",
+                    err!("User is not in allowed range (uid: {})",
                         config.user_id);
-                    exit(1); // TODO(tailhook) set exit status but don't exit
                 }
             }
             if config.gid_map.len() > 0 {
                 if !in_mapping(&config.gid_map, config.group_id) {
-                    error!("Group is not in mapped range (gid: {})",
+                    err!("Group is not in mapped range (gid: {})",
                         config.user_id);
-                    exit(1); // TODO(tailhook) set exit status but don't exit
                 }
             } else {
                 if !in_range(&tree.allow_groups, config.group_id) {
-                    error!("Group is not in allowed range (gid: {})",
+                    err!("Group is not in allowed range (gid: {})",
                         config.group_id);
-                    exit(1); // TODO(tailhook) set exit status but don't exit
                 }
             }
             if !check_mapping(&tree.allow_users, &config.uid_map) {
-                error!("Bad uid mapping (probably doesn't match allow_users)");
-                exit(1); // TODO(tailhook) set exit status but don't exit
+                err!("Bad uid mapping (probably doesn't match allow_users)");
             }
             if !check_mapping(&tree.allow_groups, &config.gid_map) {
-                error!("Bad gid mapping (probably doesn't match allow_groups)");
-                exit(1); // TODO(tailhook) set exit status but don't exit
+                err!("Bad gid mapping (probably doesn't match allow_groups)");
             }
         }
     }
     if alter_config.is_some() {
-        error!("Tree {:?} is not used", tree_name);
-        exit(1); // TODO(tailhook) set exit status but don't exit
+        err!("Tree {:?} is not used", tree_name);
     }
 }
 
@@ -203,18 +198,15 @@ fn check_binaries() {
     {
         Some(dir) => dir,
         None => {
-            error!("Can't find out exe path");
-            exit(1); // TODO(tailhook) set exit status but don't exit
-            //return;
+            err!("Can't find out exe path");
+            return;
         }
     };
     if metadata(&dir.join("lithos_tree")).is_err() {
-        error!("Can't find lithos_tree binary");
-        exit(1); // TODO(tailhook) set exit status but don't exit
+        err!("Can't find lithos_tree binary");
     }
     if metadata(&dir.join("lithos_knot")).is_err() {
-        error!("Can't find lithos_knot binary");
-        exit(1); // TODO(tailhook) set exit status but don't exit
+        err!("Can't find lithos_knot binary");
     }
 }
 
@@ -223,6 +215,7 @@ fn main() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "warn");
     }
+    env_logger::init().unwrap();
 
     let mut config_file = PathBuf::from("/etc/lithos.yaml");
     let mut verbose = false;
@@ -257,9 +250,9 @@ fn main() {
         }
     }
     if alter_config.is_some() && tree_name.is_none() {
-        error!("Please specify --tree if you use --dir");
-        exit(1);
+        err!("Please specify --tree if you use --dir");
     }
     check_binaries();
     check(&config_file, verbose, tree_name, alter_config);
+    exit(EXIT_STATUS.load(Ordering::SeqCst) as i32);
 }
