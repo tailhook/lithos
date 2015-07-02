@@ -1,6 +1,7 @@
 extern crate rustc_serialize;
 extern crate libc;
 #[macro_use] extern crate log;
+extern crate env_logger;
 extern crate regex;
 extern crate shaman;
 extern crate argparse;
@@ -13,7 +14,7 @@ use std::io::{stderr, Read, Write};
 use std::io::Error as IoError;
 use std::process::exit;
 use std::path::{Path, PathBuf};
-use std::path::Component::Normal;
+use std::path::Component;
 use std::str::FromStr;
 use std::ffi::{OsStr, OsString};
 use std::fs::{File};
@@ -107,8 +108,9 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
     }
     let lnk = try!(read_link(&tree.config_file)
        .map_err(|e| format!("Can't read link {:?}: {}", tree.config_file, e)));
-    match lnk.components().rev().nth(1) {
-        Some(Normal(_)) => {},
+    let mut cmp_iter = lnk.components();
+    match (cmp_iter.next(), cmp_iter.next()) {
+        (Some(Component::Normal(_)), None) => {},
         _ => return Err(format!("The path {:?} must be a symlink \
             which points to the file at the same level of hierarchy.",
             tree.config_file)),
@@ -159,6 +161,11 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
 
 
 fn main() {
+    if env::var("RUST_LOG").is_err() {
+        env::set_var("RUST_LOG", "warn");
+    }
+    env_logger::init().unwrap();
+
     let mut master_config = PathBuf::from("/etc/lithos.yaml");
     let mut verbose = false;
     let mut name_prefix = None;
