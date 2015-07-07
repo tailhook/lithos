@@ -222,3 +222,19 @@ pub fn relative(child: &Path, base: &Path) -> PathBuf {
     return res
 }
 
+pub fn read_yaml_dir(dir: &Path) -> Result<Vec<(String, PathBuf)>, IoError> {
+    let mut res = vec!();
+    for entry in try!(read_dir(dir)) {
+        let entry = try!(entry);
+        if let Some(fname) = entry.file_name().as_os_str().to_str() {
+            if fname.ends_with(".yaml") && !fname.starts_with(".") {
+                res.push((
+                    fname[..fname.len()-5].to_string(),
+                    entry.path().to_path_buf(),
+                    ));
+            }
+        }
+    }
+    Ok(res)
+}
+

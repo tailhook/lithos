@@ -12,7 +12,7 @@ extern crate fern;
 use std::env;
 use std::rc::Rc;
 use std::io::Error as IoError;
-use std::fs::{File, metadata};
+use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
 use std::fs::{read_dir, remove_dir};
@@ -38,7 +38,7 @@ use lithos::container_config::ContainerKind::Daemon;
 use lithos::monitor::{Monitor, Executor};
 use lithos::monitor::MonitorResult::{Killed, Reboot};
 use lithos::container::Command;
-use lithos::utils::{clean_dir, get_time, relative, cpath};
+use lithos::utils::{clean_dir, get_time, relative, cpath, read_yaml_dir};
 use lithos::signal;
 use lithos::cgroup;
 use lithos_tree_options::Options;
@@ -460,25 +460,16 @@ fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
     -> HashMap<Rc<String>, Child>
 {
     let tree_validator = TreeConfig::validator();
-    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
-    read_dir(&master.config_dir)
+    read_yaml_dir(&master.config_dir)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
-        .map(|x| x.collect())
         .unwrap_or(Vec::new())
         .into_iter()
-        .filter_map(|f| f.ok())
-        .filter_map(|f| {
-            let name = match f.path().file_name()
-                            .and_then(|f| f.to_str())
-                            .and_then(|s| name_re.captures(s))
-            {
-                Some(capt) => capt.at(1).unwrap().to_string(),
-                None => return None,
-            };
-            debug!("Reading config: {:?}", f.path());
-            parse_config(&f.path(), &*tree_validator, Default::default())
-                .map_err(|e| warn!("Can't read config {:?}: {}", f.path(), e))
-                .map(|cfg: TreeConfig| (name.to_string(), cfg))
+        .filter_map(|(tree_name, tree_config)| {
+            debug!("Reading config: {:?}", tree_config);
+            parse_config(&tree_config, &*tree_validator, Default::default())
+                .map_err(|e| error!("Can't read config {:?}: {}",
+                                    tree_config, e))
+                .map(|cfg: TreeConfig| (tree_name, cfg))
                 .ok()
         })
         .flat_map(|(name, tree)| {
@@ -498,8 +489,19 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     debug!("Reading child config {:?}", tree.config_file);
     parse_config(&tree.config_file,
         &*ChildConfig::mapping_validator(), Default::default())
+        .map(|cfg: BTreeMap<String, ChildConfig>| {
+            OpenOptions::new().create(true).write(true).append(true)
+            .open(master.config_log_dir.join(tree_name.clone() + ".log"))
+            .and_then(|mut f| write!(&mut f, "{} {:?} {}\n",
+                time::now_utc().rfc3339(),
+                tree_name,
+                json::as_json(&cfg)))
+            .map_err(|e| error!("Error writing config log: {}", e))
+            .ok();
+            cfg
+        })
         .map_err(|e| warn!("Can't read config {:?}: {}", tree.config_file, e))
-        .unwrap_or(BTreeMap::<String, ChildConfig>::new())
+        .unwrap_or(BTreeMap::new())
         .into_iter()
         .filter(|&(_, ref child)| child.kind == Daemon)
         .flat_map(|(child_name, mut child)| {

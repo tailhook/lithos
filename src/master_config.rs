@@ -14,6 +14,7 @@ pub struct MasterConfig {
     pub mount_dir: PathBuf,
     pub devfs_dir: PathBuf,
     pub default_log_dir: PathBuf,
+    pub config_log_dir: PathBuf,
     pub log_file: PathBuf,
     pub log_level: String,
     pub cgroup_name: Option<String>,
@@ -47,6 +48,9 @@ impl MasterConfig {
             ("log_level".to_string(), Box::new(Scalar {
                 default: Some(String::from("warn")),
                 .. Default::default() }) as Box<Validator>),
+            ("config_log_dir".to_string(), Box::new(Scalar {
+                default: Some("/var/log/lithos/config".to_string()),
+                .. Default::default() }) as Box<Validator>),
             ("cgroup_name".to_string(), Box::new(Scalar {
                 optional: true,
                 default: Some("lithos.slice".to_string()),
@@ -67,6 +71,8 @@ pub fn create_master_dirs(cfg: &MasterConfig) -> Result<(), String> {
     try!(ensure_dir(&cfg.runtime_dir.join(&cfg.mount_dir))
         .map_err(|e| format!("Cant create mount-dir: {}", e)));
     try!(ensure_dir(&cfg.default_log_dir)
-        .map_err(|e| format!("Cant create mount-dir: {}", e)));
+        .map_err(|e| format!("Cant create log dir: {}", e)));
+    try!(ensure_dir(&cfg.config_log_dir)
+        .map_err(|e| format!("Cant create configuration log dir: {}", e)));
     return Ok(());
 }

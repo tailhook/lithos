@@ -212,12 +212,12 @@ pub fn init_logging(path: &Path,
                           location: &log::LogLocation| {
             if *level >= log::LogLevel::Debug {
                 format!("[{}][{}]{}:{}: {}",
-                    time::now().strftime("%Y-%m-%d %H:%M:%S").unwrap(),
+                    time::now_utc().rfc3339(),
                     level, location.file(), location.line(),
                     msg)
             } else {
                 format!("[{}][{}] {}",
-                    time::now().strftime("%Y-%m-%d %H:%M:%S").unwrap(),
+                    time::now_utc().rfc3339(),
                     level, msg)
             }
         }),
