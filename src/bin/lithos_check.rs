@@ -230,7 +230,7 @@ fn main() {
           .metavar("FILE");
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], StoreTrue,
-            "Verbose configuration");
+            "Verbose output");
         ap.refer(&mut alter_config)
           .add_option(&["--alternate-config"], ParseOption,
             "Name of the alterate file name with configs.

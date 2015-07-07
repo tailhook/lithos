@@ -43,6 +43,10 @@ name = "lithos_check"
 path = "src/bin/lithos_check.rs"
 
 [[bin]]
+name = "lithos_clean"
+path = "src/bin/lithos_clean.rs"
+
+[[bin]]
 name = "lithos_switch"
 path = "src/bin/lithos_switch.rs"
 
