@@ -7,10 +7,23 @@ extern crate lithos;
 use std::env;
 use std::path::PathBuf;
 use std::process::exit;
+use std::collections::HashSet;
 
 use quire::parse_config;
-use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue};
+use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
+use lithos::utils::read_yaml_dir;
 use lithos::master_config::MasterConfig;
+use lithos::tree_config::TreeConfig;
+use lithos::container_config::ContainerConfig;
+use lithos::child_config::ChildConfig;
+
+
+#[derive(Clone, Copy, Debug)]
+enum Action {
+    Used,
+    Unused,
+    DeleteUnused,
+}
 
 
 fn main() {
@@ -23,6 +36,7 @@ fn main() {
     let mut verbose = false;
     let mut ver_min = 0;
     let mut ver_max = 1000;
+    let mut action = Action::Used;
     let mut days = None::<u32>;
     {
         let mut ap = ArgumentParser::new();
@@ -51,6 +65,13 @@ fn main() {
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], StoreTrue,
             "Verbose output");
+        ap.refer(&mut action)
+          .add_option(&["--used"], StoreConst(Action::Used),
+            "Show used images")
+          .add_option(&["--unused"], StoreConst(Action::Unused),
+            "Show unused images")
+          .add_option(&["--delete-unused"], StoreConst(Action::DeleteUnused),
+            "Delete unused images");
         ap.parse_args_or_exit();
     }
     let master: MasterConfig = match parse_config(&config_file,
@@ -61,4 +82,23 @@ fn main() {
             exit(1);
         }
     };
+    let used_images = match find_used_images(&master) {
+        Ok(images) => images,
+        Err(e) => {
+            error!("Error finding out used images: {}", e);
+            exit(1);
+        }
+    };
+}
+
+fn find_used_images(master: &MasterConfig) -> Result<HashSet<PathBuf>, String>
+{
+    let images = HashSet::new();
+    for (tree_name, tree_fn) in try!(read_yaml_dir(&master.config_dir)
+                            .map_err(|e| format!("Read dir error: {}", e)))
+    {
+        let tree_config = try!(parse_config(&tree_fn,
+            &*TreeConfig::validator(), Default::default()));
+    }
+    Ok(images)
 }
