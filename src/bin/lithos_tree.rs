@@ -492,9 +492,8 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
         .map(|cfg: BTreeMap<String, ChildConfig>| {
             OpenOptions::new().create(true).write(true).append(true)
             .open(master.config_log_dir.join(tree_name.clone() + ".log"))
-            .and_then(|mut f| write!(&mut f, "{} {:?} {}\n",
+            .and_then(|mut f| write!(&mut f, "{} {}\n",
                 time::now_utc().rfc3339(),
-                tree_name,
                 json::as_json(&cfg)))
             .map_err(|e| error!("Error writing config log: {}", e))
             .ok();
