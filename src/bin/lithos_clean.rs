@@ -3,18 +3,26 @@ extern crate env_logger;
 extern crate argparse;
 extern crate quire;
 extern crate lithos;
+extern crate time;
+extern crate rustc_serialize;
 
 use std::env;
+use std::io::{BufReader, BufRead};
+use std::fs::File;
 use std::path::PathBuf;
 use std::process::exit;
 use std::collections::HashSet;
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
 
+use time::{Tm, Duration, now_utc};
 use quire::parse_config;
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
+use rustc_serialize::json;
+
 use lithos::utils::read_yaml_dir;
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
-use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 
 
@@ -82,23 +90,91 @@ fn main() {
             exit(1);
         }
     };
-    let used_images = match find_used_images(&master) {
+    let tm = days.map(|days| now_utc() - Duration::days(days as i64));
+    let used_images = match find_used_images(&master, tm, ver_min, ver_max) {
         Ok(images) => images,
         Err(e) => {
             error!("Error finding out used images: {}", e);
             exit(1);
         }
     };
+    println!("Used images: {:?}", used_images);
 }
 
-fn find_used_images(master: &MasterConfig) -> Result<HashSet<PathBuf>, String>
+fn find_used_images(master: &MasterConfig, min_time: Option<Tm>,
+    ver_min: u32, ver_max: u32) -> Result<HashSet<PathBuf>, String>
 {
-    let images = HashSet::new();
+    let mut images = HashSet::new();
+    let childval = &*ChildConfig::mapping_validator();
     for (tree_name, tree_fn) in try!(read_yaml_dir(&master.config_dir)
                             .map_err(|e| format!("Read dir error: {}", e)))
     {
-        let tree_config = try!(parse_config(&tree_fn,
+        let tree_config: TreeConfig = try!(parse_config(&tree_fn,
             &*TreeConfig::validator(), Default::default()));
+        let all_children: BTreeMap<String, ChildConfig>;
+        all_children = try!(parse_config(&tree_config.config_file,
+            childval, Default::default())
+            .map_err(|e| format!("Can't read child config {:?}: {}",
+                                 tree_config.config_file, e)));
+        for child in all_children.values() {
+            // Current are always added
+            images.insert(tree_config.image_dir.join(&child.image));
+        }
+        let logname = master.config_log_dir.join(format!("{}.log", tree_name));
+        // TODO(tailhook) look in log rotations
+        let log = try!(File::open(&logname)
+            .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
+        let mut configs;
+        configs = VecDeque::<(Tm, BTreeMap<String, ChildConfig>)>::new();
+        for (line_no, line) in BufReader::new(log).lines().enumerate() {
+            let line = try!(line
+                .map_err(|e| format!("Readline error: {}", e)));
+            let mut iter = line.splitn(2, " ");
+            let (tm, cfg) = match (iter.next(), iter.next()) {
+                    (Some(""), None) => continue, // last line, probably
+                    (Some(date), Some(config)) => {
+                        // TODO(tailhook) remove or check tree name
+                        (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+                             .map_err(|_| format!("Bad time at {:?}:{}",
+                                logname, line_no))),
+                         try!(json::decode(config)
+                             .map_err(|_| format!("Bad config at {:?}:{}",
+                                logname, line_no))),
+                        )
+                    }
+                    _ => {
+                        return Err(format!("Bad line at {:?}:{}",
+                                           logname, line_no));
+                    }
+                };
+            if let Some(&(_, ref ocfg)) = configs.back(){
+                if *ocfg == cfg {
+                    continue;
+                }
+            }
+            configs.push_back((tm, cfg));
+            if configs.len() >= ver_max as usize {
+                configs.pop_front();
+            }
+        }
+        min_time.map(|min_time| {
+            while configs.len() > ver_min as usize {
+                if let Some(&(tm, _)) = configs.front() {
+                    if tm > min_time {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+                configs.pop_front();
+            }
+        });
+        for &(_, ref cfg) in configs.iter() {
+            for child in cfg.values() {
+                // Current are always added
+                images.insert(tree_config.image_dir.join(&child.image));
+            }
+        }
     }
     Ok(images)
 }
