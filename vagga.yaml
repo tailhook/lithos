@@ -82,7 +82,7 @@ containers:
       script: |
         ./install.sh --prefix=/usr --components=rustc,cargo
     environ:
-      HOME: /work/run
+      HOME: /work/target
 
   docs:
     setup:
