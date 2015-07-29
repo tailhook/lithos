@@ -145,7 +145,7 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
     let read = File::open(&pid_file)
             .and_then(|mut f| f.read_to_string(&mut buf))
             .ok();
-    match read.and_then(|_| FromStr::from_str(&buf).ok()) {
+    match read.and_then(|_| FromStr::from_str(buf[..].trim()).ok()) {
         Some(pid) if signal::is_process_alive(pid) => {
             signal::send_signal(pid, signal::SIGQUIT);
         }
