@@ -94,7 +94,7 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
     let config_fn: OsString = if let Some(prefix) = name_prefix {
         let hash = try!(hash_file(&config_file)
             .map_err(|e| format!("Can't read file: {}", e)));
-        OsString::from(prefix + &hash + ".yaml")
+        OsString::from(prefix + &hash[..8] + ".yaml")
     } else {
         config_file.file_name().unwrap().to_owned()
     };
@@ -115,6 +115,8 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
             which points to the file at the same level of hierarchy.",
             tree.config_file)),
     };
+    debug!("Target filename {:?} ({:?} -> {:?})", target_fn,
+        lnk.file_name(), target_fn.file_name());
     if lnk.file_name() == target_fn.file_name() {
         warn!("Target config dir is the active one. Nothing to do.");
         return Ok(());
