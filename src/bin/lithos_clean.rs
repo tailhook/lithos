@@ -8,7 +8,8 @@ extern crate rustc_serialize;
 
 use std::env;
 use std::io::{BufReader, BufRead};
-use std::fs::File;
+use std::io::Error as IoError;
+use std::fs::{File, read_dir, remove_dir_all};
 use std::path::PathBuf;
 use std::process::exit;
 use std::collections::HashSet;
@@ -91,26 +92,85 @@ fn main() {
         }
     };
     let tm = days.map(|days| now_utc() - Duration::days(days as i64));
-    let used_images = match find_used_images(&master, tm, ver_min, ver_max) {
-        Ok(images) => images,
+    let (used, dirs) = match find_used_images(&master, tm, ver_min, ver_max) {
+        Ok((used, dirs)) => (used, dirs),
         Err(e) => {
             error!("Error finding out used images: {}", e);
             exit(1);
         }
     };
-    println!("Used images: {:?}", used_images);
+    match action {
+        Action::Used => {
+            for i in used {
+                println!("{:?}", i);
+            }
+        }
+        Action::Unused => {
+            let unused = find_unused(&used, &dirs)
+                .map_err(|e| {
+                    error!("Error finding unused images: {:?}", e);
+                    exit(2);
+                })
+                .unwrap();
+            for i in unused {
+                println!("{:?}", i);
+            }
+        }
+        Action::DeleteUnused => {
+            let unused = find_unused(&used, &dirs)
+                .map_err(|e| {
+                    error!("Error finding unused images: {:?}", e);
+                    exit(2);
+                })
+                .unwrap();
+            for i in unused {
+                if verbose {
+                    println!("Deleting {:?}", i);
+                }
+                remove_dir_all(&i)
+                    .map_err(|e| error!("Error removing {:?}: {}", i, e)).ok();
+            }
+        }
+    }
+}
+
+fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
+    -> Result<Vec<PathBuf>, IoError> {
+    let mut unused = Vec::new();
+    for dir in dirs.iter() {
+        for entry in try!(read_dir(dir)) {
+            let entry = try!(entry);
+            if !try!(entry.file_type()).is_dir() {
+                continue;
+            }
+            if let Some(name) = entry.file_name().as_os_str().to_str() {
+                if name.starts_with(".") {
+                    continue;
+                }
+            }
+            let path = entry.path().to_path_buf();
+            if !used.contains(&path) {
+                unused.push(path);
+            }
+        }
+    }
+    Ok(unused)
 }
 
 fn find_used_images(master: &MasterConfig, min_time: Option<Tm>,
-    ver_min: u32, ver_max: u32) -> Result<HashSet<PathBuf>, String>
+    ver_min: u32, ver_max: u32)
+    -> Result<(HashSet<PathBuf>, HashSet<PathBuf>), String>
 {
     let mut images = HashSet::new();
+    let mut image_dirs = HashSet::new();
     let childval = &*ChildConfig::mapping_validator();
     for (tree_name, tree_fn) in try!(read_yaml_dir(&master.config_dir)
                             .map_err(|e| format!("Read dir error: {}", e)))
     {
         let tree_config: TreeConfig = try!(parse_config(&tree_fn,
             &*TreeConfig::validator(), Default::default()));
+        image_dirs.insert(tree_config.image_dir.clone());
+
         let all_children: BTreeMap<String, ChildConfig>;
         all_children = try!(parse_config(&tree_config.config_file,
             childval, Default::default())
@@ -120,6 +180,7 @@ fn find_used_images(master: &MasterConfig, min_time: Option<Tm>,
             // Current are always added
             images.insert(tree_config.image_dir.join(&child.image));
         }
+
         let logname = master.config_log_dir.join(format!("{}.log", tree_name));
         // TODO(tailhook) look in log rotations
         let log = try!(File::open(&logname)
@@ -176,5 +237,5 @@ fn find_used_images(master: &MasterConfig, min_time: Option<Tm>,
             }
         }
     }
-    Ok(images)
+    Ok((images, image_dirs))
 }
