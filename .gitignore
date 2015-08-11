@@ -7,3 +7,4 @@
 *.orig
 /todo.txt
 /docs/_build
+/target
