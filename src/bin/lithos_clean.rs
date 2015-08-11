@@ -10,7 +10,7 @@ use std::env;
 use std::io::{BufReader, BufRead};
 use std::io::Error as IoError;
 use std::fs::{File, read_dir, remove_dir_all};
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::process::exit;
 use std::collections::HashSet;
 use std::collections::BTreeMap;
@@ -41,7 +41,7 @@ fn main() {
         env::set_var("RUST_LOG", "warn");
     }
     env_logger::init().unwrap();
-    let mut config_file = PathBuf::from("/etc/lithos.yaml");
+    let mut config_file = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;
     let mut ver_min = 0;
     let mut ver_max = 1000;
@@ -52,7 +52,8 @@ fn main() {
         ap.set_description("Show used/unused images and clean if needed");
         ap.refer(&mut config_file)
           .add_option(&["-C", "--config"], Parse,
-            "Name of the global configuration file (default /etc/lithos.yaml)")
+            "Name of the global configuration file \
+             (default /etc/lithos/master.yaml)")
           .metavar("FILE");
         ap.refer(&mut days)
           .add_option(&["-D", "--history-days"], ParseOption,
@@ -92,7 +93,9 @@ fn main() {
         }
     };
     let tm = days.map(|days| now_utc() - Duration::days(days as i64));
-    let (used, dirs) = match find_used_images(&master, tm, ver_min, ver_max) {
+    let (used, dirs) = match find_used_images(&master, &config_file,
+        tm, ver_min, ver_max)
+    {
         Ok((used, dirs)) => (used, dirs),
         Err(e) => {
             error!("Error finding out used images: {}", e);
@@ -135,7 +138,8 @@ fn main() {
 }
 
 fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
-    -> Result<Vec<PathBuf>, IoError> {
+    -> Result<Vec<PathBuf>, IoError>
+{
     let mut unused = Vec::new();
     for dir in dirs.iter() {
         for entry in try!(read_dir(dir)) {
@@ -157,23 +161,27 @@ fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
     Ok(unused)
 }
 
-fn find_used_images(master: &MasterConfig, min_time: Option<Tm>,
-    ver_min: u32, ver_max: u32)
+fn find_used_images(master: &MasterConfig, master_file: &Path,
+    min_time: Option<Tm>, ver_min: u32, ver_max: u32)
     -> Result<(HashSet<PathBuf>, HashSet<PathBuf>), String>
 {
+    let config_dir = master_file.parent().unwrap().join(&master.limits_dir);
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
     let childval = &*ChildConfig::mapping_validator();
-    for (tree_name, tree_fn) in try!(read_yaml_dir(&master.config_dir)
+    for (tree_name, tree_fn) in try!(read_yaml_dir(&config_dir)
                             .map_err(|e| format!("Read dir error: {}", e)))
     {
         let tree_config: TreeConfig = try!(parse_config(&tree_fn,
             &*TreeConfig::validator(), Default::default()));
         image_dirs.insert(tree_config.image_dir.clone());
 
+        let cfg = master_file.parent().unwrap()
+            .join(&master.instances_dir)
+            .join(tree_config.config_file.as_ref().unwrap_or(
+                &PathBuf::from(&(tree_name.clone() + ".yaml"))));
         let all_children: BTreeMap<String, ChildConfig>;
-        all_children = try!(parse_config(&tree_config.config_file,
-            childval, Default::default())
+        all_children = try!(parse_config(&cfg, childval, Default::default())
             .map_err(|e| format!("Can't read child config {:?}: {}",
                                  tree_config.config_file, e)));
         for child in all_children.values() {

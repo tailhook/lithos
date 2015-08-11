@@ -3,14 +3,21 @@ Master Configuration
 ====================
 
 
-Master configuration file is the one that usually at ``/etc/lithos.yaml`` and
-defines small subset of global configuration parameters. Minimal configuration
-is an *empty file* but it **must exist** anyway. Here is the reference of
-the parameters along with the default values:
+Master configuration file is the one that usually at
+``/etc/lithos/master.yaml`` and defines small subset of global configuration
+parameters. Minimal configuration is an *empty file* but it **must exist**
+anyway. Here is the reference of the parameters along with the default values:
 
-``config-dir``
-    The directory for per-application configuration files. Path should be
-    absolute.  Default is ``/etc/lithos``.
+``limits-dir``
+    The directory for per-application configuration files which contain limits
+    of what application might use. If path is relative it's relative to
+    the directory where configuration file is. Default is ``./limits``.
+
+``instances-dir``
+    The directory for per-application configuration files which contain name of
+    image directory, instance number, etc., to run. If path is relative it's
+    relative to the directory where configuration file is. Default is
+    ``./instances``.
 
 ``runtime-dir``
     The directory where ``pid`` file of master process is stored and also

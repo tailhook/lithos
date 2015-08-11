@@ -3,7 +3,6 @@ extern crate libc;
 #[macro_use] extern crate log;
 extern crate env_logger;
 extern crate regex;
-extern crate shaman;
 extern crate argparse;
 extern crate quire;
 #[macro_use] extern crate lithos;
@@ -11,21 +10,15 @@ extern crate quire;
 
 use std::env;
 use std::io::{stderr, Read, Write};
-use std::io::Error as IoError;
 use std::process::exit;
 use std::path::{Path, PathBuf};
-use std::path::Component;
 use std::str::FromStr;
-use std::ffi::{OsStr, OsString};
 use std::fs::{File};
-use std::fs::{copy, rename, metadata, read_link};
-use std::os::unix::fs::symlink;
-use std::os::unix::ffi::OsStrExt;
+use std::fs::{copy, rename};
 use std::default::Default;
 use std::process::{Command, Stdio};
 
-use shaman::digest::Digest;
-use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue};
+use argparse::{ArgumentParser, Parse, StoreTrue};
 use quire::parse_config;
 
 use lithos::master_config::MasterConfig;
@@ -33,19 +26,7 @@ use lithos::tree_config::TreeConfig;
 use lithos::signal;
 
 
-fn hash_file(file: &Path) -> Result<String, IoError> {
-    let mut hash = shaman::sha2::Sha256::new();
-    // We assume that file is small enough so we don't care reading it
-    // to memory
-    let mut buf = Vec::with_capacity(1024);
-    try!(try!(File::open(file)).read_to_end(&mut buf));
-    hash.input(&buf);
-    Ok(hash.result_str())
-}
-
-
-fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
-    name_prefix: Option<String>)
+fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
     -> Result<(), String>
 {
     match Command::new(env::current_exe().unwrap()
@@ -81,7 +62,9 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
             return Err(format!("Can't parse master config: {}", e));
         }
     };
-    let tree_fn = master.config_dir.join(tree_name + ".yaml");
+    let tree_fn = master_cfg.parent().unwrap()
+        .join(&master.limits_dir)
+        .join(&(tree_name.clone() + ".yaml"));
     let tree: TreeConfig = match parse_config(&tree_fn,
         &*TreeConfig::validator(), Default::default())
     {
@@ -91,53 +74,17 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path,
         }
     };
 
-    let config_fn: OsString = if let Some(prefix) = name_prefix {
-        let hash = try!(hash_file(&config_file)
-            .map_err(|e| format!("Can't read file: {}", e)));
-        OsString::from(prefix + &hash[..8] + ".yaml")
-    } else {
-        config_file.file_name().unwrap().to_owned()
-    };
-    let target_fn = tree.config_file.parent().unwrap()
-                    .join(&config_fn);
-    if target_fn == tree.config_file {
-        return Err(format!("Target config file ({:?}) \
-            is the current file ({:?}). You must have unique \
-            name for each new configuration",
-            target_fn, tree.config_file));
-    }
-    let lnk = try!(read_link(&tree.config_file)
-       .map_err(|e| format!("Can't read link {:?}: {}", tree.config_file, e)));
-    let mut cmp_iter = lnk.components();
-    match (cmp_iter.next(), cmp_iter.next()) {
-        (Some(Component::Normal(_)), None) => {},
-        _ => return Err(format!("The path {:?} must be a symlink \
-            which points to the file at the same level of hierarchy.",
-            tree.config_file)),
-    };
-    debug!("Target filename {:?} ({:?} -> {:?})", target_fn,
-        lnk.file_name(), target_fn.file_name());
-    if lnk.file_name() == target_fn.file_name() {
-        warn!("Target config dir is the active one. Nothing to do.");
-        return Ok(());
-    }
-    if metadata(&target_fn).is_ok() {
-        warn!("Target file {:?} exists. \
-            Probably already copied. Skipping copying step.",
-            target_fn);
-    } else {
-        info!("Seems everything nice. Copying");
-        try!(copy(&config_file, &target_fn)
-            .map_err(|e| format!("Error copying: {}", e)));
-    }
-    info!("Ok files are there. Making symlink");
-    let mut tmpname = OsStr::from_bytes(b".tmp.").to_owned();
-    tmpname.push(tree.config_file.file_name().unwrap());
-    let symlink_fn = tree.config_file.with_file_name(tmpname);
-    try!(symlink(&Path::new(&config_fn), &symlink_fn)
-        .map_err(|e| format!("Error symlinking dir: {}", e)));
-    try!(rename(&symlink_fn, &tree.config_file)
-        .map_err(|e| format!("Error replacing symlink: {}", e)));
+    let target_fn = master_cfg.parent().unwrap()
+        .join(&master.instances_dir)
+        .join(tree.config_file.as_ref().unwrap_or(
+            &PathBuf::from(&(tree_name.clone() + ".yaml"))));
+    debug!("Target filename {:?}", target_fn);
+    let tmp_filename = target_fn.with_file_name(
+        &format!(".tmp.{}", tree_name));
+    try!(copy(&config_file, &tmp_filename)
+        .map_err(|e| format!("Error copying: {}", e)));
+    try!(rename(&tmp_filename, &target_fn)
+        .map_err(|e| format!("Error replacing file: {}", e)));
 
     info!("Done. Sending SIGQUIT to lithos_tree");
     let pid_file = master.runtime_dir.join("master.pid");
@@ -168,9 +115,8 @@ fn main() {
     }
     env_logger::init().unwrap();
 
-    let mut master_config = PathBuf::from("/etc/lithos.yaml");
+    let mut master_config = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;
-    let mut name_prefix = None;
     let mut config_file = PathBuf::from("");
     let mut tree_name = "".to_string();
     {
@@ -178,17 +124,12 @@ fn main() {
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut master_config)
           .add_option(&["--master"], Parse,
-            "Name of the master configuration file (default /etc/lithos.yaml)")
+            "Name of the master configuration file \
+                (default /etc/lithos/master.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], StoreTrue,
             "Verbose configuration");
-        ap.refer(&mut name_prefix)
-          .add_option(&["--hashed-name"], ParseOption, "
-            Do not use last component of FILE as a name, but create an unique
-            name based on the PREFIX and hash of the contents.
-            ")
-          .metavar("PREFIX");
         ap.refer(&mut tree_name)
           .add_argument("tree", Parse,
             "Name of the tree which configuration will be switched for")
@@ -211,7 +152,7 @@ fn main() {
             }
         }
     }
-    match switch_config(&master_config, tree_name, &config_file, name_prefix)
+    match switch_config(&master_config, tree_name, &config_file)
     {
         Ok(()) => {
             exit(0);

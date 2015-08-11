@@ -29,7 +29,7 @@ impl Options {
         -> Result<Options, i32>
     {
         let mut options = Options {
-            master_config: PathBuf::from("/etc/lithos.yaml"),
+            master_config: PathBuf::from("/etc/lithos/master.yaml"),
             config: ChildConfig {
                 instances: 0,
                 image: "".to_string(),
@@ -50,7 +50,7 @@ impl Options {
             ap.refer(&mut options.master_config)
               .add_option(&["--master"], Parse,
                 "Name of the master configuration file \
-                 (default /etc/lithos.yaml)")
+                 (default /etc/lithos/master.yaml)")
               .metavar("FILE");
             ap.refer(&mut options.config)
               .add_option(&["--config"], Store,

@@ -94,11 +94,11 @@ fn check(config_file: &Path, verbose: bool,
 
     check_master_config(&master, verbose);
 
-    for tree_fn in read_dir(&master.config_dir)
+    let config_dir = config_file.parent().unwrap().join(master.limits_dir);
+    for tree_fn in read_dir(&config_dir)
         .map(|v| v.collect())
         .map_err(|e| {
-            err!("Can't open config directory {:?}: {}",
-                master.config_dir, e);
+            err!("Can't open config directory {:?}: {}", config_dir, e);
         })
         .unwrap_or(Vec::new())
         .into_iter()
@@ -117,12 +117,16 @@ fn check(config_file: &Path, verbose: bool,
         };
         check_tree_config(&tree);
 
+        let default_config = config_file.parent().unwrap()
+            .join(&master.instances_dir)
+            .join(tree.config_file.as_ref().unwrap_or(
+                &PathBuf::from(tree_fn.file_name())));
         let config_file = match (
             tree_fn.path().file_stem().and_then(|x| x.to_str()), &tree_name)
         {
             (Some(ref f), &Some(ref t)) if &f[..] == t
-            => alter_config.take().unwrap_or(tree.config_file),
-            _ => tree.config_file,
+            => alter_config.take().unwrap_or(default_config),
+            _ => default_config,
         };
 
         debug!("Checking {:?}", config_file);
@@ -217,7 +221,7 @@ fn main() {
     }
     env_logger::init().unwrap();
 
-    let mut config_file = PathBuf::from("/etc/lithos.yaml");
+    let mut config_file = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;
     let mut alter_config = None;
     let mut tree_name = None;
@@ -226,7 +230,8 @@ fn main() {
         ap.set_description("Checks if lithos configuration is ok");
         ap.refer(&mut config_file)
           .add_option(&["-C", "--config"], Parse,
-            "Name of the global configuration file (default /etc/lithos.yaml)")
+            "Name of the global configuration file \
+             (default /etc/lithos/master.yaml)")
           .metavar("FILE");
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], StoreTrue,

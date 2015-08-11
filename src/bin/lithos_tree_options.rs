@@ -21,7 +21,7 @@ impl Options {
         -> Result<Options, i32>
     {
         let mut options = Options {
-            config_file: PathBuf::from("/etc/lithos.yaml"),
+            config_file: PathBuf::from("/etc/lithos/master.yaml"),
             log_stderr: false,
             log_level: None,
         };
@@ -31,7 +31,7 @@ impl Options {
             ap.refer(&mut options.config_file)
               .add_option(&["-C", "--config"], Parse,
                 "Name of the global configuration file \
-                 (default /etc/lithos.yaml)")
+                 (default /etc/lithos/master.yaml)")
               .metavar("FILE");
             ap.refer(&mut options.log_stderr)
               .add_option(&["--log-stderr"], StoreTrue,

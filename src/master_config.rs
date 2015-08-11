@@ -9,7 +9,8 @@ use super::utils::ensure_dir;
 #[derive(RustcDecodable)]
 pub struct MasterConfig {
     pub runtime_dir: PathBuf,
-    pub config_dir: PathBuf,
+    pub limits_dir: PathBuf,
+    pub instances_dir: PathBuf,
     pub state_dir: PathBuf,
     pub mount_dir: PathBuf,
     pub devfs_dir: PathBuf,
@@ -24,8 +25,11 @@ pub struct MasterConfig {
 impl MasterConfig {
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
-            ("config_dir".to_string(), Box::new(Scalar {
-                default: Some("/etc/lithos".to_string()),
+            ("limits_dir".to_string(), Box::new(Scalar {
+                default: Some("./limits".to_string()),
+                .. Default::default() }) as Box<Validator>),
+            ("instances_dir".to_string(), Box::new(Scalar {
+                default: Some("./instances".to_string()),
                 .. Default::default() }) as Box<Validator>),
             ("runtime_dir".to_string(), Box::new(Scalar {
                 default: Some("/run/lithos".to_string()),

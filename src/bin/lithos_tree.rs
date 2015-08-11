@@ -184,7 +184,7 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
         match File::open(&pid_file)
             .and_then(|mut f| f.read_to_string(&mut buf))
             .map_err(|_| ())
-            .and_then(|_| FromStr::from_str(&buf[..])
+            .and_then(|_| FromStr::from_str(&buf[..].trim())
                             .map_err(|_| ()))
         {
             Ok::<pid_t, ()>(pid) if pid == mypid => {
@@ -427,8 +427,7 @@ fn run(config_file: &Path, options: &Options)
     let config_file = Rc::new(config_file.to_owned());
     let mut mon = Monitor::new("lithos-tree".to_string());
 
-    info!("Reading tree configs from {:?}", master.config_dir);
-    let mut configs = read_configs(&master, &bin, &config_file, options);
+    let mut configs = read_limits(&master, &bin, &config_file, options);
 
     info!("Recovering Processes");
     recover_processes(&master, &mut mon, &mut configs, &config_file);
@@ -455,12 +454,14 @@ fn run(config_file: &Path, options: &Options)
     return Ok(());
 }
 
-fn read_configs(master: &Rc<MasterConfig>, bin: &Binaries,
+fn read_limits(master: &Rc<MasterConfig>, bin: &Binaries,
     master_file: &Rc<PathBuf>, options: &Options)
     -> HashMap<Rc<String>, Child>
 {
+    let dirpath = master_file.parent().unwrap().join(&master.limits_dir);
+    info!("Reading limits from {:?}", dirpath);
     let tree_validator = TreeConfig::validator();
-    read_yaml_dir(&master.config_dir)
+    read_yaml_dir(&dirpath)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
         .unwrap_or(Vec::new())
         .into_iter()
@@ -486,9 +487,12 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     options: &Options)
     -> Vec<(Rc<String>, Child)>
 {
-    debug!("Reading child config {:?}", tree.config_file);
-    parse_config(&tree.config_file,
-        &*ChildConfig::mapping_validator(), Default::default())
+    let cfg = master_file.parent().unwrap()
+        .join(&master.instances_dir)
+        .join(tree.config_file.as_ref().unwrap_or(
+            &PathBuf::from(&(tree_name.clone() + ".yaml"))));
+    debug!("Reading child config {:?}", cfg);
+    parse_config(&cfg, &*ChildConfig::mapping_validator(), Default::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
             OpenOptions::new().create(true).write(true).append(true)
             .open(master.config_log_dir.join(tree_name.clone() + ".log"))

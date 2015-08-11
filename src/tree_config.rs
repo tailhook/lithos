@@ -55,7 +55,7 @@ impl Decodable for Range {
 
 #[derive(RustcDecodable)]
 pub struct TreeConfig {
-    pub config_file: PathBuf,
+    pub config_file: Option<PathBuf>,
     pub image_dir: PathBuf,
     pub log_file: Option<PathBuf>,
     pub log_level: Option<String>,
@@ -70,7 +70,7 @@ impl TreeConfig {
     pub fn validator<'x>() -> Box<Validator + 'x> {
         return Box::new(Structure { members: vec!(
             ("config_file".to_string(), Box::new(Scalar {
-                default: Some("/etc/lithos/current.yaml".to_string()),
+                optional: true,
                 .. Default::default() }) as Box<Validator>),
             ("image_dir".to_string(), Box::new(Scalar {
                 default: Some("/var/lib/lithos/containers".to_string()),

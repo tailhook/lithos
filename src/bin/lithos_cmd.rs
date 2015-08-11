@@ -92,7 +92,7 @@ fn run(master_cfg: &Path, tree_name: String,
     }
 
     let tree: TreeConfig = try!(parse_config(
-        &master.config_dir.join(tree_name.clone() + ".yaml"),
+        &master_cfg.join(&master.limits_dir).join(tree_name.clone() + ".yaml"),
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
@@ -110,10 +110,14 @@ fn run(master_cfg: &Path, tree_name: String,
             .unwrap_or(log::LogLevel::Warn),
         log_stderr));
 
-    debug!("Children config {:?}", tree.config_file);
+    let cfg = master_cfg.parent().unwrap()
+        .join(&master.instances_dir)
+        .join(tree.config_file.as_ref().unwrap_or(
+            &PathBuf::from(&(tree_name.clone() + ".yaml"))));
+    debug!("Children config {:?}", cfg);
     let tree_children: BTreeMap<String, ChildConfig>;
-    tree_children = try!(parse_config(&tree.config_file,
-        &*ChildConfig::mapping_validator(), Default::default())
+    tree_children = try!(parse_config(&cfg,
+            &*ChildConfig::mapping_validator(), Default::default())
         .map_err(|e| format!("Error reading children config: {}", e)));
     let child_cfg = try!(tree_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));
@@ -150,7 +154,7 @@ fn main() {
 
     signal::block_all();
 
-    let mut master_config = PathBuf::from("/etc/lithos.yaml");
+    let mut master_config = PathBuf::from("/etc/lithos/master.yaml");
     let mut command_name = "".to_string();
     let mut tree_name = "".to_string();
     let mut args = vec!();
@@ -161,7 +165,8 @@ fn main() {
         ap.set_description("Runs tree of processes");
         ap.refer(&mut master_config)
           .add_option(&["--master"], Parse,
-            "Name of the master configuration file (default /etc/lithos.yaml)")
+            "Name of the master configuration file \
+             (default /etc/lithos/master.yaml)")
           .metavar("FILE");
         ap.refer(&mut log_stderr)
           .add_option(&["--log-stderr"], StoreTrue,
