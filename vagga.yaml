@@ -9,16 +9,14 @@ commands:
     description: Build ubuntu (trusty) package
     container: ubuntu
     write-mode: transient-hard-link-copy
-    run:
-    - checkinstall
-    - --default
-    - --maintainer=paul@colomiets.name
-    - --pkglicense=MIT
-    - --pkgname=lithos
-    - --nodoc
-    - --strip=no
-    - make
-    - install
+    run: |
+      set -ex
+      ver=$(git describe)
+      checkinstall --default \
+        --maintainer=paul@colomiets.name --pkglicense=MIT \
+        --pkgname=lithos --nodoc --strip=no \
+        --pkgver=${ver#v} \
+        make install
 
   docs: !Command
     description: Build HTML docs
@@ -76,7 +74,7 @@ containers:
     setup:
     - !Ubuntu trusty
     - !UbuntuUniverse
-    - !Install [make, checkinstall, wget, gcc, libc6-dev, ca-certificates]
+    - !Install [make, checkinstall, wget, gcc, libc6-dev, ca-certificates, git]
     - !TarInstall
       url: http://static.rust-lang.org/dist/rust-1.2.0-x86_64-unknown-linux-gnu.tar.gz
       script: |
