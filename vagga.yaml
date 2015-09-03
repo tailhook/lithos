@@ -17,10 +17,12 @@ commands:
     run: |
       set -ex
       ver=$(git describe)
+      [ -d dist ] || mkdir dist
       checkinstall --default \
         --maintainer=paul@colomiets.name --pkglicense=MIT \
         --pkgname=lithos --nodoc --strip=no \
         --pkgver=${ver#v} \
+        --pakdir=dist \
         make install
 
   docs: !Command
