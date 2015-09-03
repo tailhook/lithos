@@ -5,6 +5,11 @@ commands:
     container: ubuntu
     run: [make]
 
+  cargo: !Command
+    description: Build lithos in ubuntu container
+    container: ubuntu
+    run: [cargo]
+
   build-ubuntu-package: !Command
     description: Build ubuntu (trusty) package
     container: ubuntu

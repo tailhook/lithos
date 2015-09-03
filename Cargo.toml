@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.rst"
 keywords = ["linux", "namespaces", "containers"]
 homepage = "http://github.com/tailhook/lithos"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["paul@colomiets.name"]
 links = "container"
 build = "build.rs"
@@ -22,9 +22,8 @@ fern = "0.3"
 time = "0.1"
 log = "0.3"
 env_logger = "0.3"
+nix = "0.4"
 
-[dependencies.nix]
-git = 'https://github.com/carllerche/nix-rust'
 
 [[bin]]
 name = "lithos_tree"
