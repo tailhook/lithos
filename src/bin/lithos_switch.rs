@@ -63,7 +63,7 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
         }
     };
     let tree_fn = master_cfg.parent().unwrap()
-        .join(&master.limits_dir)
+        .join(&master.sandboxes_dir)
         .join(&(tree_name.clone() + ".yaml"));
     let tree: TreeConfig = match parse_config(&tree_fn,
         &*TreeConfig::validator(), Default::default())
@@ -75,7 +75,7 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
     };
 
     let target_fn = master_cfg.parent().unwrap()
-        .join(&master.instances_dir)
+        .join(&master.processes_dir)
         .join(tree.config_file.as_ref().unwrap_or(
             &PathBuf::from(&(tree_name.clone() + ".yaml"))));
     debug!("Target filename {:?}", target_fn);

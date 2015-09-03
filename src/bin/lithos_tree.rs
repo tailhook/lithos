@@ -427,7 +427,7 @@ fn run(config_file: &Path, options: &Options)
     let config_file = Rc::new(config_file.to_owned());
     let mut mon = Monitor::new("lithos-tree".to_string());
 
-    let mut configs = read_limits(&master, &bin, &config_file, options);
+    let mut configs = read_sandboxes(&master, &bin, &config_file, options);
 
     info!("Recovering Processes");
     recover_processes(&master, &mut mon, &mut configs, &config_file);
@@ -454,12 +454,12 @@ fn run(config_file: &Path, options: &Options)
     return Ok(());
 }
 
-fn read_limits(master: &Rc<MasterConfig>, bin: &Binaries,
+fn read_sandboxes(master: &Rc<MasterConfig>, bin: &Binaries,
     master_file: &Rc<PathBuf>, options: &Options)
     -> HashMap<Rc<String>, Child>
 {
-    let dirpath = master_file.parent().unwrap().join(&master.limits_dir);
-    info!("Reading limits from {:?}", dirpath);
+    let dirpath = master_file.parent().unwrap().join(&master.sandboxes_dir);
+    info!("Reading sandboxes from {:?}", dirpath);
     let tree_validator = TreeConfig::validator();
     read_yaml_dir(&dirpath)
         .map_err(|e| { error!("Can't read config dir: {}", e); e })
@@ -488,7 +488,7 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
     -> Vec<(Rc<String>, Child)>
 {
     let cfg = master_file.parent().unwrap()
-        .join(&master.instances_dir)
+        .join(&master.processes_dir)
         .join(tree.config_file.as_ref().unwrap_or(
             &PathBuf::from(&(tree_name.clone() + ".yaml"))));
     debug!("Reading child config {:?}", cfg);

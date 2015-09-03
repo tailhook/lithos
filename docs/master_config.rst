@@ -8,16 +8,16 @@ Master configuration file is the one that usually at
 parameters. Minimal configuration is an *empty file* but it **must exist**
 anyway. Here is the reference of the parameters along with the default values:
 
-``limits-dir``
+``sandboxes-dir``
     The directory for per-application configuration files which contain limits
     of what application might use. If path is relative it's relative to
-    the directory where configuration file is. Default is ``./limits``.
+    the directory where configuration file is. Default is ``./sandboxes``.
 
-``instances-dir``
+``processes-dir``
     The directory for per-application configuration files which contain name of
     image directory, instance number, etc., to run. If path is relative it's
     relative to the directory where configuration file is. Default is
-    ``./instances``.
+    ``./processes``.
 
 ``runtime-dir``
     The directory where ``pid`` file of master process is stored and also

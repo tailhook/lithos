@@ -94,7 +94,7 @@ fn check(config_file: &Path, verbose: bool,
 
     check_master_config(&master, verbose);
 
-    let config_dir = config_file.parent().unwrap().join(master.limits_dir);
+    let config_dir = config_file.parent().unwrap().join(master.sandboxes_dir);
     for tree_fn in read_dir(&config_dir)
         .map(|v| v.collect())
         .map_err(|e| {
@@ -118,7 +118,7 @@ fn check(config_file: &Path, verbose: bool,
         check_tree_config(&tree);
 
         let default_config = config_file.parent().unwrap()
-            .join(&master.instances_dir)
+            .join(&master.processes_dir)
             .join(tree.config_file.as_ref().unwrap_or(
                 &PathBuf::from(tree_fn.file_name())));
         let config_file = match (

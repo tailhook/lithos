@@ -165,7 +165,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     min_time: Option<Tm>, ver_min: u32, ver_max: u32)
     -> Result<(HashSet<PathBuf>, HashSet<PathBuf>), String>
 {
-    let config_dir = master_file.parent().unwrap().join(&master.limits_dir);
+    let config_dir = master_file.parent().unwrap().join(&master.sandboxes_dir);
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
     let childval = &*ChildConfig::mapping_validator();
@@ -177,7 +177,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
         image_dirs.insert(tree_config.image_dir.clone());
 
         let cfg = master_file.parent().unwrap()
-            .join(&master.instances_dir)
+            .join(&master.processes_dir)
             .join(tree_config.config_file.as_ref().unwrap_or(
                 &PathBuf::from(&(tree_name.clone() + ".yaml"))));
         let all_children: BTreeMap<String, ChildConfig>;

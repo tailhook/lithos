@@ -92,7 +92,7 @@ fn run(master_cfg: &Path, tree_name: String,
     }
 
     let tree: TreeConfig = try!(parse_config(
-        &master_cfg.join(&master.limits_dir).join(tree_name.clone() + ".yaml"),
+        &master_cfg.join(&master.sandboxes_dir).join(tree_name.clone() + ".yaml"),
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
@@ -111,7 +111,7 @@ fn run(master_cfg: &Path, tree_name: String,
         log_stderr));
 
     let cfg = master_cfg.parent().unwrap()
-        .join(&master.instances_dir)
+        .join(&master.processes_dir)
         .join(tree.config_file.as_ref().unwrap_or(
             &PathBuf::from(&(tree_name.clone() + ".yaml"))));
     debug!("Children config {:?}", cfg);
