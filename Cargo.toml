@@ -8,8 +8,6 @@ keywords = ["linux", "namespaces", "containers"]
 homepage = "http://github.com/tailhook/lithos"
 version = "0.3.1"
 authors = ["paul@colomiets.name"]
-links = "container"
-build = "build.rs"
 
 [dependencies]
 regex = "0.1"
@@ -23,6 +21,7 @@ time = "0.1"
 log = "0.3"
 env_logger = "0.3"
 nix = "0.4"
+unshare = "0.1.1"
 
 
 [[bin]]

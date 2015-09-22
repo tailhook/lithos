@@ -15,6 +15,7 @@ use std::default::Default;
 use std::process::exit;
 
 use quire::parse_config;
+use unshare::{Command};
 
 use lithos::signal;
 use lithos::cgroup;
@@ -23,8 +24,6 @@ use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::{ContainerConfig};
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::container::{Command};
-use lithos::monitor::{Monitor, Executor};
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 use lithos::setup::{init_logging};
 use lithos::mount::{unmount, mount_private, bind_mount, mount_ro_recursive};
@@ -42,25 +41,6 @@ struct Target {
 impl Executor for Target {
     fn command(&self) -> Command
     {
-        let mut cmd = Command::new((*self.name).clone(),
-            &Path::new(&self.local.executable));
-        cmd.set_user(self.local.user_id, self.local.group_id);
-        cmd.set_workdir(&self.local.workdir);
-
-        // Should we propagate TERM?
-        cmd.set_env("TERM".to_string(),
-                    env::var("TERM").unwrap_or("dumb".to_string()));
-        cmd.update_env(self.local.environ.iter());
-        cmd.set_env("LITHOS_NAME".to_string(), (*self.name).clone());
-        if let Some(ref path) = self.local.stdout_stderr_file {
-            cmd.set_output(path);
-        }
-
-        cmd.args(&self.local.arguments);
-        cmd.args(&self.args);
-        if self.local.uid_map.len() > 0 || self.local.gid_map.len() > 0 {
-            cmd.user_ns(&self.local.uid_map, &self.local.gid_map);
-        }
 
         return cmd;
     }
@@ -169,6 +149,29 @@ fn run(options: Options) -> Result<(), String>
     try!(set_fileno_limit(local.fileno_limit)
         .map_err(|e| format!("Error setting file limit: {}", e)));
 
+
+    let mut cmd = Command::new(&local.executable);
+    cmd.set_user(local.user_id, local.group_id);
+    cmd.current_Dir(&local.workdir);
+
+    // Should we propagate TERM?
+    cmd.clear_env();
+    cmd.env("TERM", env::var("TERM").unwrap_or("dumb".to_string()));
+    cmd.update_env(local.environ);
+    cmd.env("LITHOS_NAME", (*self.name).clone());
+
+    cmd.args(&local.arguments);
+    cmd.args(&options.args);
+    if local.uid_map.len() > 0 || local.gid_map.len() > 0 {
+        cmd.uid_map(&local.uid_map, &local.gid_map);
+    }
+
+    if let Some(ref path) = local.stdout_stderr_file {
+        let f = OpenOptions::().append().open(path);
+        cmd.stdout(f.as_raw_fd())
+        cmd.stderr(f.as_raw_fd())
+    }
+
     let mut mon = Monitor::new(options.name.clone());
     let name = Rc::new(options.name.clone() + ".main");
     let timeo = (local.restart_timeout*1000.) as i64;
@@ -184,8 +187,6 @@ fn run(options: Options) -> Result<(), String>
 
 
 fn main() {
-
-    signal::block_all();
 
     let options = match Options::parse_args() {
         Ok(options) => options,

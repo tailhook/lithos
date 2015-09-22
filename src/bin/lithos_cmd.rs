@@ -5,11 +5,11 @@ extern crate regex;
 
 extern crate argparse;
 extern crate quire;
+extern crate unshare;
 #[macro_use] extern crate lithos;
 
 
 use std::env;
-use std::rc::Rc;
 use std::str::FromStr;
 use std::process::exit;
 use std::path::{Path, PathBuf};
@@ -22,57 +22,14 @@ use quire::parse_config;
 use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
+use unshare::{Command, Namespace};
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::container_config::ContainerKind::{Command};
 use lithos::child_config::ChildConfig;
-use lithos::container::{Command};
-use lithos::monitor::{Monitor, Executor};
-use lithos::signal;
 
-
-struct Child<'a> {
-    name: Rc<String>,
-    master_file: PathBuf,
-    master_config: &'a MasterConfig,
-    child_config_serialized: String,
-    root_binary: PathBuf,
-    args: Vec<String>,
-}
-
-impl<'a> Executor for Child<'a> {
-    fn command(&self) -> Command
-    {
-        let mut cmd = Command::new((*self.name).clone(), &self.root_binary);
-        cmd.keep_sigmask();
-
-        // Name is first here, so it's easily visible in ps
-        cmd.arg("--name");
-        cmd.arg(&self.name[..]);
-
-        cmd.arg("--master");
-        cmd.arg(&self.master_file.to_str().unwrap()[..]);
-        cmd.arg("--config");
-        cmd.arg(&self.child_config_serialized[..]);
-        cmd.set_env("TERM".to_string(),
-                    env::var("TERM").unwrap_or("dumb".to_string()));
-        if let Ok(x) = env::var("RUST_LOG") {
-            cmd.set_env("RUST_LOG".to_string(), x);
-        }
-        if let Ok(x) = env::var("RUST_BACKTRACE") {
-            cmd.set_env("RUST_BACKTRACE".to_string(), x);
-        }
-        cmd.args(&self.args);
-        cmd.container();
-        return cmd;
-    }
-    fn finish(&self) -> bool {
-        clean_child(&*self.name, self.master_config);
-        return false;  // Do not restart
-    }
-}
 
 fn run(master_cfg: &Path, tree_name: String,
     command_name: String, args: Vec<String>,
@@ -130,31 +87,42 @@ fn run(master_cfg: &Path, tree_name: String,
     }
 
 
-    let name = Rc::new(format!("{}/cmd.{}.{}", tree_name,
-        command_name, unsafe { getpid() }));
-    info!("[{}] Running command with args {:?}", name, args);
-    let mut mon = Monitor::new((*name).clone());
-    let timeo = 0;
-    let mut args = args;
-    args.insert(0, "--".to_string());
-    mon.add(name.clone(), Box::new(Child {
-        name: name,
-        master_file: PathBuf::from(master_cfg),
-        master_config: &master,
-        child_config_serialized: json::encode(&child_cfg).unwrap(),
-        root_binary: env::current_exe().unwrap()
-                     .parent().unwrap().join("lithos_knot"),
-        args: args,
-    }), timeo, None);
-    mon.run();
+    let name = format!("{}/cmd.{}.{}", tree_name,
+        command_name, unsafe { getpid() });
+
+    let mut cmd = Command::new(env::current_exe().unwrap()
+                     .parent().unwrap().join("lithos_knot"));
+
+    // Name is first here, so it's easily visible in ps
+    cmd.arg("--name");
+    cmd.arg(&name);
+
+    cmd.arg("--master");
+    cmd.arg(master_cfg);
+    cmd.arg("--config");
+    cmd.arg(json::encode(&child_cfg).unwrap());
+    cmd.env_clear();
+    cmd.env("TERM", env::var("TERM").unwrap_or("dumb".to_string()));
+    if let Ok(x) = env::var("RUST_LOG") {
+        cmd.env("RUST_LOG", x);
+    }
+    if let Ok(x) = env::var("RUST_BACKTRACE") {
+        cmd.env("RUST_BACKTRACE", x);
+    }
+    cmd.arg("--");
+    cmd.args(&args);
+    cmd.unshare([Namespace::Mount, Namespace::Uts,
+                 Namespace::Ipc, Namespace::Pid].iter().cloned());
+
+    info!("Running {:?}", cmd);
+    // TODO(tailhook) wait
+
+    clean_child(&name, &master);
 
     return Ok(());
 }
 
 fn main() {
-
-    signal::block_all();
-
     let mut master_config = PathBuf::from("/etc/lithos/master.yaml");
     let mut command_name = "".to_string();
     let mut tree_name = "".to_string();
@@ -163,7 +131,7 @@ fn main() {
     let mut log_level: Option<log::LogLevel> = None;
     {
         let mut ap = ArgumentParser::new();
-        ap.set_description("Runs tree of processes");
+        ap.set_description("Runs single ad-hoc command");
         ap.refer(&mut master_config)
           .add_option(&["--master"], Parse,
             "Name of the master configuration file \
