@@ -111,11 +111,13 @@ fn run(master_cfg: &Path, tree_name: String,
     }
     cmd.arg("--");
     cmd.args(&args);
-    cmd.unshare([Namespace::Mount, Namespace::Uts,
-                 Namespace::Ipc, Namespace::Pid].iter().cloned());
 
     info!("Running {:?}", cmd);
-    // TODO(tailhook) wait
+
+    match cmd.status() {
+        Ok(x) => info!("Command {:?} {}", cmd, x),
+        Err(e) => error!("Can't run {:?}: {}", cmd, e),
+    }
 
     clean_child(&name, &master);
 

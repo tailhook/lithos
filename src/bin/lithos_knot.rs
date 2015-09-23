@@ -1,23 +1,30 @@
-extern crate rustc_serialize;
+extern crate nix;
 extern crate libc;
-#[macro_use] extern crate log;
-
-extern crate argparse;
+extern crate time;
 extern crate quire;
+extern crate signal;
+extern crate unshare;
+extern crate argparse;
+extern crate rustc_serialize;
+#[macro_use] extern crate log;
 #[macro_use] extern crate lithos;
 
-use std::rc::Rc;
 use std::env;
 use std::str::FromStr;
 use std::io::{stderr, Write};
+use std::fs::OpenOptions;
 use std::path::{Path};
+use std::thread::sleep_ms;
 use std::default::Default;
 use std::process::exit;
+use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use quire::parse_config;
-use unshare::{Command};
+use unshare::{Command, Namespace, Stdio, reap_zombies};
+use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
+use signal::trap::Trap;
+use time::{SteadyTime, Duration};
 
-use lithos::signal;
 use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::master_config::MasterConfig;
@@ -32,23 +39,6 @@ use lithos_knot_options::Options;
 
 mod lithos_knot_options;
 
-struct Target {
-    name: Rc<String>,
-    local: ContainerConfig,
-    args: Vec<String>,
-}
-
-impl Executor for Target {
-    fn command(&self) -> Command
-    {
-
-        return cmd;
-    }
-    fn finish(&self) -> bool {
-        return self.local.kind == Daemon
-            && self.local.restart_process_only;
-    }
-}
 
 fn run(options: Options) -> Result<(), String>
 {
@@ -62,7 +52,7 @@ fn run(options: Options) -> Result<(), String>
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
-    let mut log_file;
+    let log_file;
     if let Some(ref fname) = tree.log_file {
         log_file = master.default_log_dir.join(fname);
     } else {
@@ -151,36 +141,90 @@ fn run(options: Options) -> Result<(), String>
 
 
     let mut cmd = Command::new(&local.executable);
-    cmd.set_user(local.user_id, local.group_id);
-    cmd.current_Dir(&local.workdir);
+    cmd.uid(local.user_id);
+    cmd.gid(local.group_id);
+    cmd.current_dir(&local.workdir);
 
     // Should we propagate TERM?
-    cmd.clear_env();
+    cmd.env_clear();
     cmd.env("TERM", env::var("TERM").unwrap_or("dumb".to_string()));
-    cmd.update_env(local.environ);
-    cmd.env("LITHOS_NAME", (*self.name).clone());
+    for (k, v) in local.environ.iter() {
+        cmd.env(k, v);
+    }
+    cmd.env("LITHOS_NAME", &options.name);
 
     cmd.args(&local.arguments);
     cmd.args(&options.args);
+    cmd.unshare([Namespace::Mount, Namespace::Uts,
+                 Namespace::Ipc, Namespace::Pid].iter().cloned());
     if local.uid_map.len() > 0 || local.gid_map.len() > 0 {
-        cmd.uid_map(&local.uid_map, &local.gid_map);
+        cmd.set_id_maps(
+            local.uid_map.iter().map(|u| unshare::UidMap {
+                inside_uid: u.inside,
+                outside_uid: u.outside,
+                count: u.count,
+            }).collect(),
+            local.gid_map.iter().map(|g| unshare::GidMap {
+                inside_gid: g.inside,
+                outside_gid: g.outside,
+                count: g.count,
+            }).collect());
     }
+    let rtimeo = Duration::milliseconds((local.restart_timeout*1000.0) as i64);
 
-    if let Some(ref path) = local.stdout_stderr_file {
-        let f = OpenOptions::().append().open(path);
-        cmd.stdout(f.as_raw_fd())
-        cmd.stderr(f.as_raw_fd())
+    loop {
+        let start = time::SteadyTime::now();
+        let trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
+
+        // Reopen file at each start
+        let _file_guard = if let Some(ref path) = local.stdout_stderr_file {
+            let f = try!(OpenOptions::new()
+                .create(true).append(true).open(path)
+                .map_err(|e| format!(
+                    "Error opening output file {:?}: {}", path, e)));
+            cmd.stdout(unsafe { Stdio::from_raw_fd(f.as_raw_fd()) });
+            cmd.stderr(unsafe { Stdio::from_raw_fd(f.as_raw_fd()) });
+            Some(f)
+        } else {
+            None
+        };
+
+        let child = try!(cmd.spawn().map_err(|e|
+            format!("Error running {:?}: {}", options.name, e)));
+
+        'child_wait: for signal in trap {
+            match signal {
+                SIGINT => {
+                    // SIGINT is usually a Ctrl+C so it's sent to whole
+                    // process group, so we don't need to do anything special
+                    debug!("Received SIGINT. Waiting process to stop..");
+                }
+                SIGTERM => {
+                    // SIGTERM is usually sent to a specific process so we
+                    // forward it to children
+                    debug!("Received SIGTERM signal, propagating");
+                    child.signal(SIGTERM).ok();
+                }
+                SIGCHLD => {
+                    for (pid, status) in reap_zombies() {
+                        if pid == child.pid() {
+                            error!("Process {:?} {}", options.name, status);
+                            break 'child_wait;
+                        }
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        if local.kind != Daemon || !local.restart_process_only {
+            break;
+        }
+        let left = rtimeo - (SteadyTime::now() - start);
+        if left > Duration::zero() {
+            sleep_ms(left.num_milliseconds() as u32);
+        }
     }
-
-    let mut mon = Monitor::new(options.name.clone());
-    let name = Rc::new(options.name.clone() + ".main");
-    let timeo = (local.restart_timeout*1000.) as i64;
-    mon.add(name.clone(), Box::new(Target {
-        name: name,
-        local: local,
-        args: options.args,
-    }), timeo, None);
-    mon.run();
 
     return Ok(());
 }
