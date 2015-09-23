@@ -83,7 +83,7 @@ containers:
     - !UbuntuUniverse
     - !Install [make, checkinstall, wget, gcc, libc6-dev, ca-certificates, git]
     - !TarInstall
-      url: http://static.rust-lang.org/dist/rust-1.2.0-x86_64-unknown-linux-gnu.tar.gz
+      url: http://static.rust-lang.org/dist/rust-1.3.0-x86_64-unknown-linux-gnu.tar.gz
       script: |
         ./install.sh --prefix=/usr --components=rustc,cargo
     environ:
