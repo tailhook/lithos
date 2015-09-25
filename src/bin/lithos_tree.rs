@@ -1,12 +1,15 @@
+extern crate nix;
 extern crate rustc_serialize;
 extern crate libc;
-#[macro_use] extern crate log;
 extern crate regex;
 extern crate argparse;
 extern crate quire;
 extern crate lithos;
 extern crate time;
 extern crate fern;
+extern crate signal;
+extern crate unshare;
+#[macro_use] extern crate log;
 
 
 use std::env;
@@ -24,27 +27,33 @@ use std::process::exit;
 use std::collections::HashMap;
 use std::collections::BTreeMap;
 
+use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
+use nix::sys::signal::{SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT};
+use nix::sys::signal::{SIGFPE, SIGUSR1, SIGUSR2};
 use libc::pid_t;
-use libc::funcs::posix88::unistd::{getpid, execv};
+use libc::funcs::posix88::unistd::{getpid};
 use regex::Regex;
 use quire::parse_config;
 use rustc_serialize::json;
+use unshare::{Command, reap_zombies};
+use signal::exec_handler;
+use signal::trap::Trap;
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::monitor::{Monitor, Executor};
-use lithos::monitor::MonitorResult::{Killed, Reboot};
-use lithos::container::Command;
 use lithos::utils::{clean_dir, get_time, relative, cpath, read_yaml_dir};
-use lithos::signal;
 use lithos::cgroup;
 use lithos_tree_options::Options;
 
 mod lithos_tree_options;
 
+enum Child {
+    Process { restart_min: SteadyTime, cmd: Command },
+    Unidentified { name: String },
+}
 
 struct Child {
     name: Rc<String>,
@@ -209,7 +218,8 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
+fn recover_processes(master: &Rc<MasterConfig>,
+    children: &mut HashMap<pid_t, Child>,
     configs: &mut HashMap<Rc<String>, Child>, config_file: &Rc<PathBuf>)
 {
     let mypid = unsafe { getpid() };
@@ -242,17 +252,16 @@ fn recover_processes(master: &Rc<MasterConfig>, mon: &mut Monitor,
                               name, pid);
                         signal::send_signal(pid, signal::SIGTERM);
                     }
-                    mon.add(name.clone(), Box::new(child), 1000,
-                        Some((pid, get_time())));
+                    children.insert(pid, Child::Process {
+                        restart_min: SteadyTime::new() + child.restart_timeout,
+                        name: name,
+                        cmd: fuck,
+                        });
                 }
                 None => {
-                    warn!("Undefined child name: {}, pid: {}. Sending SIGTERM...",
-                          name, pid);
-                    mon.add(name.clone(), Box::new(UnidentifiedChild {
-                        name: name,
-                        master_config: master.clone(),
-                        }), 0,
-                        Some((pid, get_time())));
+                    warn!("Undefined child name: {}, pid: {}. \
+                        Sending SIGTERM...", name, pid);
+                    children.insert(pid, Child::Unidentified { name: name });
                     signal::send_signal(pid, signal::SIGTERM);
                 }
             };
@@ -424,8 +433,8 @@ fn run(config_file: &Path, options: &Options)
         }
     };
 
+    let trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let config_file = Rc::new(config_file.to_owned());
-    let mut mon = Monitor::new("lithos-tree".to_string());
 
     let mut configs = read_sandboxes(&master, &bin, &config_file, options);
 
@@ -547,22 +556,6 @@ fn schedule_new_workers(mon: &mut Monitor,
     }
 }
 
-fn reexec_myself(lithos_tree: &Path) -> ! {
-    let c_exe = cpath(lithos_tree);
-    let c_args: Vec<CString> = env::args()
-        .map(|x| CString::new(x).unwrap())
-        .collect();
-    let mut c_argv: Vec<*const u8>;
-    c_argv = c_args.iter().map(|x| x.as_bytes().as_ptr()).collect();
-    c_argv.push(null());
-    debug!("Executing {:?} {:?}", lithos_tree,
-        env::args().collect::<Vec<_>>());
-    unsafe {
-        execv(c_exe.as_ptr(), c_argv.as_ptr() as *mut *const i8);
-    }
-    panic!("Can't reexec myself: {}", IoError::last_os_error());
-}
-
 struct Binaries {
     lithos_tree: Rc<PathBuf>,
     lithos_knot: Rc<PathBuf>,
@@ -591,8 +584,10 @@ fn get_binaries() -> Option<Binaries> {
 }
 
 fn main() {
-
-    signal::block_all();
+    exec_handler::set_handler([
+        SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT, SIGFPE,
+        SIGUSR1, SIGUSR2,
+        ], true);
 
     let options = match Options::parse_args() {
         Ok(options) => options,
