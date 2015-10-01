@@ -13,7 +13,6 @@ extern crate unshare;
 
 
 use std::env;
-use std::rc::Rc;
 use std::io::Error as IoError;
 use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
@@ -27,15 +26,17 @@ use std::process::exit;
 use std::collections::HashMap;
 use std::collections::BTreeMap;
 
+use time::{SteadyTime, Duration};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::{SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT};
 use nix::sys::signal::{SIGFPE, SIGUSR1, SIGUSR2};
+use nix::sys::signal::kill;
 use libc::pid_t;
 use libc::funcs::posix88::unistd::{getpid};
 use regex::Regex;
 use quire::parse_config;
 use rustc_serialize::json;
-use unshare::{Command, reap_zombies};
+use unshare::{Command, reap_zombies, Namespace};
 use signal::exec_handler;
 use signal::trap::Trap;
 
@@ -51,71 +52,55 @@ use lithos_tree_options::Options;
 mod lithos_tree_options;
 
 enum Child {
-    Process { restart_min: SteadyTime, cmd: Command },
+    Process { restart_min: SteadyTime, cmd: Command,
+              name: String, config: String },
     Unidentified { name: String },
 }
 
-struct Child {
-    name: Rc<String>,
-    master_file: Rc<PathBuf>,
-    child_config_serialized: Rc<String>,
-    master_config: Rc<MasterConfig>,
-    child_config: Rc<ChildConfig>,
-    root_binary: Rc<PathBuf>,
-    log_level: Option<log::LogLevel>,
-    log_stderr: bool,
-}
-
-impl Executor for Child {
-    fn command(&self) -> Command
-    {
-        let mut cmd = Command::new((*self.name).clone(), &*self.root_binary);
-        cmd.keep_sigmask();
-
-        // Name is first here, so it's easily visible in ps
-        cmd.arg("--name");
-        cmd.arg(&self.name[..]);
-
-        cmd.arg("--master");
-        cmd.arg(&self.master_file.to_str().unwrap()[..]);
-        cmd.arg("--config");
-        cmd.arg(&self.child_config_serialized[..]);
-        if self.log_stderr {
-            cmd.arg("--log-stderr");
+impl Child {
+    fn is_identified(&self) -> bool {
+        match self {
+            &Child::Process { .. } => true,
+            &Child::Unidentified { .. } => false,
         }
-        if let Some(log_level) = self.log_level {
-            cmd.arg(format!("--log-level={}", log_level));
-        }
-        cmd.set_env("TERM".to_string(),
-                    env::var("TERM").unwrap_or("dumb".to_string()));
-        if let Ok(x) = env::var("RUST_LOG") {
-            cmd.set_env("RUST_LOG".to_string(), x);
-        }
-        if let Ok(x) = env::var("RUST_BACKTRACE") {
-            cmd.set_env("RUST_BACKTRACE".to_string(), x);
-        }
-        cmd.container();
-        return cmd;
     }
-    fn finish(&self) -> bool {
-        clean_child(&*self.name, &*self.master_config);
-        return true;
+    fn get_config<'x>(&'x self) -> Option<&'x str> {
+        match self {
+            &Child::Process { ref config, .. } => Some(config),
+            &Child::Unidentified { .. } => None,
+        }
     }
 }
 
-struct UnidentifiedChild {
-    name: Rc<String>,
-    master_config: Rc<MasterConfig>,
-}
-
-impl Executor for UnidentifiedChild {
-    fn command(&self) -> Command {
-        unreachable!();
+fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
+    cfg: &str, options: &Options)
+    -> Command
+{
+    let mut cmd = Command::new(&bin.lithos_knot);
+    // Name is first here, so it's easily visible in ps
+    cmd.arg("--name");
+    cmd.arg(name);
+    cmd.arg("--master");
+    cmd.arg(master_fn);
+    cmd.arg("--config");
+    cmd.arg(cfg);
+    if options.log_stderr {
+        cmd.arg("--log-stderr");
     }
-    fn finish(&self) -> bool {
-        clean_child(&*self.name, &*self.master_config);
-        return false;
+    if let Some(log_level) = options.log_level {
+        cmd.arg(format!("--log-level={}", log_level));
     }
+    cmd.env_clear();
+    cmd.env("TERM", env::var_os("TERM").unwrap_or(From::from("dumb")));
+    if let Some(x) = env::var_os("RUST_LOG") {
+        cmd.env("RUST_LOG", x);
+    }
+    if let Some(x) = env::var_os("RUST_BACKTRACE") {
+        cmd.env("RUST_BACKTRACE", x);
+    }
+    cmd.unshare([Namespace::Mount, Namespace::Uts,
+                 Namespace::Ipc, Namespace::Pid].iter().cloned());
+    cmd
 }
 
 fn check_master_config(cfg: &MasterConfig) -> Result<(), String> {
@@ -130,13 +115,13 @@ fn check_master_config(cfg: &MasterConfig) -> Result<(), String> {
 fn global_init(master: &MasterConfig, options: &Options)
     -> Result<(), String>
 {
-    try!(create_master_dirs(&*master));
+    try!(create_master_dirs(&master));
     try!(init_logging(&master.default_log_dir.join(&master.log_file),
           options.log_level
             .or_else(|| FromStr::from_str(&master.log_level).ok())
             .unwrap_or(log::LogLevel::Warn),
           options.log_stderr));
-    try!(check_process(&*master));
+    try!(check_process(&master));
     if let Some(ref name) = master.cgroup_name {
         try!(cgroup::ensure_in_group(name, &master.cgroup_controllers));
     }
@@ -200,7 +185,7 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
                 return Ok(());
             }
             Ok(pid) => {
-                if signal::is_process_alive(pid) {
+                if kill(pid, 0).is_ok() {
                     return Err(format!(concat!("Master pid is {}. ",
                         "And there is alive process with ",
                         "that pid."), pid));
@@ -218,9 +203,9 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn recover_processes(master: &Rc<MasterConfig>,
+fn recover_processes(master: &MasterConfig,
     children: &mut HashMap<pid_t, Child>,
-    configs: &mut HashMap<Rc<String>, Child>, config_file: &Rc<PathBuf>)
+    configs: &mut HashMap<String, Child>, config_file: &Path)
 {
     let mypid = unsafe { getpid() };
 
@@ -238,43 +223,46 @@ fn recover_processes(master: &Rc<MasterConfig>,
         if !_is_child(pid, mypid) {
             continue;
         }
-        if let Ok((name, cfg_text)) = _read_args(pid, &**config_file) {
-            let cfg = json::decode(&cfg_text)
+        if let Ok((name, cfg_text)) = _read_args(pid, config_file) {
+            let cfg: Option<String> = json::decode(&cfg_text)
                 .map_err(|e| warn!(
                     "Error parsing recover config, pid {}, name {:?}: {:?}",
                     pid, name, e))
                 .ok();
-            let name = Rc::new(name);
             match configs.remove(&name) {
                 Some(child) => {
-                    if Some(&*child.child_config) != cfg.as_ref() {
+                    if child.get_config() != cfg.as_ref().map(|x| &x[..]) {
                         warn!("Config mismatch: {}, pid: {}. Upgrading...",
                               name, pid);
-                        signal::send_signal(pid, signal::SIGTERM);
+                        kill(pid, SIGTERM)
+                        .map_err(|e| error!("Error sending TERM to {}: {:?}",
+                            pid, e)).ok();
+                        // TODO(tailhook) add to unidentified list?
                     }
-                    children.insert(pid, Child::Process {
-                        restart_min: SteadyTime::new() + child.restart_timeout,
-                        name: name,
-                        cmd: fuck,
-                        });
+                    children.insert(pid, child);
                 }
                 None => {
                     warn!("Undefined child name: {}, pid: {}. \
                         Sending SIGTERM...", name, pid);
                     children.insert(pid, Child::Unidentified { name: name });
-                    signal::send_signal(pid, signal::SIGTERM);
+                    kill(pid, SIGTERM)
+                    .map_err(|e| error!("Error sending TERM to {}: {:?}",
+                        pid, e)).ok();
                 }
             };
         } else {
-            warn!("Undefined child, pid: {}. Sending SIGTERM...",
-                  pid);
-            signal::send_signal(pid, signal::SIGTERM);
+            warn!("Undefined child, pid: {}. Sending SIGTERM...", pid);
+            kill(pid, SIGTERM)
+                .map_err(|e| error!("Error sending TERM to {}: {:?}",
+                    pid, e)).ok();
             continue;
         }
     }
 }
 
-fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
+fn remove_dangling_state_dirs(names: &HashMap<String, Child>,
+    master: &MasterConfig)
+{
     let pid_regex = Regex::new(r"\.\(\d+\)$").unwrap();
     for entry in read_dir(&master.runtime_dir.join(&master.state_dir))
         .map_err(|e| error!("Can't read state dir: {}", e))
@@ -298,9 +286,9 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
                 if let Some(proc_name) = cont.path().file_name()
                                         .and_then(|x| x.to_str())
                 {
-                    let name = Rc::new(format!("{}/{}", tree_name, proc_name));
+                    let name = format!("{}/{}", tree_name, proc_name);
                     debug!("Checking process dir: {}", name);
-                    if mon.has(&name) {
+                    if names.contains_key(&name) {
                         valid_dirs += 1;
                         continue;
                     } else if proc_name.starts_with("cmd.") {
@@ -308,7 +296,7 @@ fn remove_dangling_state_dirs(mon: &Monitor, master: &MasterConfig) {
                         let pid = pid_regex.captures(proc_name).and_then(
                             |c| FromStr::from_str(c.at(1).unwrap()).ok());
                         if let Some(pid) = pid {
-                            if signal::is_process_alive(pid) {
+                            if kill(pid, 0).is_ok() {
                                 valid_dirs += 1;
                                 continue;
                             }
@@ -346,7 +334,9 @@ fn _rm_cgroup(dir: &Path) {
     }
 }
 
-fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
+fn remove_dangling_cgroups(names: &HashMap<String, Child>,
+    master: &MasterConfig)
+{
     if master.cgroup_name.is_none() {
         return;
     }
@@ -401,12 +391,12 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
             if let Some(capt) = child_group_regex.captures(&filename) {
                 let name = format!("{}/{}",
                     capt.at(1).unwrap(), capt.at(2).unwrap());
-                if !mon.has(&Rc::new(name)) {
+                if !names.contains_key(&name) {
                     _rm_cgroup(&child_dir.path());
                 }
             } else if let Some(capt) = cmd_group_regex.captures(&filename) {
                 let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
-                if pid.is_none() || !signal::is_process_alive(pid.unwrap()) {
+                if pid.is_none() || !kill(pid.unwrap(), 0).is_ok() {
                     _rm_cgroup(&child_dir.path());
                 }
             } else {
@@ -420,11 +410,11 @@ fn remove_dangling_cgroups(mon: &Monitor, master: &MasterConfig) {
 fn run(config_file: &Path, options: &Options)
     -> Result<(), String>
 {
-    let master: Rc<MasterConfig> = Rc::new(try!(parse_config(&config_file,
+    let master: MasterConfig = try!(parse_config(&config_file,
         &*MasterConfig::validator(), Default::default())
-        .map_err(|e| format!("Error reading master config: {}", e))));
-    try!(check_master_config(&*master));
-    try!(global_init(&*master, &options));
+        .map_err(|e| format!("Error reading master config: {}", e)));
+    try!(check_master_config(&master));
+    try!(global_init(&master, &options));
 
     let bin = match get_binaries() {
         Some(bin) => bin,
@@ -434,38 +424,33 @@ fn run(config_file: &Path, options: &Options)
     };
 
     let trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
-    let config_file = Rc::new(config_file.to_owned());
+    let config_file = config_file.to_owned();
 
     let mut configs = read_sandboxes(&master, &bin, &config_file, options);
 
+    let mut children = HashMap::new();
     info!("Recovering Processes");
-    recover_processes(&master, &mut mon, &mut configs, &config_file);
+    recover_processes(&master, &mut children, &mut configs, &config_file);
 
     info!("Removing Dangling State Dirs");
-    remove_dangling_state_dirs(&mon, &*master);
+    remove_dangling_state_dirs(&configs, &master);
 
     info!("Removing Dangling CGroups");
-    remove_dangling_cgroups(&mon, &*master);
+    remove_dangling_cgroups(&configs, &master);
 
     info!("Starting Processes");
-    schedule_new_workers(&mut mon, configs);
+    schedule_new_workers(&mut children, &configs);
 
-    mon.allow_reboot();
-    match mon.run() {
-        Killed => {}
-        Reboot => {
-            reexec_myself(&bin.lithos_tree);
-        }
-    }
+    unimplemented!();
 
-    global_cleanup(&*master);
+    global_cleanup(&master);
 
     return Ok(());
 }
 
-fn read_sandboxes(master: &Rc<MasterConfig>, bin: &Binaries,
-    master_file: &Rc<PathBuf>, options: &Options)
-    -> HashMap<Rc<String>, Child>
+fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
+    master_file: &Path, options: &Options)
+    -> HashMap<String, Child>
 {
     let dirpath = master_file.parent().unwrap().join(&master.sandboxes_dir);
     info!("Reading sandboxes from {:?}", dirpath);
@@ -483,23 +468,22 @@ fn read_sandboxes(master: &Rc<MasterConfig>, bin: &Binaries,
                 .ok()
         })
         .flat_map(|(name, tree)| {
-            read_subtree(master, bin, master_file, &name,
-                         Rc::new(tree), options)
+            read_subtree(master, bin, master_file, &name, &tree, options)
             .into_iter()
         })
         .collect()
 }
 
-fn read_subtree<'x>(master: &Rc<MasterConfig>,
-    bin: &Binaries, master_file: &Rc<PathBuf>,
-    tree_name: &String, tree: Rc<TreeConfig>,
+fn read_subtree<'x>(master: &MasterConfig,
+    bin: &Binaries, master_file: &Path,
+    tree_name: &String, tree: &TreeConfig,
     options: &Options)
-    -> Vec<(Rc<String>, Child)>
+    -> Vec<(String, Child)>
 {
     let cfg = master_file.parent().unwrap()
         .join(&master.processes_dir)
-        .join(tree.config_file.as_ref().unwrap_or(
-            &PathBuf::from(&(tree_name.clone() + ".yaml"))));
+        .join(tree.config_file.as_ref().map(Path::new)
+            .unwrap_or(Path::new(&(tree_name.clone() + ".yaml"))));
     debug!("Reading child config {:?}", cfg);
     parse_config(&cfg, &*ChildConfig::mapping_validator(), Default::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
@@ -522,43 +506,35 @@ fn read_subtree<'x>(master: &Rc<MasterConfig>,
             //  Child doesn't need to know how many instances it's run
             //  And for comparison on restart we need to have "one" always
             child.instances = 1;
-            let child_string = Rc::new(json::encode(&child).unwrap());
+            let child_string = json::encode(&child).unwrap();
 
-            let child = Rc::new(child);
-            let items: Vec<(Rc<String>, Child)> = (0..instances)
+            let items: Vec<(String, Child)> = (0..instances)
                 .map(|i| {
                     let name = format!("{}/{}.{}", tree_name, child_name, i);
-                    let name = Rc::new(name);
-                    (name.clone(), Child {
-                        name: name,
-                        master_file: master_file.clone(),
-                        child_config_serialized: child_string.clone(),
-                        master_config: master.clone(),
-                        child_config: child.clone(),
-                        root_binary: bin.lithos_knot.clone(),
-                        log_stderr: options.log_stderr,
-                        log_level: options.log_level,
-                    })
+                    let cmd = new_child(bin, &name, master_file,
+                        &child_string, options);
+                    let process = Child::Process {
+                        cmd: cmd,
+                        name: name.clone(),
+                        restart_min: SteadyTime::now() + Duration::seconds(1),
+                        config: child_string.clone(), // should avoid cloning?
+                    };
+                    (name, process)
                 })
                 .collect();
             items.into_iter()
         }).collect()
 }
 
-fn schedule_new_workers(mon: &mut Monitor,
-    children: HashMap<Rc<String>, Child>)
+fn schedule_new_workers(running: &mut HashMap<pid_t, Child>,
+    children: &HashMap<String, Child>)
 {
-    for (name, child) in children.into_iter() {
-        if mon.has(&name) {
-            continue;
-        }
-        mon.add(name.clone(), Box::new(child), 2000, None);
-    }
+    unimplemented!();
 }
 
 struct Binaries {
-    lithos_tree: Rc<PathBuf>,
-    lithos_knot: Rc<PathBuf>,
+    lithos_tree: PathBuf,
+    lithos_knot: PathBuf,
 }
 
 fn get_binaries() -> Option<Binaries> {
@@ -569,14 +545,14 @@ fn get_binaries() -> Option<Binaries> {
         None => return None,
     };
     let bin = Binaries {
-        lithos_tree: Rc::new(dir.join("lithos_tree")),
-        lithos_knot: Rc::new(dir.join("lithos_knot")),
+        lithos_tree: dir.join("lithos_tree"),
+        lithos_knot: dir.join("lithos_knot"),
     };
-    if !metadata(&*bin.lithos_tree).map(|x| x.is_file()).unwrap_or(false) {
+    if !metadata(&bin.lithos_tree).map(|x| x.is_file()).unwrap_or(false) {
         write!(&mut stderr(), "Can't find lithos_tree binary").unwrap();
         return None;
     }
-    if !metadata(&*bin.lithos_knot).map(|x| x.is_file()).unwrap_or(false) {
+    if !metadata(&bin.lithos_knot).map(|x| x.is_file()).unwrap_or(false) {
         write!(&mut stderr(), "Can't find lithos_knot binary").unwrap();
         return None;
     }
@@ -584,7 +560,7 @@ fn get_binaries() -> Option<Binaries> {
 }
 
 fn main() {
-    exec_handler::set_handler([
+    exec_handler::set_handler(&[
         SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT, SIGFPE,
         SIGUSR1, SIGUSR2,
         ], true);

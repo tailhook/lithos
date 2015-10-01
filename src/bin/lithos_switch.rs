@@ -1,11 +1,12 @@
 extern crate rustc_serialize;
 extern crate libc;
-#[macro_use] extern crate log;
+extern crate nix;
 extern crate env_logger;
 extern crate regex;
 extern crate argparse;
 extern crate quire;
-#[macro_use] extern crate lithos;
+#[macro_use] extern crate log;
+extern crate lithos;
 
 
 use std::env;
@@ -20,10 +21,10 @@ use std::process::{Command, Stdio};
 
 use argparse::{ArgumentParser, Parse, StoreTrue};
 use quire::parse_config;
+use nix::sys::signal::{SIGQUIT, kill};
 
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
-use lithos::signal;
 
 
 fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
@@ -93,8 +94,9 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
             .and_then(|mut f| f.read_to_string(&mut buf))
             .ok();
     match read.and_then(|_| FromStr::from_str(buf[..].trim()).ok()) {
-        Some(pid) if signal::is_process_alive(pid) => {
-            signal::send_signal(pid, signal::SIGQUIT);
+        Some(pid) if kill(pid, 0).is_ok() => {
+            kill(pid, SIGQUIT)
+            .map_err(|e| error!("Error sending QUIT to master: {:?}", e)).ok();
         }
         Some(pid) => {
             warn!("Process with pid {} is not running...", pid);
