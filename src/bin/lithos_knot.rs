@@ -217,12 +217,12 @@ fn run(options: Options) -> Result<(), String>
             }
         }
 
-        if local.kind != Daemon || !local.restart_process_only {
-            break;
-        }
         let left = rtimeo - (SteadyTime::now() - start);
         if left > Duration::zero() {
             sleep_ms(left.num_milliseconds() as u32);
+        }
+        if local.kind != Daemon || !local.restart_process_only {
+            break;
         }
     }
 
