@@ -13,18 +13,14 @@ extern crate unshare;
 
 
 use std::env;
-use std::io::Error as IoError;
 use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
 use std::fs::{read_dir, remove_dir};
-use std::ptr::null;
 use std::path::{Path, PathBuf};
-use std::ffi::{CString};
 use std::default::Default;
 use std::process::exit;
-use std::collections::HashMap;
-use std::collections::BTreeMap;
+use std::collections::{HashMap, BTreeMap, HashSet};
 
 use time::{SteadyTime, Duration};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
@@ -45,29 +41,30 @@ use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::utils::{clean_dir, get_time, relative, cpath, read_yaml_dir};
+use lithos::utils::{clean_dir, relative, read_yaml_dir};
 use lithos::cgroup;
 use lithos_tree_options::Options;
+use lithos::timer_queue::Queue;
 
 mod lithos_tree_options;
 
+struct Process {
+    restart_min: SteadyTime,
+    cmd: Command,
+    name: String,
+    config: String,
+}
+
 enum Child {
-    Process { restart_min: SteadyTime, cmd: Command,
-              name: String, config: String },
-    Unidentified { name: String },
+    Process(Process),
+    Unidentified(String),
 }
 
 impl Child {
-    fn is_identified(&self) -> bool {
+    fn get_name<'x>(&'x self) -> &'x str {
         match self {
-            &Child::Process { .. } => true,
-            &Child::Unidentified { .. } => false,
-        }
-    }
-    fn get_config<'x>(&'x self) -> Option<&'x str> {
-        match self {
-            &Child::Process { ref config, .. } => Some(config),
-            &Child::Unidentified { .. } => None,
+            &Child::Process(ref p) => &p.name,
+            &Child::Unidentified(ref name) => name,
         }
     }
 }
@@ -203,9 +200,8 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn recover_processes(master: &MasterConfig,
-    children: &mut HashMap<pid_t, Child>,
-    configs: &mut HashMap<String, Child>, config_file: &Path)
+fn recover_processes(children: &mut HashMap<pid_t, Child>,
+    configs: &mut HashMap<String, Process>, config_file: &Path)
 {
     let mypid = unsafe { getpid() };
 
@@ -231,7 +227,7 @@ fn recover_processes(master: &MasterConfig,
                 .ok();
             match configs.remove(&name) {
                 Some(child) => {
-                    if child.get_config() != cfg.as_ref().map(|x| &x[..]) {
+                    if Some(&child.config) != cfg.as_ref() {
                         warn!("Config mismatch: {}, pid: {}. Upgrading...",
                               name, pid);
                         kill(pid, SIGTERM)
@@ -239,12 +235,12 @@ fn recover_processes(master: &MasterConfig,
                             pid, e)).ok();
                         // TODO(tailhook) add to unidentified list?
                     }
-                    children.insert(pid, child);
+                    children.insert(pid, Child::Process(child));
                 }
                 None => {
                     warn!("Undefined child name: {}, pid: {}. \
                         Sending SIGTERM...", name, pid);
-                    children.insert(pid, Child::Unidentified { name: name });
+                    children.insert(pid, Child::Unidentified(name));
                     kill(pid, SIGTERM)
                     .map_err(|e| error!("Error sending TERM to {}: {:?}",
                         pid, e)).ok();
@@ -260,8 +256,7 @@ fn recover_processes(master: &MasterConfig,
     }
 }
 
-fn remove_dangling_state_dirs(names: &HashMap<String, Child>,
-    master: &MasterConfig)
+fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
 {
     let pid_regex = Regex::new(r"\.\(\d+\)$").unwrap();
     for entry in read_dir(&master.runtime_dir.join(&master.state_dir))
@@ -288,7 +283,7 @@ fn remove_dangling_state_dirs(names: &HashMap<String, Child>,
                 {
                     let name = format!("{}/{}", tree_name, proc_name);
                     debug!("Checking process dir: {}", name);
-                    if names.contains_key(&name) {
+                    if names.contains(&name) {
                         valid_dirs += 1;
                         continue;
                     } else if proc_name.starts_with("cmd.") {
@@ -334,8 +329,7 @@ fn _rm_cgroup(dir: &Path) {
     }
 }
 
-fn remove_dangling_cgroups(names: &HashMap<String, Child>,
-    master: &MasterConfig)
+fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
 {
     if master.cgroup_name.is_none() {
         return;
@@ -391,7 +385,7 @@ fn remove_dangling_cgroups(names: &HashMap<String, Child>,
             if let Some(capt) = child_group_regex.captures(&filename) {
                 let name = format!("{}/{}",
                     capt.at(1).unwrap(), capt.at(2).unwrap());
-                if !names.contains_key(&name) {
+                if !names.contains(&name) {
                     _rm_cgroup(&child_dir.path());
                 }
             } else if let Some(capt) = cmd_group_regex.captures(&filename) {
@@ -423,34 +417,149 @@ fn run(config_file: &Path, options: &Options)
         }
     };
 
-    let trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
+    let mut trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let config_file = config_file.to_owned();
 
     let mut configs = read_sandboxes(&master, &bin, &config_file, options);
 
     let mut children = HashMap::new();
     info!("Recovering Processes");
-    recover_processes(&master, &mut children, &mut configs, &config_file);
+    recover_processes(&mut children, &mut configs, &config_file);
+    let recovered = children.values()
+        .map(|c| c.get_name().to_string()).collect();
 
     info!("Removing Dangling State Dirs");
-    remove_dangling_state_dirs(&configs, &master);
+    remove_dangling_state_dirs(&recovered, &master);
 
     info!("Removing Dangling CGroups");
-    remove_dangling_cgroups(&configs, &master);
+    remove_dangling_cgroups(&recovered, &master);
 
     info!("Starting Processes");
-    schedule_new_workers(&mut children, &configs);
+    let mut queue = schedule_new_workers(configs);
 
-    unimplemented!();
+    normal_loop(&mut queue, &mut children, &mut trap, &master);
+    if children.len() > 0 {
+        shutdown_loop(&mut children, &mut trap, &master);
+    }
 
     global_cleanup(&master);
 
     return Ok(());
 }
 
+fn normal_loop(queue: &mut Queue<Process>,
+    children: &mut HashMap<pid_t, Child>,
+    trap: &mut Trap, master: &MasterConfig)
+{
+    let restart_timeo = Duration::seconds(1);
+    loop {
+        let now = SteadyTime::now();
+
+        let mut buf = Vec::new();
+        for mut child in queue.pop_until(now) {
+            match child.cmd.spawn() {
+                Ok(c) => {
+                    child.restart_min = now + restart_timeo;
+                    children.insert(c.pid(), Child::Process(child));
+                }
+                Err(e) => {
+                    error!("Error starting {:?}: {}", child.name, e);
+                    buf.push(child);
+                }
+            }
+        }
+        for v in buf.into_iter() {
+            queue.add(now + restart_timeo, v);
+        }
+
+        match queue.peek_time()
+            .and_then(|d| trap.wait(d))
+            .or_else(|| trap.next())
+        {
+            None => {
+                continue;
+            }
+            Some(SIGINT) => {
+                // SIGINT is usually a Ctrl+C so it's sent to whole
+                // process group, so we don't need to do anything special
+                debug!("Received SIGINT. Waiting process to stop..");
+                return;
+            }
+            Some(SIGTERM) => {
+                // SIGTERM is usually sent to a specific process so we
+                // forward it to children
+                debug!("Received SIGTERM signal, propagating");
+                for (&pid, _) in children {
+                    kill(pid, SIGTERM).ok();
+                }
+                return;
+            }
+            Some(SIGCHLD) => {
+                for (pid, status) in reap_zombies() {
+                    match children.remove(&pid) {
+                        Some(Child::Process(child)) => {
+                            error!("Process {:?} {}", child.name, status);
+                            clean_child(&child.name, &master);
+                            queue.add(child.restart_min, child);
+                        }
+                        Some(Child::Unidentified(name)) => {
+                            clean_child(&name, &master);
+                        }
+                        None => {
+                            info!("Unknown process {:?} {}", pid, status);
+                        }
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+fn shutdown_loop(children: &mut HashMap<pid_t, Child>, trap: &mut Trap,
+    master: &MasterConfig)
+{
+    for sig in trap {
+        match sig {
+            SIGINT => {
+                // SIGINT is usually a Ctrl+C so it's sent to whole
+                // process group, so we don't need to do anything special
+                debug!("Received SIGINT. Waiting process to stop..");
+                continue;
+            }
+            SIGTERM => {
+                // SIGTERM is usually sent to a specific process so we
+                // forward it to children
+                debug!("Received SIGTERM signal, propagating");
+                for &pid in children.keys() {
+                    kill(pid, SIGTERM).ok();
+                }
+                continue;
+            }
+            SIGCHLD => {
+                for (pid, status) in reap_zombies() {
+                    match children.remove(&pid) {
+                        Some(child) => {
+                            info!("Process {:?} {}", child.get_name(), status);
+                            clean_child(child.get_name(), &master);
+                        }
+                        None => {
+                            info!("Unknown process {:?} {}", pid, status);
+                        }
+                    }
+                }
+                if children.len() == 0 {
+                    return;
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
     master_file: &Path, options: &Options)
-    -> HashMap<String, Child>
+    -> HashMap<String, Process>
 {
     let dirpath = master_file.parent().unwrap().join(&master.sandboxes_dir);
     info!("Reading sandboxes from {:?}", dirpath);
@@ -478,7 +587,7 @@ fn read_subtree<'x>(master: &MasterConfig,
     bin: &Binaries, master_file: &Path,
     tree_name: &String, tree: &TreeConfig,
     options: &Options)
-    -> Vec<(String, Child)>
+    -> Vec<(String, Process)>
 {
     let cfg = master_file.parent().unwrap()
         .join(&master.processes_dir)
@@ -508,12 +617,12 @@ fn read_subtree<'x>(master: &MasterConfig,
             child.instances = 1;
             let child_string = json::encode(&child).unwrap();
 
-            let items: Vec<(String, Child)> = (0..instances)
+            let items: Vec<(String, Process)> = (0..instances)
                 .map(|i| {
                     let name = format!("{}/{}.{}", tree_name, child_name, i);
                     let cmd = new_child(bin, &name, master_file,
                         &child_string, options);
-                    let process = Child::Process {
+                    let process = Process {
                         cmd: cmd,
                         name: name.clone(),
                         restart_min: SteadyTime::now() + Duration::seconds(1),
@@ -526,10 +635,14 @@ fn read_subtree<'x>(master: &MasterConfig,
         }).collect()
 }
 
-fn schedule_new_workers(running: &mut HashMap<pid_t, Child>,
-    children: &HashMap<String, Child>)
+fn schedule_new_workers(configs: HashMap<String, Process>)
+    -> Queue<Process>
 {
-    unimplemented!();
+    let mut result = Queue::new();
+    for (_, item) in configs.into_iter() {
+        result.add(SteadyTime::now(), item);
+    }
+    return result;
 }
 
 struct Binaries {
@@ -563,7 +676,7 @@ fn main() {
     exec_handler::set_handler(&[
         SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT, SIGFPE,
         SIGUSR1, SIGUSR2,
-        ], true);
+        ], true).ok().expect("Can't set singal handler");
 
     let options = match Options::parse_args() {
         Ok(options) => options,

@@ -54,7 +54,7 @@ fn run(master_cfg: &Path, tree_name: String,
         &*TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
-    let mut log_file;
+    let log_file;
     if let Some(ref fname) = tree.log_file {
         log_file = master.default_log_dir.join(fname);
     } else {

@@ -182,7 +182,7 @@ pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
     });
 }
 
-pub fn clean_child(name: &String, master: &MasterConfig) {
+pub fn clean_child(name: &str, master: &MasterConfig) {
     let st_dir = master.runtime_dir
         .join(&master.state_dir).join(name);
     clean_dir(&st_dir, true)

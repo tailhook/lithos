@@ -29,9 +29,9 @@ impl<T> Ord for Item<T> {
     }
 }
 
-struct Queue<T:Sized>(BinaryHeap<Item<T>>);
+pub struct Queue<T:Sized>(BinaryHeap<Item<T>>);
 
-struct QueueIter<'a, T> where T: 'a {
+pub struct QueueIter<'a, T> where T: 'a {
     queue: &'a mut Queue<T>,
     max_time: SteadyTime,
 }
@@ -48,16 +48,18 @@ impl<'a, T> Iterator for QueueIter<'a, T> {
 }
 
 impl<T> Queue<T> {
-    fn new() -> Queue<T> {
+    pub fn new() -> Queue<T> {
         Queue(BinaryHeap::new())
     }
-    fn add(&mut self, deadline: SteadyTime, value: T) {
+    pub fn add(&mut self, deadline: SteadyTime, value: T) {
         self.0.push(Item { deadline: deadline, value: value });
     }
-    fn peek_time(&self) -> Option<SteadyTime> {
+    pub fn peek_time(&self) -> Option<SteadyTime> {
         return self.0.peek().map(|x| x.deadline)
     }
-    fn pop_until<'x>(&'x mut self, max_time: SteadyTime) -> QueueIter<'x, T> {
+    pub fn pop_until<'x>(&'x mut self, max_time: SteadyTime)
+        -> QueueIter<'x, T>
+    {
         QueueIter { queue: self, max_time: max_time }
     }
 }
