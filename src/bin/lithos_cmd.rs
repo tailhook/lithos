@@ -22,7 +22,7 @@ use quire::parse_config;
 use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
-use unshare::{Command, Namespace};
+use unshare::{Command};
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
