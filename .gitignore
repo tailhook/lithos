@@ -9,6 +9,7 @@ __pycache__
 
 /run
 /.vagga
+/.vagrant
 /todo.txt
 /docs/_build
 /target

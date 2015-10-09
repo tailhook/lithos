@@ -25,7 +25,7 @@ commands:
         --pakdir=dist \
         make install
 
-  docs: !Command
+  doc: !Command
     description: Build HTML docs
     container: docs
     work-dir: docs
@@ -45,37 +45,34 @@ containers:
     setup:
     - !Alpine v3.1
     - !EnsureDir /config
-    - !Sh |
-        cat <<END > /config/sleep.yaml
-        kind: Daemon
-        user_id: 1
-        volumes:
-          /tmp: !Tmpfs { size: 100Mi }
-        memory_limit: 104857600
-        cpu_shares: 3
-        executable: /bin/sleep
-        arguments: [60]
-        uid-map:
-        - {inside: 0, outside: 1000, count: 1}
-        - {inside: 1, outside: 1, count: 1}
-        gid-map:
-        - {inside: 0, outside: 100, count: 1}
-        END
-    - !Sh |
-        cat <<END > /config/busybox.yaml
-        kind: Command
-        user_id: 1
-        volumes:
-          /tmp: !Tmpfs { size: 100Mi }
-        memory_limit: 104857600
-        cpu_shares: 3
-        executable: /bin/busybox
-        uid-map:
-        - {inside: 0, outside: 1000, count: 1}
-        - {inside: 1, outside: 1, count: 1}
-        gid-map:
-        - {inside: 0, outside: 100, count: 1}
-        END
+    - !Text
+      /config/sleep.yaml: |
+          kind: Daemon
+          user_id: 1
+          volumes:
+            /tmp: !Tmpfs { size: 100Mi }
+          memory_limit: 104857600
+          cpu_shares: 3
+          executable: /bin/sleep
+          arguments: [60]
+          uid-map:
+          - {inside: 0, outside: 1000, count: 1}
+          - {inside: 1, outside: 1, count: 1}
+          gid-map:
+          - {inside: 0, outside: 100, count: 1}
+      /config/busybox.yaml: |
+          kind: Command
+          user_id: 1
+          volumes:
+            /tmp: !Tmpfs { size: 100Mi }
+          memory_limit: 104857600
+          cpu_shares: 3
+          executable: /bin/busybox
+          uid-map:
+          - {inside: 0, outside: 1000, count: 1}
+          - {inside: 1, outside: 1, count: 1}
+          gid-map:
+          - {inside: 0, outside: 100, count: 1}
 
   ubuntu:
     setup:
@@ -93,3 +90,4 @@ containers:
     setup:
     - !Alpine v3.1
     - !Install [py-sphinx, make]
+    - !Py2Requirements "docs/requirements.txt"
