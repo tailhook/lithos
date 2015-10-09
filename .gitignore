@@ -2,9 +2,13 @@
 /*.a
 /*.o
 /*.rlib
+
+*.orig
+*.pyc
+__pycache__
+
 /run
 /.vagga
-*.orig
 /todo.txt
 /docs/_build
 /target

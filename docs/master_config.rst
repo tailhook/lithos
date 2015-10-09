@@ -8,42 +8,50 @@ Master configuration file is the one that usually at
 parameters. Minimal configuration is an *empty file* but it **must exist**
 anyway. Here is the reference of the parameters along with the default values:
 
-``sandboxes-dir``
+.. opt:: sandboxes-dir
+
     The directory for per-application configuration files which contain limits
     of what application might use. If path is relative it's relative to
     the directory where configuration file is. Default is ``./sandboxes``.
 
-``processes-dir``
+.. opt:: processes-dir
+
     The directory for per-application configuration files which contain name of
     image directory, instance number, etc., to run. If path is relative it's
     relative to the directory where configuration file is. Default is
     ``./processes``.
 
-``runtime-dir``
+.. opt:: runtime-dir
+
     The directory where ``pid`` file of master process is stored and also
     the base directory for ``state-dir`` and ``mount-dir``. Path must be
     absolute. It's expected to be stored on ``tmpfs``. Default
     ``/run/lithos``.
 
-``state-dir``
+.. opt:: state-dir
+
     The directory where to keep container's state dirs. If path is relative
     it's relative to ``runtime-dir``. Default ``state``
     (i.e. ``/run/lithos/state``). Path should be on ``tmpfs``.
 
-``mount-dir``
+.. opt:: mount-dir
+
     An empty directory to use for mounting. If path is relative it's relative
     to ``runtime-dir``. Default ``mnt``.
 
-``devfs-dir``
+.. opt:: devfs-dir
+
     The directory where ``/dev`` filesystem for container exists. If it's
     not ``/dev`` (which is not recommended), you should create the directory
     with ``lithos_mkdev`` script. Default ``/var/lib/lithos/dev``.
 
-``cgroup-name``
+.. opt:: cgroup-name
+
     The name of the root cgroup for all lithos processes. Specify ``null`` (or
     any other form of YAMLy null) to turn cgroups off completely.
 
-``cgroup-controllers``
+.. opt:: cgroup-controllers
+
     List of cgroup controllers to initialize for each container. Note: the
     empty list is treated as default. Default is
     ``[name, cpu, cpuacct, memory, blkio]``. If you have some controllers
