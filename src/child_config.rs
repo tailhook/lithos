@@ -19,26 +19,17 @@ pub struct ChildConfig {
 }
 
 impl ChildConfig {
-    pub fn mapping_validator<'x>() -> Box<Validator + 'x> {
-        return Box::new(Mapping {
-            key_element: Box::new(Scalar {
-                .. Default::default()}),
-            value_element: ChildConfig::validator(),
-            .. Default::default() });
+    pub fn mapping_validator<'x>() -> Mapping<'x> {
+        return Mapping::new(
+            Scalar::new(),
+            ChildConfig::validator());
     }
-    pub fn validator<'x>() -> Box<Validator + 'x> {
-        return Box::new(Structure { members: vec!(
-            ("instances".to_string(), Box::new(Numeric {
-                default: Some(1),
-                .. Default::default()}) as Box<Validator>),
-            ("image".to_string(), Box::new(Scalar {
-                .. Default::default() }) as Box<Validator>),
-            ("config".to_string(), Box::new(Scalar {
-                .. Default::default()}) as Box<Validator>),
-            ("kind".to_string(), Box::new(Scalar {
-                default: Some("Daemon".to_string()),
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default() }) as Box<Validator>;
+    pub fn validator<'x>() -> Structure<'x> {
+        Structure::new()
+        .member("instances", Numeric::new().default(1))
+        .member("image", Scalar::new())
+        .member("config", Scalar::new())
+        .member("kind", Scalar::new().default("Daemon"))
     }
 }
 

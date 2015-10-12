@@ -56,7 +56,7 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
     info!("Checked. Proceeding");
 
     let master: MasterConfig = match parse_config(&master_cfg,
-        &*MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), Default::default())
     {
         Ok(cfg) => cfg,
         Err(e) => {

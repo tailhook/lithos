@@ -37,7 +37,7 @@ fn run(master_cfg: &Path, tree_name: String,
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&master_cfg,
-        &*MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
     try!(create_master_dirs(&master));
 
@@ -75,7 +75,7 @@ fn run(master_cfg: &Path, tree_name: String,
     debug!("Children config {:?}", cfg);
     let tree_children: BTreeMap<String, ChildConfig>;
     tree_children = try!(parse_config(&cfg,
-            &*ChildConfig::mapping_validator(), Default::default())
+            &ChildConfig::mapping_validator(), Default::default())
         .map_err(|e| format!("Error reading children config: {}", e)));
     let child_cfg = try!(tree_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));

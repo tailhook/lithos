@@ -84,7 +84,7 @@ fn check(config_file: &Path, verbose: bool,
     let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let mut alter_config = alter_config;
     let master: MasterConfig = match parse_config(&config_file,
-        &*MasterConfig::validator(), Default::default()) {
+        &MasterConfig::validator(), Default::default()) {
         Ok(cfg) => cfg,
         Err(e) => {
             err!("Can't parse config: {}", e);
@@ -132,7 +132,7 @@ fn check(config_file: &Path, verbose: bool,
         debug!("Checking {:?}", config_file);
         let all_children: BTreeMap<String, ChildConfig>;
         all_children = match parse_config(&config_file,
-            &*ChildConfig::mapping_validator(), Default::default()) {
+            &ChildConfig::mapping_validator(), Default::default()) {
             Ok(cfg) => cfg,
             Err(e) => {
                 err!("Can't read child config {:?}: {}", config_file, e);
@@ -150,7 +150,7 @@ fn check(config_file: &Path, verbose: bool,
                 &tree.image_dir
                     .join(&child_cfg.image)
                     .join(&relative(cfg_path, &Path::new("/"))),
-                &*ContainerConfig::validator(), Default::default()) {
+                &ContainerConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
                     err!("Can't read child config {:?}: {}.\n\

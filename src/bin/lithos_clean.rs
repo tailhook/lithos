@@ -85,7 +85,7 @@ fn main() {
         ap.parse_args_or_exit();
     }
     let master: MasterConfig = match parse_config(&config_file,
-        &*MasterConfig::validator(), Default::default()) {
+        &MasterConfig::validator(), Default::default()) {
         Ok(cfg) => cfg,
         Err(e) => {
             error!("Can't parse config: {}", e);
@@ -168,7 +168,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     let config_dir = master_file.parent().unwrap().join(&master.sandboxes_dir);
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
-    let childval = &*ChildConfig::mapping_validator();
+    let childval = ChildConfig::mapping_validator();
     for (tree_name, tree_fn) in try!(read_yaml_dir(&config_dir)
                             .map_err(|e| format!("Read dir error: {}", e)))
     {
@@ -181,7 +181,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             .join(tree_config.config_file.as_ref().unwrap_or(
                 &PathBuf::from(&(tree_name.clone() + ".yaml"))));
         let all_children: BTreeMap<String, ChildConfig>;
-        all_children = try!(parse_config(&cfg, childval, Default::default())
+        all_children = try!(parse_config(&cfg, &childval, Default::default())
             .map_err(|e| format!("Can't read child config {:?}: {}",
                                  tree_config.config_file, e)));
         for child in all_children.values() {

@@ -2,7 +2,7 @@ use std::default::Default;
 use std::path::PathBuf;
 
 use rustc_serialize::{Decoder};
-use quire::validate::{Validator, Structure, Sequence};
+use quire::validate::{Structure, Sequence};
 use quire::validate::{Scalar};
 use super::utils::ensure_dir;
 
@@ -23,47 +23,23 @@ pub struct MasterConfig {
 }
 
 impl MasterConfig {
-    pub fn validator<'x>() -> Box<Validator + 'x> {
-        return Box::new(Structure { members: vec!(
-            ("sandboxes_dir".to_string(), Box::new(Scalar {
-                default: Some("./sandboxes".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("processes_dir".to_string(), Box::new(Scalar {
-                default: Some("./processes".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("runtime_dir".to_string(), Box::new(Scalar {
-                default: Some("/run/lithos".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("state_dir".to_string(), Box::new(Scalar {
-                default: Some("state".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("mount_dir".to_string(), Box::new(Scalar {
-                default: Some("mnt".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("devfs_dir".to_string(), Box::new(Scalar {
-                default: Some("/var/lib/lithos/dev".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("default_log_dir".to_string(), Box::new(Scalar {
-                default: Some("/var/log/lithos".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("log_file".to_string(), Box::new(Scalar {
-                default: Some("master.log".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("log_level".to_string(), Box::new(Scalar {
-                default: Some(String::from("warn")),
-                .. Default::default() }) as Box<Validator>),
-            ("config_log_dir".to_string(), Box::new(Scalar {
-                default: Some("/var/log/lithos/config".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("cgroup_name".to_string(), Box::new(Scalar {
-                optional: true,
-                default: Some("lithos.slice".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("cgroup_controllers".to_string(), Box::new(Sequence {
-                element: Box::new(Scalar {
-                    .. Default::default() }) as Box<Validator>,
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default() }) as Box<Validator>;
+    pub fn validator<'x>() -> Structure<'x> {
+        Structure::new()
+        .member("sandboxes_dir", Scalar::new().default("./sandboxes"))
+        .member("processes_dir", Scalar::new().default("./processes"))
+        .member("runtime_dir", Scalar::new().default("/run/lithos"))
+        .member("state_dir", Scalar::new().default("state"))
+        .member("mount_dir", Scalar::new().default("mnt"))
+        .member("devfs_dir", Scalar::new()
+            .default("/var/lib/lithos/dev"))
+        .member("default_log_dir", Scalar::new().default("/var/log/lithos"))
+        .member("log_file", Scalar::new().default("master.log"))
+        .member("log_level", Scalar::new().default("warn"))
+        .member("config_log_dir", Scalar::new()
+            .default("/var/log/lithos/config"))
+        .member("cgroup_name",
+            Scalar::new().optional().default("lithos.slice"))
+        .member("cgroup_controllers", Sequence::new(Scalar::new()))
     }
 }
 

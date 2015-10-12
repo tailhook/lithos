@@ -405,7 +405,7 @@ fn run(config_file: &Path, options: &Options)
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&config_file,
-        &*MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
     try!(check_master_config(&master));
     try!(global_init(&master, &options));
@@ -594,7 +594,7 @@ fn read_subtree<'x>(master: &MasterConfig,
         .join(tree.config_file.as_ref().map(Path::new)
             .unwrap_or(Path::new(&(tree_name.clone() + ".yaml"))));
     debug!("Reading child config {:?}", cfg);
-    parse_config(&cfg, &*ChildConfig::mapping_validator(), Default::default())
+    parse_config(&cfg, &ChildConfig::mapping_validator(), Default::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
             OpenOptions::new().create(true).write(true).append(true)
             .open(master.config_log_dir.join(tree_name.clone() + ".log"))

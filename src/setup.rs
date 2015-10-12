@@ -178,7 +178,7 @@ pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
 {
     return temporary_change_root(root, || {
         parse_config(&Path::new(&child_cfg.config),
-            &*ContainerConfig::validator(), Default::default())
+            &ContainerConfig::validator(), Default::default())
     });
 }
 
