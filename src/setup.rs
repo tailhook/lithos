@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Write, stderr};
 use std::fs::{File};
 use std::fs::{create_dir_all, copy, metadata};
 use std::path::{Path, PathBuf};
@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use log;
 use fern;
+use syslog;
 use time;
 use quire::parse_config;
 
@@ -197,33 +198,44 @@ pub fn clean_child(name: &str, master: &MasterConfig) {
     }
 }
 
-pub fn init_logging(path: &Path,
-    log_level: log::LogLevel, log_stderr: bool)
+pub fn init_logging(cfg: &MasterConfig, suffix: &Path, name: &str,
+    log_stderr: bool, level: log::LogLevel)
     -> Result<(), String>
 {
-    let mut output = vec![
-        fern::OutputConfig::file(path)
-        ];
-    if log_stderr {
-        output.push(fern::OutputConfig::stderr());
-    }
-    let logger_config = fern::DispatchConfig {
-        format: Box::new(|msg: &str, level: &log::LogLevel,
-                          location: &log::LogLocation| {
-            if *level >= log::LogLevel::Debug {
-                format!("[{}][{}]{}:{}: {}",
-                    time::now_utc().rfc3339(),
-                    level, location.file(), location.line(),
-                    msg)
-            } else {
-                format!("[{}][{}] {}",
-                    time::now_utc().rfc3339(),
-                    level, msg)
-            }
-        }),
-        output: output,
-        level: log_level.to_log_level_filter(),
-    };
-    fern::init_global_logger(logger_config, log::LogLevelFilter::Trace)
+    let sysfac = cfg.syslog_facility.as_ref()
+        .and_then(|v| v.parse()
+            .map_err(|_| writeln!(&mut stderr(),
+                "Can't parse syslog facility: {:?}. Syslog is disabled.", v))
+            .ok());
+    if let Some(facility) = sysfac {
+        syslog::init(facility, level.to_log_level_filter(), Some(&name))
         .map_err(|e| format!("Can't initialize logging: {}", e))
+    } else {
+        let path = cfg.default_log_dir.join(suffix);
+        let mut output = vec![
+            fern::OutputConfig::file(&path)
+            ];
+        if log_stderr {
+            output.push(fern::OutputConfig::stderr());
+        }
+        let logger_config = fern::DispatchConfig {
+            format: Box::new(|msg: &str, level: &log::LogLevel,
+                              location: &log::LogLocation| {
+                if *level >= log::LogLevel::Debug {
+                    format!("[{}][{}]{}:{}: {}",
+                        time::now_utc().rfc3339(),
+                        level, location.file(), location.line(),
+                        msg)
+                } else {
+                    format!("[{}][{}] {}",
+                        time::now_utc().rfc3339(),
+                        level, msg)
+                }
+            }),
+            output: output,
+            level: level.to_log_level_filter(),
+        };
+        fern::init_global_logger(logger_config, log::LogLevelFilter::Trace)
+            .map_err(|e| format!("Can't initialize logging: {}", e))
+    }
 }

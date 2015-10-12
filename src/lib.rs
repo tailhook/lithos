@@ -3,6 +3,7 @@
 
 #[macro_use] extern crate log;
 extern crate fern;
+extern crate syslog;
 extern crate time;
 extern crate libc;
 extern crate nix;

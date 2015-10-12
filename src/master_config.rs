@@ -17,6 +17,8 @@ pub struct MasterConfig {
     pub default_log_dir: PathBuf,
     pub config_log_dir: PathBuf,
     pub log_file: PathBuf,
+    pub syslog_facility: Option<String>,
+    pub syslog_app_name: String,
     pub log_level: String,
     pub cgroup_name: Option<String>,
     pub cgroup_controllers: Vec<String>,
@@ -33,6 +35,8 @@ impl MasterConfig {
         .member("devfs_dir", Scalar::new()
             .default("/var/lib/lithos/dev"))
         .member("default_log_dir", Scalar::new().default("/var/log/lithos"))
+        .member("syslog_facility", Scalar::new().optional())
+        .member("syslog_app_name", Scalar::new().default("lithos"))
         .member("log_file", Scalar::new().default("master.log"))
         .member("log_level", Scalar::new().default("warn"))
         .member("config_log_dir", Scalar::new()

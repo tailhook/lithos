@@ -7,6 +7,7 @@ extern crate quire;
 extern crate lithos;
 extern crate time;
 extern crate fern;
+extern crate syslog;
 extern crate signal;
 extern crate unshare;
 #[macro_use] extern crate log;
@@ -113,11 +114,11 @@ fn global_init(master: &MasterConfig, options: &Options)
     -> Result<(), String>
 {
     try!(create_master_dirs(&master));
-    try!(init_logging(&master.default_log_dir.join(&master.log_file),
+    try!(init_logging(&master, &master.log_file, &master.syslog_app_name,
+          options.log_stderr,
           options.log_level
             .or_else(|| FromStr::from_str(&master.log_level).ok())
-            .unwrap_or(log::LogLevel::Warn),
-          options.log_stderr));
+            .unwrap_or(log::LogLevel::Warn)));
     try!(check_process(&master));
     if let Some(ref name) = master.cgroup_name {
         try!(cgroup::ensure_in_group(name, &master.cgroup_controllers));

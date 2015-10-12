@@ -64,3 +64,28 @@ anyway. Here is the reference of the parameters along with the default values:
     .. note:: turning off cgroups means that resource limits does not work
        completely. lithos will not try to enforce them by polling or some
        other means
+
+.. opt:: default-log-dir
+
+   (default ``/var/log/lithos``) The directory where master and each of the
+   application logs are created (unless are overrided by sandbox config).
+
+.. opt:: log-file
+
+   (default ``master.log``) Master log file. Relative paths are treated from
+   :opt:`default-log-dir`.
+
+.. opt:: log-level
+
+   (default ``warn``) Level of logging. Can be overriden on the command line.
+
+.. opt:: syslog-facility
+
+   (no default) Enables logging to syslog (with specified facility) instead of
+   file.
+
+.. opt:: syslog-name
+
+   (default ``lithos``) Application name for master process in syslog. The
+   child processes are prefixed by this value. For example ``lithos-django``
+   (where ``django`` is a sandbox name).

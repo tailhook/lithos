@@ -5,6 +5,7 @@ extern crate quire;
 extern crate signal;
 extern crate unshare;
 extern crate argparse;
+extern crate syslog;
 extern crate rustc_serialize;
 #[macro_use] extern crate log;
 #[macro_use] extern crate lithos;
@@ -58,13 +59,14 @@ fn run(options: Options) -> Result<(), String>
     } else {
         log_file = master.default_log_dir.join(format!("{}.log", tree_name));
     }
-    try!(init_logging(&log_file,
-          options.log_level
+    try!(init_logging(&master, &log_file,
+        &format!("{}-{}", master.syslog_app_name, tree_name),
+        options.log_stderr,
+        options.log_level
             .or(tree.log_level.as_ref()
                 .and_then(|x| FromStr::from_str(&x).ok()))
             .or_else(|| FromStr::from_str(&master.log_level).ok())
-            .unwrap_or(log::LogLevel::Warn),
-          options.log_stderr));
+            .unwrap_or(log::LogLevel::Warn)));
 
     try!(mount_private(&Path::new("/")));
     let image_path = tree.image_dir.join(&options.config.image);

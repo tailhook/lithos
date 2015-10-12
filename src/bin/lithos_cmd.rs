@@ -60,13 +60,14 @@ fn run(master_cfg: &Path, tree_name: String,
     } else {
         log_file = master.default_log_dir.join(format!("{}.log", tree_name));
     }
-    try!(init_logging(&log_file,
-          log_level
+    try!(init_logging(&master, &log_file,
+        &format!("{}-{}", master.syslog_app_name, tree_name),
+        log_stderr,
+        log_level
             .or(tree.log_level
                 .and_then(|x| FromStr::from_str(&x).ok()))
             .or_else(|| FromStr::from_str(&master.log_level).ok())
-            .unwrap_or(log::LogLevel::Warn),
-        log_stderr));
+            .unwrap_or(log::LogLevel::Warn)));
 
     let cfg = master_cfg.parent().unwrap()
         .join(&master.processes_dir)
