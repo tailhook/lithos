@@ -4,7 +4,7 @@ use std::fs::{metadata};
 use std::path::{Path, PathBuf};
 use std::path::Component::Normal;
 use std::io::Error as IoError;
-use std::io::ErrorKind::AlreadyExists;
+use std::io::ErrorKind::{AlreadyExists, NotFound};
 use std::ffi::CString;
 use std::env::current_dir;
 use libc::{c_int, c_char, timeval, c_void, mode_t, uid_t, gid_t};
@@ -127,8 +127,12 @@ pub fn ensure_dir(dir: &Path) -> Result<(), String> {
 }
 
 pub fn clean_dir(dir: &Path, remove_dir_itself: bool) -> Result<(), String> {
-    if metadata(dir).is_ok() {
-        return Ok(());
+    if let Err(e) = metadata(dir) {
+        if e.kind() == NotFound {
+            return Ok(());
+        } else {
+            return Err(format!("Can't stat dir {:?}: {}", dir, e));
+        }
     }
     // We temporarily change root, so that symlinks inside the dir
     // would do no harm. But note that dir itself can be a symlink
