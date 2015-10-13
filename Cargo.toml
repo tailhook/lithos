@@ -23,7 +23,7 @@ env_logger = "0.3"
 nix = "0.4"
 unshare = "0.1.1"
 signal = "0.1.2"
-syslog = { git = "git://github.com/tailhook/rust-syslog.git", rev = "fbdaed7" }
+syslog = "3.1.0"
 
 
 [[bin]]

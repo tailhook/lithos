@@ -13,7 +13,7 @@ dependencies = [
  "rustc-serialize 0.3.16 (registry+https://github.com/rust-lang/crates.io-index)",
  "shaman 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "signal 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "syslog 3.0.0 (git+git://github.com/tailhook/rust-syslog.git?rev=fbdaed7)",
+ "syslog 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "unshare 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -166,8 +166,8 @@ dependencies = [
 
 [[package]]
 name = "syslog"
-version = "3.0.0"
-source = "git+git://github.com/tailhook/rust-syslog.git?rev=fbdaed7#fbdaed78dc32f92e950f6ebe92889a619a2e9aea"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.1.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
