@@ -21,7 +21,7 @@ use std::process::exit;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use quire::parse_config;
-use unshare::{Command, Namespace, Stdio, reap_zombies};
+use unshare::{Command, Stdio, reap_zombies};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use signal::trap::Trap;
 use time::{SteadyTime, Duration};
@@ -157,8 +157,6 @@ fn run(options: Options) -> Result<(), String>
 
     cmd.args(&local.arguments);
     cmd.args(&options.args);
-    cmd.unshare([Namespace::Mount, Namespace::Uts,
-                 Namespace::Ipc, Namespace::Pid].iter().cloned());
     if local.uid_map.len() > 0 || local.gid_map.len() > 0 {
         cmd.set_id_maps(
             local.uid_map.iter().map(|u| unshare::UidMap {
