@@ -22,7 +22,7 @@ use quire::parse_config;
 use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
-use unshare::{Command};
+use unshare::{Command, Namespace};
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
@@ -112,6 +112,8 @@ fn run(master_cfg: &Path, tree_name: String,
     }
     cmd.arg("--");
     cmd.args(&args);
+    cmd.unshare([Namespace::Mount, Namespace::Uts,
+                 Namespace::Ipc, Namespace::Pid].iter().cloned());
 
     info!("Running {:?}", cmd);
 
