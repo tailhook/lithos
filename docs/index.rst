@@ -9,7 +9,7 @@ Welcome to Lithos's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    config
    master_config

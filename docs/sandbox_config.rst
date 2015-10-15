@@ -23,7 +23,7 @@ Reference
 
 .. opt:: config-file
 
-   The path for the :ref:`processes config<processes_config>`.  In most cases
+   The path for the :ref:`processes config<process_config>`.  In most cases
    should be left unset.  Default is ``null`` which is results into
    ``/etc/lithos/processes/NAME.yaml`` with all other settings being defaults.
 
