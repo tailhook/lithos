@@ -51,7 +51,7 @@ fn run(master_cfg: &Path, tree_name: String,
     let tree: TreeConfig = try!(parse_config(
         &master_cfg.parent().unwrap()
          .join(&master.sandboxes_dir).join(tree_name.clone() + ".yaml"),
-        &*TreeConfig::validator(), Default::default())
+        &TreeConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading tree config: {}", e)));
 
     let log_file;

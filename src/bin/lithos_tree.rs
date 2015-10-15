@@ -571,7 +571,7 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
         .into_iter()
         .filter_map(|(tree_name, tree_config)| {
             debug!("Reading config: {:?}", tree_config);
-            parse_config(&tree_config, &*tree_validator, Default::default())
+            parse_config(&tree_config, &tree_validator, Default::default())
                 .map_err(|e| error!("Can't read config {:?}: {}",
                                     tree_config, e))
                 .map(|cfg: TreeConfig| (tree_name, cfg))

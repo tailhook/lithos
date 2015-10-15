@@ -173,7 +173,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                             .map_err(|e| format!("Read dir error: {}", e)))
     {
         let tree_config: TreeConfig = try!(parse_config(&tree_fn,
-            &*TreeConfig::validator(), Default::default()));
+            &TreeConfig::validator(), Default::default()));
         image_dirs.insert(tree_config.image_dir.clone());
 
         let cfg = master_file.parent().unwrap()

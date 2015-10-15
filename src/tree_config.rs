@@ -67,42 +67,23 @@ pub struct TreeConfig {
 }
 
 impl TreeConfig {
-    pub fn validator<'x>() -> Box<Validator + 'x> {
-        return Box::new(Structure { members: vec!(
-            ("config_file".to_string(), Box::new(Scalar {
-                optional: true,
-                .. Default::default() }) as Box<Validator>),
-            ("image_dir".to_string(), Box::new(Scalar {
-                default: Some("/var/lib/lithos/containers".to_string()),
-                .. Default::default() }) as Box<Validator>),
-            ("log_file".to_string(), Box::new(Scalar {
-                optional: true,
-                .. Default::default() }) as Box<Validator>),
-            ("log_level".to_string(), Box::new(Scalar {
-                optional: true,
-                .. Default::default() }) as Box<Validator>),
-            ("readonly_paths".to_string(), Box::new(Mapping {
-                key_element: Box::new(Scalar { .. Default::default()}),
-                value_element: Box::new(Scalar { .. Default::default()}),
-                .. Default::default()}) as Box<Validator>),
-            ("writable_paths".to_string(), Box::new(Mapping {
-                key_element: Box::new(Scalar { .. Default::default()}),
-                value_element: Box::new(Scalar { .. Default::default()}),
-                .. Default::default() }) as Box<Validator>),
-            ("allow_users".to_string(), Box::new(Sequence {
-                element: Box::new(Scalar {
-                    .. Default::default() }) as Box<Validator>,
-                .. Default::default() }) as Box<Validator>),
-            ("allow_groups".to_string(), Box::new(Sequence {
-                element: Box::new(Scalar {
-                    .. Default::default() }) as Box<Validator>,
-                .. Default::default() }) as Box<Validator>),
-            ("additional_hosts".to_string(), Box::new(Mapping {
-                key_element: Box::new(Scalar {
-                    .. Default::default() }) as Box<Validator>,
-                value_element: Box::new(Scalar {
-                    .. Default::default() }) as Box<Validator>,
-                .. Default::default() }) as Box<Validator>),
-        ), .. Default::default() }) as Box<Validator>;
+    pub fn validator<'x>() -> Structure<'x> {
+        Structure::new()
+        .member("config_file", Scalar::new().optional())
+        .member("image_dir", Scalar::new().optional()
+            .default("/var/lib/lithos/containers"))
+        .member("log_file", Scalar::new().optional())
+        .member("log_level", Scalar::new().optional())
+        .member("readonly_paths", Mapping::new(
+            Scalar::new(),
+            Scalar::new()))
+        .member("writable_paths", Mapping::new(
+            Scalar::new(),
+            Scalar::new()))
+        .member("allow_users", Sequence::new(Scalar::new()))
+        .member("allow_groups", Sequence::new(Scalar::new()))
+        .member("additional_hosts", Mapping::new(
+            Scalar::new(),
+            Scalar::new()))
     }
 }

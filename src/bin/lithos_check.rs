@@ -108,7 +108,7 @@ fn check(config_file: &Path, verbose: bool,
                      .unwrap_or(false))
     {
         let tree: TreeConfig = match parse_config(&tree_fn.path(),
-            &*TreeConfig::validator(), Default::default()) {
+            &TreeConfig::validator(), Default::default()) {
             Ok(cfg) => cfg,
             Err(e) => {
                 err!("Can't parse config: {}", e);

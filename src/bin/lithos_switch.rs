@@ -67,7 +67,7 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
         .join(&master.sandboxes_dir)
         .join(&(tree_name.clone() + ".yaml"));
     let tree: TreeConfig = match parse_config(&tree_fn,
-        &*TreeConfig::validator(), Default::default())
+        &TreeConfig::validator(), Default::default())
     {
         Ok(cfg) => cfg,
         Err(e) => {
