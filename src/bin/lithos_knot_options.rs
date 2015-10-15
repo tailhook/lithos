@@ -5,6 +5,7 @@ use std::path::{PathBuf};
 
 use log;
 use argparse::{ArgumentParser, StoreOption, Store, Parse, List, StoreTrue};
+use argparse::{Print};
 
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
@@ -66,6 +67,9 @@ impl Options {
             ap.refer(&mut options.log_level)
               .add_option(&["--log-level"], StoreOption,
                 "Set log level (default info for now)");
+            ap.add_option(&["--version"],
+                Print(env!("CARGO_PKG_VERSION").to_string()),
+                "Show version");
             ap.stop_on_first_argument(true);
             ap.parse(args, stdout, stderr)
         };

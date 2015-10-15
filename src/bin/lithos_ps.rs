@@ -30,7 +30,7 @@ use libc::funcs::posix88::unistd::sysconf;
 use lithos::utils::get_time;
 use rustc_serialize::json::Json;
 use rustc_serialize::json;
-use argparse::{ArgumentParser, StoreConst};
+use argparse::{ArgumentParser, StoreConst, Print};
 
 use ascii::Column;
 use self::LithosInfo::*;
@@ -701,6 +701,9 @@ fn main() {
             .add_option(&["--no-color"],
                 StoreConst(ascii::Printer::plain_factory()),
                 "Don't use colors even for terminal output");
+        ap.add_option(&["--version"],
+            Print(env!("CARGO_PKG_VERSION").to_string()),
+            "Show version");
         ap.set_description("Displays tree of processes");
         match ap.parse_args() {
             Ok(()) => {}

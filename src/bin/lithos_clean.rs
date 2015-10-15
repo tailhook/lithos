@@ -19,6 +19,7 @@ use std::collections::VecDeque;
 use time::{Tm, Duration, now_utc};
 use quire::parse_config;
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
+use argparse::{Print};
 use rustc_serialize::json;
 
 use lithos::utils::read_yaml_dir;
@@ -82,6 +83,9 @@ fn main() {
             "Show unused images")
           .add_option(&["--delete-unused"], StoreConst(Action::DeleteUnused),
             "Delete unused images");
+        ap.add_option(&["--version"],
+            Print(env!("CARGO_PKG_VERSION").to_string()),
+            "Show version of the lithos");
         ap.parse_args_or_exit();
     }
     let master: MasterConfig = match parse_config(&config_file,

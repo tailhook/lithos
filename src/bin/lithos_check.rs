@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
 use regex::Regex;
-use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue};
+use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print};
 use quire::parse_config;
 
 use lithos::utils::{in_range, in_mapping, check_mapping, relative};
@@ -247,6 +247,9 @@ fn main() {
           .add_option(&["-T", "--tree", "--subtree-name"], ParseOption,
             "Name of the tree for which --config-dir takes effect")
           .metavar("NAME");
+        ap.add_option(&["--version"],
+            Print(env!("CARGO_PKG_VERSION").to_string()),
+            "Show version");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {

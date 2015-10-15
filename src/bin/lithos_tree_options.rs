@@ -2,7 +2,7 @@ use log;
 use std::env;
 use std::path::PathBuf;
 use std::io::{Write, stdout, stderr};
-use argparse::{ArgumentParser, Parse, StoreOption, StoreTrue};
+use argparse::{ArgumentParser, Parse, StoreOption, StoreTrue, Print};
 
 
 pub struct Options {
@@ -39,6 +39,9 @@ impl Options {
             ap.refer(&mut options.log_level)
               .add_option(&["--log-level"], StoreOption,
                 "Set log level (default info for now)");
+            ap.add_option(&["--version"],
+                Print(env!("CARGO_PKG_VERSION").to_string()),
+                "Show version");
             ap.parse(args, stdout, stderr)
         };
         match parse_result {

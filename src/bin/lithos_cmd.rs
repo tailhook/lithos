@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use regex::Regex;
 use quire::parse_config;
-use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption};
+use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption, Print};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
 use unshare::{Command, Namespace};
@@ -159,6 +159,9 @@ fn main() {
         ap.refer(&mut args)
           .add_argument("argument", List,
             "Arguments for the command");
+        ap.add_option(&["--version"],
+            Print(env!("CARGO_PKG_VERSION").to_string()),
+            "Show version");
         ap.stop_on_first_argument(true);
         match ap.parse_args() {
             Ok(()) => {}

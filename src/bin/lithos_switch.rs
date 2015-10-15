@@ -19,7 +19,7 @@ use std::fs::{copy, rename};
 use std::default::Default;
 use std::process::{Command, Stdio};
 
-use argparse::{ArgumentParser, Parse, StoreTrue};
+use argparse::{ArgumentParser, Parse, StoreTrue, Print};
 use quire::parse_config;
 use nix::sys::signal::{SIGQUIT, kill};
 
@@ -147,6 +147,9 @@ fn main() {
             ")
           .metavar("FILE")
           .required();
+        ap.add_option(&["--version"],
+            Print(env!("CARGO_PKG_VERSION").to_string()),
+            "Show version");
         match ap.parse_args() {
             Ok(()) => {}
             Err(x) => {
