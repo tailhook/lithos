@@ -11,7 +11,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   config
    master_config
+   sandbox_config
+   process_config
    container_config
    volumes
 

@@ -1,3 +1,5 @@
+.. _master_config:
+
 ====================
 Master Configuration
 ====================
