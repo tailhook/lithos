@@ -4,12 +4,12 @@ extern crate argparse;
 extern crate quire;
 extern crate lithos;
 extern crate time;
+extern crate scan_dir;
 extern crate rustc_serialize;
 
 use std::env;
 use std::io::{BufReader, BufRead};
-use std::io::Error as IoError;
-use std::fs::{File, read_dir, remove_dir_all};
+use std::fs::{File, remove_dir_all};
 use std::path::{PathBuf, Path};
 use std::process::exit;
 use std::collections::HashSet;
@@ -22,7 +22,6 @@ use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
 use argparse::{Print};
 use rustc_serialize::json;
 
-use lithos::utils::read_yaml_dir;
 use lithos::master_config::MasterConfig;
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
@@ -142,25 +141,18 @@ fn main() {
 }
 
 fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
-    -> Result<Vec<PathBuf>, IoError>
+    -> Result<Vec<PathBuf>, scan_dir::Error>
 {
     let mut unused = Vec::new();
     for dir in dirs.iter() {
-        for entry in try!(read_dir(dir)) {
-            let entry = try!(entry);
-            if !try!(entry.file_type()).is_dir() {
-                continue;
-            }
-            if let Some(name) = entry.file_name().as_os_str().to_str() {
-                if name.starts_with(".") {
-                    continue;
+        try!(scan_dir::ScanDir::dirs().read(dir, |iter| {
+            for (entry, _) in iter {
+                let path = entry.path().to_path_buf();
+                if !used.contains(&path) {
+                    unused.push(path);
                 }
             }
-            let path = entry.path().to_path_buf();
-            if !used.contains(&path) {
-                unused.push(path);
-            }
-        }
+        }));
     }
     Ok(unused)
 }
@@ -173,81 +165,85 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
     let childval = ChildConfig::mapping_validator();
-    for (tree_name, tree_fn) in try!(read_yaml_dir(&config_dir)
-                            .map_err(|e| format!("Read dir error: {}", e)))
-    {
-        let tree_config: TreeConfig = try!(parse_config(&tree_fn,
-            &TreeConfig::validator(), Default::default()));
-        image_dirs.insert(tree_config.image_dir.clone());
+    try!(try!(scan_dir::ScanDir::files().read(&config_dir, |iter| {
+        let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
+        for (entry, tree_fname) in yamls {
+            let tree_name = &tree_fname[..tree_fname.len()-5];  // strip .yaml
+            let tree_config: TreeConfig = try!(parse_config(&entry.path(),
+                &TreeConfig::validator(), Default::default()));
+            image_dirs.insert(tree_config.image_dir.clone());
 
-        let cfg = master_file.parent().unwrap()
-            .join(&master.processes_dir)
-            .join(tree_config.config_file.as_ref().unwrap_or(
-                &PathBuf::from(&(tree_name.clone() + ".yaml"))));
-        let all_children: BTreeMap<String, ChildConfig>;
-        all_children = try!(parse_config(&cfg, &childval, Default::default())
-            .map_err(|e| format!("Can't read child config {:?}: {}",
-                                 tree_config.config_file, e)));
-        for child in all_children.values() {
-            // Current are always added
-            images.insert(tree_config.image_dir.join(&child.image));
-        }
-
-        let logname = master.config_log_dir.join(format!("{}.log", tree_name));
-        // TODO(tailhook) look in log rotations
-        let log = try!(File::open(&logname)
-            .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
-        let mut configs;
-        configs = VecDeque::<(Tm, BTreeMap<String, ChildConfig>)>::new();
-        for (line_no, line) in BufReader::new(log).lines().enumerate() {
-            let line = try!(line
-                .map_err(|e| format!("Readline error: {}", e)));
-            let mut iter = line.splitn(2, " ");
-            let (tm, cfg) = match (iter.next(), iter.next()) {
-                    (Some(""), None) => continue, // last line, probably
-                    (Some(date), Some(config)) => {
-                        // TODO(tailhook) remove or check tree name
-                        (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
-                             .map_err(|_| format!("Bad time at {:?}:{}",
-                                logname, line_no))),
-                         try!(json::decode(config)
-                             .map_err(|_| format!("Bad config at {:?}:{}",
-                                logname, line_no))),
-                        )
-                    }
-                    _ => {
-                        return Err(format!("Bad line at {:?}:{}",
-                                           logname, line_no));
-                    }
-                };
-            if let Some(&(_, ref ocfg)) = configs.back(){
-                if *ocfg == cfg {
-                    continue;
-                }
-            }
-            configs.push_back((tm, cfg));
-            if configs.len() >= ver_max as usize {
-                configs.pop_front();
-            }
-        }
-        min_time.map(|min_time| {
-            while configs.len() > ver_min as usize {
-                if let Some(&(tm, _)) = configs.front() {
-                    if tm > min_time {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-                configs.pop_front();
-            }
-        });
-        for &(_, ref cfg) in configs.iter() {
-            for child in cfg.values() {
+            let cfg = master_file.parent().unwrap()
+                .join(&master.processes_dir)
+                .join(tree_config.config_file.as_ref().unwrap_or(
+                    &PathBuf::from(&(tree_name.to_string() + ".yaml"))));
+            let all_children: BTreeMap<String, ChildConfig>;
+            all_children = try!(parse_config(&cfg, &childval, Default::default())
+                .map_err(|e| format!("Can't read child config {:?}: {}",
+                                     tree_config.config_file, e)));
+            for child in all_children.values() {
                 // Current are always added
                 images.insert(tree_config.image_dir.join(&child.image));
             }
+
+            let logname = master.config_log_dir
+                .join(format!("{}.log", tree_name));
+            // TODO(tailhook) look in log rotations
+            let log = try!(File::open(&logname)
+                .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
+            let mut configs;
+            configs = VecDeque::<(Tm, BTreeMap<String, ChildConfig>)>::new();
+            for (line_no, line) in BufReader::new(log).lines().enumerate() {
+                let line = try!(line
+                    .map_err(|e| format!("Readline error: {}", e)));
+                let mut iter = line.splitn(2, " ");
+                let (tm, cfg) = match (iter.next(), iter.next()) {
+                        (Some(""), None) => continue, // last line, probably
+                        (Some(date), Some(config)) => {
+                            // TODO(tailhook) remove or check tree name
+                            (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+                                 .map_err(|_| format!("Bad time at {:?}:{}",
+                                    logname, line_no))),
+                             try!(json::decode(config)
+                                 .map_err(|_| format!("Bad config at {:?}:{}",
+                                    logname, line_no))),
+                            )
+                        }
+                        _ => {
+                            return Err(format!("Bad line at {:?}:{}",
+                                               logname, line_no));
+                        }
+                    };
+                if let Some(&(_, ref ocfg)) = configs.back(){
+                    if *ocfg == cfg {
+                        continue;
+                    }
+                }
+                configs.push_back((tm, cfg));
+                if configs.len() >= ver_max as usize {
+                    configs.pop_front();
+                }
+            }
+            min_time.map(|min_time| {
+                while configs.len() > ver_min as usize {
+                    if let Some(&(tm, _)) = configs.front() {
+                        if tm > min_time {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                    configs.pop_front();
+                }
+            });
+            for &(_, ref cfg) in configs.iter() {
+                for child in cfg.values() {
+                    // Current are always added
+                    images.insert(tree_config.image_dir.join(&child.image));
+                }
+            }
         }
-    }
+        Ok(())
+    }).map_err(|e| format!("Read dir error: {}", e))));
     Ok((images, image_dirs))
 }

@@ -10,6 +10,7 @@ extern crate fern;
 extern crate syslog;
 extern crate signal;
 extern crate unshare;
+extern crate scan_dir;
 #[macro_use] extern crate log;
 
 
@@ -42,7 +43,7 @@ use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::utils::{clean_dir, relative, read_yaml_dir};
+use lithos::utils::{clean_dir, relative};
 use lithos::cgroup;
 use lithos_tree_options::Options;
 use lithos::timer_queue::Queue;
@@ -565,23 +566,24 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
     let dirpath = master_file.parent().unwrap().join(&master.sandboxes_dir);
     info!("Reading sandboxes from {:?}", dirpath);
     let tree_validator = TreeConfig::validator();
-    read_yaml_dir(&dirpath)
-        .map_err(|e| { error!("Can't read config dir: {}", e); e })
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .filter_map(|(tree_name, tree_config)| {
+    scan_dir::ScanDir::files().read(&dirpath, |iter| {
+        let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
+        yamls.filter_map(|(entry, name)| {
+            let tree_config = entry.path();
+            let tree_name = name[..name.len()-5].to_string();
             debug!("Reading config: {:?}", tree_config);
             parse_config(&tree_config, &tree_validator, Default::default())
                 .map_err(|e| error!("Can't read config {:?}: {}",
                                     tree_config, e))
                 .map(|cfg: TreeConfig| (tree_name, cfg))
                 .ok()
-        })
-        .flat_map(|(name, tree)| {
+        }).flat_map(|(name, tree)| {
             read_subtree(master, bin, master_file, &name, &tree, options)
             .into_iter()
-        })
-        .collect()
+        }).collect()
+    })
+    .map_err(|e| error!("Error reading sandboxes directory: {}", e))
+    .unwrap_or(HashMap::new())
 }
 
 fn read_subtree<'x>(master: &MasterConfig,

@@ -1,7 +1,6 @@
 extern crate rustc_serialize;
 extern crate libc;
-extern crate regex;
-
+extern crate scan_dir;
 extern crate argparse;
 extern crate quire;
 extern crate env_logger;
@@ -10,14 +9,13 @@ extern crate env_logger;
 
 
 use std::env;
-use std::fs::{read_dir, metadata};
+use std::fs::{metadata};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 use std::default::Default;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
-use regex::Regex;
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print};
 use quire::parse_config;
 
@@ -81,7 +79,6 @@ fn check_tree_config(tree: &TreeConfig) {
 fn check(config_file: &Path, verbose: bool,
     tree_name: Option<String>, alter_config: Option<PathBuf>)
 {
-    let name_re = Regex::new(r"^([\w-]+)\.yaml$").unwrap();
     let mut alter_config = alter_config;
     let master: MasterConfig = match parse_config(&config_file,
         &MasterConfig::validator(), Default::default()) {
@@ -94,103 +91,98 @@ fn check(config_file: &Path, verbose: bool,
 
     check_master_config(&master, verbose);
 
-    let config_dir = config_file.parent().unwrap().join(master.sandboxes_dir);
-    for tree_fn in read_dir(&config_dir)
-        .map(|v| v.collect())
-        .map_err(|e| {
-            err!("Can't open config directory {:?}: {}", config_dir, e);
-        })
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .filter_map(|f| f.ok())
-        .filter(|f| f.file_name().into_string().ok()
-                     .map(|fname| name_re.is_match(&fname))
-                     .unwrap_or(false))
-    {
-        let tree: TreeConfig = match parse_config(&tree_fn.path(),
-            &TreeConfig::validator(), Default::default()) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                err!("Can't parse config: {}", e);
-                continue;
-            }
-        };
-        check_tree_config(&tree);
-
-        let default_config = config_file.parent().unwrap()
-            .join(&master.processes_dir)
-            .join(tree.config_file.as_ref().unwrap_or(
-                &PathBuf::from(tree_fn.file_name())));
-        let config_file = match (
-            tree_fn.path().file_stem().and_then(|x| x.to_str()), &tree_name)
-        {
-            (Some(ref f), &Some(ref t)) if &f[..] == t
-            => alter_config.take().unwrap_or(default_config),
-            _ => default_config,
-        };
-
-        debug!("Checking {:?}", config_file);
-        let all_children: BTreeMap<String, ChildConfig>;
-        all_children = match parse_config(&config_file,
-            &ChildConfig::mapping_validator(), Default::default()) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                err!("Can't read child config {:?}: {}", config_file, e);
-                continue;
-            }
-        };
-        for (ref child_name, ref child_cfg) in all_children.iter() {
-            let cfg_path = Path::new(&child_cfg.config);
-            if !cfg_path.is_absolute() {
-                err!("Config path must be absolute");
-                continue;
-            }
-            debug!("Opening config for {:?}", child_name);
-            let config: ContainerConfig = match parse_config(
-                &tree.image_dir
-                    .join(&child_cfg.image)
-                    .join(&relative(cfg_path, &Path::new("/"))),
-                &ContainerConfig::validator(), Default::default()) {
+    let config_dir = config_file.parent().unwrap().join(&master.sandboxes_dir);
+    scan_dir::ScanDir::files().read(&config_dir, |iter| {
+        let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
+        for (entry, current_fn) in yamls {
+            // strip yaml suffix
+            let current_name = &current_fn[..current_fn.len()-5];
+            let tree: TreeConfig = match parse_config(&entry.path(),
+                &TreeConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    err!("Can't read child config {:?}: {}.\n\
-                        Sometimes the reason of reading configuration is \
-                        absolute symlinks for config, in that case it may \
-                        work in real daemon, but better fix it.",
-                        child_name, e);
+                    err!("Can't parse config: {}", e);
                     continue;
                 }
             };
-            if config.uid_map.len() > 0 {
-                if !in_mapping(&config.uid_map, config.user_id) {
-                    err!("User is not in mapped range (uid: {})",
-                        config.user_id);
+            check_tree_config(&tree);
+
+            let default_config = config_file.parent().unwrap()
+                .join(&master.processes_dir)
+                .join(tree.config_file.as_ref().unwrap_or(
+                    &PathBuf::from(&current_fn)));
+            let config_file = match (current_name, &tree_name)
+            {
+                (name, &Some(ref t)) if name == t
+                => alter_config.take().unwrap_or(default_config),
+                _ => default_config,
+            };
+
+            debug!("Checking {:?}", config_file);
+            let all_children: BTreeMap<String, ChildConfig>;
+            all_children = match parse_config(&config_file,
+                &ChildConfig::mapping_validator(), Default::default()) {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    err!("Can't read child config {:?}: {}", config_file, e);
+                    continue;
                 }
-            } else {
-                if !in_range(&tree.allow_users, config.user_id) {
-                    err!("User is not in allowed range (uid: {})",
-                        config.user_id);
+            };
+            for (ref child_name, ref child_cfg) in all_children.iter() {
+                let cfg_path = Path::new(&child_cfg.config);
+                if !cfg_path.is_absolute() {
+                    err!("Config path must be absolute");
+                    continue;
                 }
-            }
-            if config.gid_map.len() > 0 {
-                if !in_mapping(&config.gid_map, config.group_id) {
-                    err!("Group is not in mapped range (gid: {})",
-                        config.user_id);
+                debug!("Opening config for {:?}", child_name);
+                let config: ContainerConfig = match parse_config(
+                    &tree.image_dir
+                        .join(&child_cfg.image)
+                        .join(&relative(cfg_path, &Path::new("/"))),
+                    &ContainerConfig::validator(), Default::default()) {
+                    Ok(cfg) => cfg,
+                    Err(e) => {
+                        err!("Can't read child config {:?}: {}.\n\
+                            Sometimes the reason of reading configuration is \
+                            absolute symlinks for config, in that case it may \
+                            work in real daemon, but better fix it.",
+                            child_name, e);
+                        continue;
+                    }
+                };
+                if config.uid_map.len() > 0 {
+                    if !in_mapping(&config.uid_map, config.user_id) {
+                        err!("User is not in mapped range (uid: {})",
+                            config.user_id);
+                    }
+                } else {
+                    if !in_range(&tree.allow_users, config.user_id) {
+                        err!("User is not in allowed range (uid: {})",
+                            config.user_id);
+                    }
                 }
-            } else {
-                if !in_range(&tree.allow_groups, config.group_id) {
-                    err!("Group is not in allowed range (gid: {})",
-                        config.group_id);
+                if config.gid_map.len() > 0 {
+                    if !in_mapping(&config.gid_map, config.group_id) {
+                        err!("Group is not in mapped range (gid: {})",
+                            config.user_id);
+                    }
+                } else {
+                    if !in_range(&tree.allow_groups, config.group_id) {
+                        err!("Group is not in allowed range (gid: {})",
+                            config.group_id);
+                    }
                 }
-            }
-            if !check_mapping(&tree.allow_users, &config.uid_map) {
-                err!("Bad uid mapping (probably doesn't match allow_users)");
-            }
-            if !check_mapping(&tree.allow_groups, &config.gid_map) {
-                err!("Bad gid mapping (probably doesn't match allow_groups)");
+                if !check_mapping(&tree.allow_users, &config.uid_map) {
+                    err!("Bad uid mapping (probably doesn't match allow_users)");
+                }
+                if !check_mapping(&tree.allow_groups, &config.gid_map) {
+                    err!("Bad gid mapping (probably doesn't match allow_groups)");
+                }
             }
         }
-    }
+    }).map_err(|e| {
+        err!("Can't read config directory {:?}: {}", config_dir, e);
+    }).ok();
     if alter_config.is_some() {
         err!("Tree {:?} is not used", tree_name);
     }

@@ -1,10 +1,10 @@
 extern crate rustc_serialize;
 extern crate libc;
-#[macro_use] extern crate log;
 extern crate regex;
-
-extern crate argparse;
 extern crate quire;
+extern crate scan_dir;
+extern crate argparse;
+#[macro_use] extern crate log;
 #[macro_use] extern crate lithos;
 
 
@@ -18,7 +18,6 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::thread::sleep_ms;
 use std::str::FromStr;
-use std::fs::{read_dir};
 use std::io::BufReader;
 use std::default::Default;
 use std::process::exit;
@@ -354,29 +353,29 @@ fn scan_processes() -> Result<ScanResult, IoError>
     let mut children = BTreeMap::<pid_t, Vec<Rc<Process>>>::new();
     let mut roots = BTreeSet::<Rc<Process>>::new();
 
-    for pid in try!(read_dir(&Path::new("/proc")))
-        .into_iter()
-        .filter_map(|p| p.ok())
-        .filter_map(|p| p.file_name().to_str()
-                        .and_then(|p| FromStr::from_str(p).ok()))
-    {
-        match read_process(pid) {
-            Ok(prc) => {
-                let prc = Rc::new(prc);
-                if let Some(TreeInfo(_)) = prc.lithos_info {
-                    roots.insert(prc.clone());
+    scan_dir::ScanDir::dirs().read("/proc", |iter| {
+        let pids = iter.filter_map(|(_, name)| FromStr::from_str(&name).ok());
+        for pid in pids {
+            match read_process(pid) {
+                Ok(prc) => {
+                    let prc = Rc::new(prc);
+                    if let Some(TreeInfo(_)) = prc.lithos_info {
+                        roots.insert(prc.clone());
+                    }
+                    if let Some(vec) = children.get_mut(&prc.parent_id) {
+                        vec.push(prc);
+                        continue;
+                    }
+                    children.insert(prc.parent_id, vec!(prc));
                 }
-                if let Some(vec) = children.get_mut(&prc.parent_id) {
-                    vec.push(prc);
-                    continue;
+                Err(e) => {
+                    info!("Error reading pid {}: {}", pid, e);
                 }
-                children.insert(prc.parent_id, vec!(prc));
-            }
-            Err(e) => {
-                info!("Error reading pid {}: {}", pid, e);
             }
         }
-    }
+    }).map_err(|e| {
+        error!("Error reading /proc: {}", e);
+    }).ok();
 
     let mut masters = BTreeMap::new();
     let mut totals: GroupTotals = Default::default();
