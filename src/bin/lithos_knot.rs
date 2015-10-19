@@ -172,6 +172,7 @@ fn run(options: Options) -> Result<(), String>
     }
     let rtimeo = Duration::milliseconds((local.restart_timeout*1000.0) as i64);
 
+    let mut should_exit = local.kind != Daemon || !local.restart_process_only;
     loop {
         let start = time::SteadyTime::now();
         let trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
@@ -198,11 +199,13 @@ fn run(options: Options) -> Result<(), String>
                     // SIGINT is usually a Ctrl+C so it's sent to whole
                     // process group, so we don't need to do anything special
                     debug!("Received SIGINT. Waiting process to stop..");
+                    should_exit = true;
                 }
                 SIGTERM => {
                     // SIGTERM is usually sent to a specific process so we
                     // forward it to children
                     debug!("Received SIGTERM signal, propagating");
+                    should_exit = true;
                     child.signal(SIGTERM).ok();
                 }
                 SIGCHLD => {
@@ -221,7 +224,7 @@ fn run(options: Options) -> Result<(), String>
         if left > Duration::zero() {
             sleep_ms(left.num_milliseconds() as u32);
         }
-        if local.kind != Daemon || !local.restart_process_only {
+        if should_exit {
             break;
         }
     }
