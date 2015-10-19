@@ -220,12 +220,12 @@ fn run(options: Options) -> Result<(), String>
             }
         }
 
+        if should_exit {
+            break;
+        }
         let left = rtimeo - (SteadyTime::now() - start);
         if left > Duration::zero() {
             sleep_ms(left.num_milliseconds() as u32);
-        }
-        if should_exit {
-            break;
         }
     }
 

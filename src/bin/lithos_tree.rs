@@ -416,25 +416,26 @@ fn normal_loop(queue: &mut Queue<Process>,
     children: &mut HashMap<pid_t, Child>,
     trap: &mut Trap, master: &MasterConfig)
 {
-    let restart_timeo = Duration::seconds(1);
     loop {
         let now = SteadyTime::now();
 
         let mut buf = Vec::new();
         for mut child in queue.pop_until(now) {
+            let restart_min = now + Duration::milliseconds(
+                (child.inner_config.restart_timeout * 1000.) as i64);
             match child.cmd.spawn() {
                 Ok(c) => {
-                    child.restart_min = now + restart_timeo;
+                    child.restart_min = restart_min;
                     children.insert(c.pid(), Child::Process(child));
                 }
                 Err(e) => {
                     error!("Error starting {:?}: {}", child.name, e);
-                    buf.push(child);
+                    buf.push((restart_min, child));
                 }
             }
         }
-        for v in buf.into_iter() {
-            queue.add(now + restart_timeo, v);
+        for (restart_min, v) in buf.into_iter() {
+            queue.add(restart_min, v);
         }
 
         match queue.peek_time()
@@ -555,6 +556,7 @@ fn read_subtree<'x>(master: &MasterConfig,
     options: &Options)
     -> Vec<(String, Process)>
 {
+    let now = SteadyTime::now();
     let cfg = master_file.parent().unwrap()
         .join(&master.processes_dir)
         .join(tree.config_file.as_ref().map(Path::new)
@@ -603,10 +605,12 @@ fn read_subtree<'x>(master: &MasterConfig,
                     let name = format!("{}/{}.{}", tree_name, child_name, i);
                     let cmd = new_child(bin, &name, master_file,
                         &child_string, options);
+                    let restart_min = now + Duration::milliseconds(
+                        (cfg.restart_timeout * 1000.) as i64);
                     let process = Process {
                         cmd: cmd,
                         name: name.clone(),
-                        restart_min: SteadyTime::now() + Duration::seconds(1),
+                        restart_min: restart_min,
                         config: child_string.clone(), // should avoid cloning?
                         inner_config: cfg.clone(),
                     };
