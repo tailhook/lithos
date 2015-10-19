@@ -15,6 +15,7 @@ extern crate scan_dir;
 
 
 use std::env;
+use std::rc::Rc;
 use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
@@ -40,8 +41,10 @@ use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
+use lithos::container_config::ContainerConfig;
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
+use lithos::utils::{temporary_change_root};
 use lithos::cgroup;
 use lithos_tree_options::Options;
 use lithos::timer_queue::Queue;
@@ -52,7 +55,8 @@ struct Process {
     restart_min: SteadyTime,
     cmd: Command,
     name: String,
-    config: String,
+    config: Rc<String>,
+    inner_config: Rc<ContainerConfig>,
 }
 
 enum Child {
@@ -215,7 +219,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
             if let Ok((name, cfg_text)) = _read_args(pid, config_file) {
                 match configs.remove(&name) {
                     Some(child) => {
-                        if child.config != cfg_text {
+                        if &child.config[..] != &cfg_text[..] {
                             warn!("Config mismatch: {}, pid: {}. Upgrading...",
                                   name, pid);
                             kill(pid, SIGTERM)
@@ -577,7 +581,22 @@ fn read_subtree<'x>(master: &MasterConfig,
             //  Child doesn't need to know how many instances it's run
             //  And for comparison on restart we need to have "one" always
             child.instances = 1;
-            let child_string = json::encode(&child).unwrap();
+            let image_dir = tree.image_dir.join(&child.image);
+            let cfg_res = temporary_change_root(&image_dir, || {
+                parse_config(&child.config,
+                    &ContainerConfig::validator(), Default::default())
+                .map_err(|e| format!("Error reading {:?} \
+                    of sandbox {:?} of image {:?}: {}",
+                    &child.config, tree_name, child.image,  e))
+            });
+            let cfg: Rc<ContainerConfig> = match cfg_res {
+                Ok(cfg) => Rc::new(cfg),
+                Err(e) => {
+                    error!("{}", e);
+                    return Vec::new().into_iter();
+                }
+            };
+            let child_string = Rc::new(json::encode(&child).unwrap());
 
             let items: Vec<(String, Process)> = (0..instances)
                 .map(|i| {
@@ -589,6 +608,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                         name: name.clone(),
                         restart_min: SteadyTime::now() + Duration::seconds(1),
                         config: child_string.clone(), // should avoid cloning?
+                        inner_config: cfg.clone(),
                     };
                     (name, process)
                 })
