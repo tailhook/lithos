@@ -18,7 +18,7 @@ use std::env;
 use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
-use std::fs::{read_dir, remove_dir};
+use std::fs::{remove_dir};
 use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::process::exit;
@@ -208,81 +208,57 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
     let mypid = unsafe { getpid() };
 
     // Recover old workers
-    for pid in read_dir(&"/proc")
-        .map_err(|e| format!("Can't read procfs: {}", e))
-        .map(|x| x.collect())
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .filter_map(|p| p.ok())
-        .filter_map(|p| p.path().file_name()
-            .and_then(|x| x.to_str())
-            .and_then(|x| FromStr::from_str(x).ok()))
-    {
-        if !_is_child(pid, mypid) {
-            continue;
-        }
-        if let Ok((name, cfg_text)) = _read_args(pid, config_file) {
-            let cfg: Option<String> = json::decode(&cfg_text)
-                .map_err(|e| warn!(
-                    "Error parsing recover config, pid {}, name {:?}: {:?}",
-                    pid, name, e))
-                .ok();
-            match configs.remove(&name) {
-                Some(child) => {
-                    if Some(&child.config) != cfg.as_ref() {
-                        warn!("Config mismatch: {}, pid: {}. Upgrading...",
-                              name, pid);
+    scan_dir::ScanDir::all().read("/proc", |iter| {
+        let pids = iter.filter_map(|(_, pid)| FromStr::from_str(&pid).ok());
+        for pid in pids {
+            if !_is_child(pid, mypid) {
+                continue;
+            }
+            if let Ok((name, cfg_text)) = _read_args(pid, config_file) {
+                match configs.remove(&name) {
+                    Some(child) => {
+                        if child.config != cfg_text {
+                            warn!("Config mismatch: {}, pid: {}. Upgrading...",
+                                  name, pid);
+                            kill(pid, SIGTERM)
+                            .map_err(|e|
+                                error!("Error sending TERM to {}: {:?}",
+                                    pid, e)).ok();
+                            // TODO(tailhook) add to unidentified list?
+                        }
+                        children.insert(pid, Child::Process(child));
+                    }
+                    None => {
+                        warn!("Undefined child name: {}, pid: {}. \
+                            Sending SIGTERM...", name, pid);
+                        children.insert(pid, Child::Unidentified(name));
                         kill(pid, SIGTERM)
                         .map_err(|e| error!("Error sending TERM to {}: {:?}",
                             pid, e)).ok();
-                        // TODO(tailhook) add to unidentified list?
                     }
-                    children.insert(pid, Child::Process(child));
-                }
-                None => {
-                    warn!("Undefined child name: {}, pid: {}. \
-                        Sending SIGTERM...", name, pid);
-                    children.insert(pid, Child::Unidentified(name));
-                    kill(pid, SIGTERM)
+                };
+            } else {
+                warn!("Undefined child, pid: {}. Sending SIGTERM...", pid);
+                kill(pid, SIGTERM)
                     .map_err(|e| error!("Error sending TERM to {}: {:?}",
                         pid, e)).ok();
-                }
-            };
-        } else {
-            warn!("Undefined child, pid: {}. Sending SIGTERM...", pid);
-            kill(pid, SIGTERM)
-                .map_err(|e| error!("Error sending TERM to {}: {:?}",
-                    pid, e)).ok();
-            continue;
+                continue;
+            }
         }
-    }
+    }).map_err(|e| error!("Error reading /proc: {}", e)).ok();
 }
 
 fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
 {
     let pid_regex = Regex::new(r"\.\(\d+\)$").unwrap();
-    for entry in read_dir(&master.runtime_dir.join(&master.state_dir))
-        .map_err(|e| error!("Can't read state dir: {}", e))
-        .map(|x| x.collect())
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        debug!("Checking tree dir: {:?}", entry.path());
-        let mut valid_dirs = 0usize;
-        if let Some(tree_name) = entry.path().file_name()
-                                .and_then(|x| x.to_str())
-        {
-            for cont in read_dir(entry.path())
-                .map_err(|e| format!("Can't read state dir: {}", e))
-                .map(|x| x.collect())
-                .unwrap_or(Vec::new())
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if let Some(proc_name) = cont.path().file_name()
-                                        .and_then(|x| x.to_str())
-                {
+    let master = master.runtime_dir.join(&master.state_dir);
+    scan_dir::ScanDir::dirs().read(&master, |iter| {
+        for (entry, tree_name) in iter {
+            let path = entry.path();
+            debug!("Checking tree dir: {:?}", path);
+            let mut valid_dirs = 0;
+            scan_dir::ScanDir::dirs().read(&path, |iter| {
+                for (entry, proc_name) in iter {
                     let name = format!("{}/{}", tree_name, proc_name);
                     debug!("Checking process dir: {}", name);
                     if names.contains(&name) {
@@ -290,7 +266,7 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
                         continue;
                     } else if proc_name.starts_with("cmd.") {
                         debug!("Checking command dir: {}", name);
-                        let pid = pid_regex.captures(proc_name).and_then(
+                        let pid = pid_regex.captures(&proc_name).and_then(
                             |c| FromStr::from_str(c.at(1).unwrap()).ok());
                         if let Some(pid) = pid {
                             if kill(pid, 0).is_ok() {
@@ -299,25 +275,26 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
                             }
                         }
                     }
+                    let path = entry.path();
+                    warn!("Dangling state dir {:?}. Deleting...", path);
+                    clean_dir(&path, true)
+                        .map_err(|e| error!(
+                            "Can't remove dangling state dir {:?}: {}",
+                            path, e))
+                        .ok();
                 }
-                warn!("Dangling state dir {:?}. Deleting...", cont.path());
-                clean_dir(&cont.path(), true)
-                    .map_err(|e| error!(
-                        "Can't remove dangling state dir {:?}: {}",
-                        cont.path(), e))
-                    .ok();
+            }).map_err(|e|
+                error!("Error reading state dir {:?}: {}", path, e)).ok();
+            debug!("Tree dir {:?} has {} valid subdirs", path, valid_dirs);
+            if valid_dirs > 0 {
+                continue;
             }
+            warn!("Empty tree dir {:?}. Deleting...", path);
+            clean_dir(&path, true)
+                .map_err(|e| error!("Can't empty state dir {:?}: {}", path, e))
+                .ok();
         }
-        debug!("Tree dir {:?} has {} valid subdirs", entry.path(), valid_dirs);
-        if valid_dirs > 0 {
-            continue;
-        }
-        warn!("Empty tree dir {:?}. Deleting...", entry.path());
-        clean_dir(&entry.path(), true)
-            .map_err(|e| error!("Can't empty state dir {:?}: {}",
-                entry.path(), e))
-            .ok();
-    }
+    }).map_err(|e| error!("Error listing state dir: {}", e)).ok();
 }
 
 fn _rm_cgroup(dir: &Path) {
@@ -363,43 +340,26 @@ fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
             debug!("Skipping controller dir: {:?}", ctr_dir);
             continue;
         }
-        for child_dir in read_dir(&ctr_dir)
-            .map_err(|e| debug!("Can't read controller {:?} dir: {}",
-                                ctr_dir, e))
-            .map(|x| x.collect())
-            .unwrap_or(Vec::new())
-            .into_iter()
-            .filter_map(|x| x.ok())
-        {
-            if !metadata(child_dir.path())
-                         .map(|x| x.is_dir()).unwrap_or(false)
-            {
-                continue;
-            }
-            let filename = child_dir.path().file_name()
-                           .and_then(|x| x.to_str())
-                           .map(|x| x.to_string());
-            if filename.is_none() {
-                warn!("Wrong filename in cgroup: {:?}", child_dir.path());
-                continue;
-            }
-            let filename = filename.unwrap();
-            if let Some(capt) = child_group_regex.captures(&filename) {
-                let name = format!("{}/{}",
-                    capt.at(1).unwrap(), capt.at(2).unwrap());
-                if !names.contains(&name) {
-                    _rm_cgroup(&child_dir.path());
+        scan_dir::ScanDir::dirs().read(&ctr_dir, |iter| {
+            for (entry, filename) in iter {
+                if let Some(capt) = child_group_regex.captures(&filename) {
+                    let name = format!("{}/{}",
+                        capt.at(1).unwrap(), capt.at(2).unwrap());
+                    if !names.contains(&name) {
+                        _rm_cgroup(&entry.path());
+                    }
+                } else if let Some(capt) = cmd_group_regex.captures(&filename) {
+                    let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
+                    if pid.is_none() || !kill(pid.unwrap(), 0).is_ok() {
+                        _rm_cgroup(&entry.path());
+                    }
+                } else {
+                    warn!("Skipping wrong group {:?}", entry.path());
+                    continue;
                 }
-            } else if let Some(capt) = cmd_group_regex.captures(&filename) {
-                let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
-                if pid.is_none() || !kill(pid.unwrap(), 0).is_ok() {
-                    _rm_cgroup(&child_dir.path());
-                }
-            } else {
-                warn!("Skipping wrong group {:?}", child_dir.path());
-                continue;
             }
-        }
+        }).map_err(|e| error!("Error reading cgroup dir {:?}: {}",
+            ctr_dir, e)).ok();
     }
 }
 
