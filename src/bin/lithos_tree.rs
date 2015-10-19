@@ -26,8 +26,6 @@ use std::collections::{HashMap, BTreeMap, HashSet};
 
 use time::{SteadyTime, Duration};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
-use nix::sys::signal::{SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT};
-use nix::sys::signal::{SIGFPE, SIGUSR1, SIGUSR2};
 use nix::sys::signal::kill;
 use libc::pid_t;
 use libc::funcs::posix88::unistd::{getpid};
@@ -43,7 +41,7 @@ use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::utils::{clean_dir, relative};
+use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::cgroup;
 use lithos_tree_options::Options;
 use lithos::timer_queue::Queue;
@@ -348,7 +346,8 @@ fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
                     if !names.contains(&name) {
                         _rm_cgroup(&entry.path());
                     }
-                } else if let Some(capt) = cmd_group_regex.captures(&filename) {
+                } else if let Some(capt) = cmd_group_regex.captures(&filename)
+                {
                     let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
                     if pid.is_none() || !kill(pid.unwrap(), 0).is_ok() {
                         _rm_cgroup(&entry.path());
@@ -636,10 +635,8 @@ fn get_binaries() -> Option<Binaries> {
 }
 
 fn main() {
-    exec_handler::set_handler(&[
-        SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT, SIGFPE,
-        SIGUSR1, SIGUSR2,
-        ], true).ok().expect("Can't set singal handler");
+    exec_handler::set_handler(&ABNORMAL_TERM_SIGNALS, true)
+        .ok().expect("Can't set singal handler");
 
     let options = match Options::parse_args() {
         Ok(options) => options,

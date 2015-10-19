@@ -7,13 +7,23 @@ use std::io::Error as IoError;
 use std::io::ErrorKind::{AlreadyExists, NotFound};
 use std::ffi::CString;
 use std::env::current_dir;
+
+use nix::sys::signal::SigNum;
+use nix::sys::signal::{SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT};
+use nix::sys::signal::{SIGFPE, SIGUSR1, SIGUSR2};
 use libc::{c_int, c_char, timeval, c_void, mode_t, uid_t, gid_t};
 use libc::{chmod, chdir, chown};
+use signal::trap::Trap;
+
 
 use super::tree_config::Range;
 use super::container_config::IdMap;
 
 pub type Time = f64;
+pub const ABNORMAL_TERM_SIGNALS: &'static [SigNum] = &[
+    SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT, SIGFPE,
+    SIGUSR1, SIGUSR2,
+];
 
 
 extern {
@@ -27,6 +37,13 @@ pub fn temporary_change_root<T, F>(path: &Path, fun: F)
     -> Result<T, String>
     where F: Fn() -> Result<T, String>
 {
+    // The point is: if we gat fatal signal in the chroot, we have 2 issues:
+    //
+    // 1. Process can't actually restart (the binary path is wrong)
+    // 2. Even if it finds the binary, it will be angry restarting in chroot
+    //
+    let _trap = Trap::trap(ABNORMAL_TERM_SIGNALS);
+
     let cwd = current_dir().unwrap();
     if unsafe { chdir(CString::new("/").unwrap().as_ptr()) } != 0 {
         return Err(format!("Error chdir to root: {}",
