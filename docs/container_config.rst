@@ -163,7 +163,7 @@ Reference
     The mapping of mountpoint to volume definition. See :ref:`volumes` for more
     info
 
-.. opt:: tcp-ports:
+.. opt:: tcp-ports
 
     Binds address and provides file descriptor to the child process. All the
     children receive dup of the same file descriptor,
@@ -174,6 +174,7 @@ Reference
           name: "some name"
           port: 7777
           host: 0.0.0.0
+          listen-backlog: 128
           reuse-addr: true
           reuse-port: false
 
