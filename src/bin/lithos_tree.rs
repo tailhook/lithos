@@ -16,20 +16,28 @@ extern crate scan_dir;
 
 use std::env;
 use std::rc::Rc;
+use std::mem::replace;
 use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
 use std::fs::{remove_dir};
+use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
+use std::os::unix::io::RawFd;
 
 use time::{SteadyTime, Duration};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::kill;
+use nix::sys::socket::{getsockname, SockAddr};
+use nix::sys::socket::{setsockopt, bind, listen};
+use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
+use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
 use libc::pid_t;
 use libc::funcs::posix88::unistd::{getpid};
+use libc::close;
 use regex::Regex;
 use quire::parse_config;
 use rustc_serialize::json;
@@ -41,7 +49,7 @@ use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::tree_config::TreeConfig;
 use lithos::child_config::ChildConfig;
-use lithos::container_config::ContainerConfig;
+use lithos::container_config::{ContainerConfig, TcpPort};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
@@ -57,6 +65,11 @@ struct Process {
     name: String,
     config: Rc<String>,
     inner_config: Rc<ContainerConfig>,
+    ports: Vec<u16>,
+}
+
+struct Socket {
+    fd: RawFd,
 }
 
 enum Child {
@@ -202,6 +215,37 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
         .and_then(|mut f| write!(f, "{}\n", unsafe { getpid() }))
         .map_err(|e| format!("Can't write file {:?}: {}", pid_file, e)));
     return Ok(());
+}
+
+fn recover_sockets(sockets: &mut HashMap<u16, Socket>) {
+    scan_dir::ScanDir::all().read("/proc/self/fd", |iter| {
+        let fds = iter
+            .filter_map(|(_, name)| FromStr::from_str(&name).ok())
+            .filter(|&x| x >= 3);
+        for fd in fds {
+            match getsockname(fd) {
+                Ok(SockAddr::Inet(addr)) => {
+                    let sock = Socket {
+                        fd: fd,
+                    };
+                    match sockets.insert(addr.port(), sock) {
+                        None => {}
+                        Some(old) => {
+                            error!("Port {} has two sockets: fd={} and fd={}, \
+                                discarding latter.",
+                                addr.port(), fd, old.fd);
+                        }
+                    }
+                }
+                Ok(SockAddr::Unix(_)) => {
+                    debug!("Fd {} is unix socket", fd);
+                }
+                Err(_) => {
+                    debug!("Fd {} is not a socket", fd);
+                }
+            }
+        }
+    }).map_err(|e| error!("Error enumerating my fds: {}", e)).ok();
 }
 
 fn recover_processes(children: &mut HashMap<pid_t, Child>,
@@ -387,9 +431,14 @@ fn run(config_file: &Path, options: &Options)
 
     let mut configs = read_sandboxes(&master, &bin, &config_file, options);
 
-    let mut children = HashMap::new();
+    info!("Recovering Sockets");
+    let mut sockets = HashMap::new();
+    recover_sockets(&mut sockets);
     info!("Recovering Processes");
+    let mut children = HashMap::new();
     recover_processes(&mut children, &mut configs, &config_file);
+    close_unused_sockets(&mut sockets, &mut children);
+
     let recovered = children.values()
         .map(|c| c.get_name().to_string()).collect();
 
@@ -402,9 +451,9 @@ fn run(config_file: &Path, options: &Options)
     info!("Starting Processes");
     let mut queue = schedule_new_workers(configs);
 
-    normal_loop(&mut queue, &mut children, &mut trap, &master);
+    normal_loop(&mut queue, &mut children, &mut sockets, &mut trap, &master);
     if children.len() > 0 {
-        shutdown_loop(&mut children, &mut trap, &master);
+        shutdown_loop(&mut children, &mut sockets, &mut trap, &master);
     }
 
     global_cleanup(&master);
@@ -412,8 +461,83 @@ fn run(config_file: &Path, options: &Options)
     return Ok(());
 }
 
+fn close_unused_sockets(sockets: &mut HashMap<u16, Socket>,
+                        children: &HashMap<pid_t, Child>)
+{
+    let empty = Vec::new();
+    let used_ports: HashSet<u16> = children.values().flat_map(|ch| {
+        match ch {
+            &Child::Process(ref p) => p.ports.iter().cloned(),
+            &Child::Unidentified(_) => empty.iter().cloned(),
+        }
+    }).collect();
+    *sockets = replace(sockets, HashMap::new())
+        .into_iter().filter(|&(p, ref s)| {
+            if used_ports.contains(&p) {
+                true
+            } else {
+                unsafe { close(s.fd) };
+                false
+            }
+        }).collect();
+}
+
+fn open_socket(cfg: &TcpPort) -> Result<RawFd, String> {
+    let sock = try!(socket(AddressFamily::Inet,
+            SockType::Stream, SockFlag::empty())
+            .map_err(|e| format!("Can't create socket: {:?}", e)));
+    let mut result = Ok(());
+    if cfg.reuse_addr {
+        result = result.and_then(|_| setsockopt(sock, ReuseAddr, &true));
+    }
+    if cfg.reuse_port {
+        result = result.and_then(|_| setsockopt(sock, ReusePort, &true));
+    }
+    let addr = SockAddr::Inet(InetAddr::from_std(
+        &(&cfg.host[..], cfg.port).to_socket_addrs().unwrap().next().unwrap()
+        ));
+    result =  result.and_then(|_| bind(sock, &addr));
+    result =  result.and_then(|_| listen(sock, cfg.listen_backlog));
+    if let Err(e) = result {
+        unsafe { close(sock) };
+        Err(format!("Socket option error: {:?}", e))
+    } else {
+        Ok(sock)
+    }
+}
+
+fn open_sockets_for(socks: &mut HashMap<u16, Socket>, ports: &Vec<TcpPort>,
+                    cmd: &mut Command)
+    -> Result<(), String>
+{
+    for item in ports {
+        if !socks.contains_key(&item.port) {
+            if !item.reuse_port {
+                let sock = try!(open_socket(item));
+                socks.insert(item.port, Socket {
+                    fd: sock,
+                });
+            }
+        }
+    }
+
+    cmd.reset_fds();
+    if socks.len() > 0 {
+        cmd.close_fds(socks.values().map(|x| x.fd).min().unwrap()
+                      ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
+        for (n, p) in ports.iter().enumerate() {
+            unsafe {
+                cmd.file_descriptor_raw(p.fd.unwrap_or(3+n as RawFd),
+                    socks.get(&p.port).unwrap().fd);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn normal_loop(queue: &mut Queue<Process>,
     children: &mut HashMap<pid_t, Child>,
+    sockets: &mut HashMap<u16, Socket>,
     trap: &mut Trap, master: &MasterConfig)
 {
     loop {
@@ -423,6 +547,17 @@ fn normal_loop(queue: &mut Queue<Process>,
         for mut child in queue.pop_until(now) {
             let restart_min = now + Duration::milliseconds(
                 (child.inner_config.restart_timeout * 1000.) as i64);
+            match open_sockets_for(sockets, &child.inner_config.tcp_ports,
+                                   &mut child.cmd)
+            {
+                Ok(()) => {}
+                Err(e) => {
+                    error!("Error starting {:?}, error opening sockets: {}",
+                        child.name, e);
+                    buf.push((restart_min, child));
+                    continue;
+                }
+            }
             match child.cmd.spawn() {
                 Ok(c) => {
                     child.restart_min = restart_min;
@@ -438,6 +573,7 @@ fn normal_loop(queue: &mut Queue<Process>,
             queue.add(restart_min, v);
         }
 
+        close_unused_sockets(sockets, children);
         match queue.peek_time()
             .and_then(|d| trap.wait(d))
             .or_else(|| trap.next())
@@ -482,7 +618,9 @@ fn normal_loop(queue: &mut Queue<Process>,
     }
 }
 
-fn shutdown_loop(children: &mut HashMap<pid_t, Child>, trap: &mut Trap,
+fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
+    sockets: &mut HashMap<u16, Socket>,
+    trap: &mut Trap,
     master: &MasterConfig)
 {
     for sig in trap {
@@ -514,6 +652,10 @@ fn shutdown_loop(children: &mut HashMap<pid_t, Child>, trap: &mut Trap,
                         }
                     }
                 }
+                // In case we will wait for some process for the long time
+                // we want to close tcp ports as fast as possible, so that
+                // our upstream/monitoring notice the socket is closed
+                close_unused_sockets(sockets, children);
                 if children.len() == 0 {
                     return;
                 }
@@ -613,6 +755,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                         restart_min: restart_min,
                         config: child_string.clone(), // should avoid cloning?
                         inner_config: cfg.clone(),
+                        ports: cfg.tcp_ports.iter().map(|x| x.port).collect(),
                     };
                     (name, process)
                 })

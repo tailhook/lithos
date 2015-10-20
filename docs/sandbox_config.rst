@@ -70,6 +70,19 @@ Reference
    List of ranges of group ids for the container.
    Works similarly to :opt:`allow-users`.
 
+.. opt:: allow-tcp-ports
+
+   List of ranges of allowed TCP ports for container. This is currently not
+   enforced in any way except:
+
+   1. Ports < 1024 are restricted by OS for non-root (but may be allowed here)
+   2. It restricts :opt:`bind-port` setting in container config
+
+   .. note:: if you have overlapping TCP port for different sandboxes, only
+      single file descriptor will be used for each port. The config for
+      opening port will be used arbitrary from single config amonst all users,
+      which have obvious security implications.
+
 .. opt:: additional-hosts
 
    Mapping of ``hostname: ip`` for names that will be added to ``/etc/hosts``

@@ -63,6 +63,7 @@ pub struct TreeConfig {
     pub writable_paths: BTreeMap<PathBuf, PathBuf>,
     pub allow_users: Vec<Range>,
     pub allow_groups: Vec<Range>,
+    pub allow_tcp_ports: Vec<Range>,
     pub additional_hosts: BTreeMap<String, String>,
 }
 
@@ -82,6 +83,7 @@ impl TreeConfig {
             Scalar::new()))
         .member("allow_users", Sequence::new(Scalar::new()))
         .member("allow_groups", Sequence::new(Scalar::new()))
+        .member("allow_tcp_ports", Sequence::new(Scalar::new()))
         .member("additional_hosts", Mapping::new(
             Scalar::new(),
             Scalar::new()))

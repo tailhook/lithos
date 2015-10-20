@@ -1,3 +1,5 @@
+.. highlight:: yaml
+
 .. _container_config:
 
 =======================
@@ -160,6 +162,100 @@ Reference
 
     The mapping of mountpoint to volume definition. See :ref:`volumes` for more
     info
+
+.. opt:: tcp-ports:
+
+    Binds address and provides file descriptor to the child process. All the
+    children receive dup of the same file descriptor,
+    so may all do ``accept()`` simultaneously. The configuration looks like::
+
+        tcp-ports:
+        - fd: 3
+          name: "some name"
+          port: 7777
+          host: 0.0.0.0
+          reuse-addr: true
+          reuse-port: false
+
+    All the fields except ``port`` are optional.  The way we pass socket to
+    process is compatible with systemd_.
+
+    To get rid of systemd dependency just set ``fd: N`` to file descriptor
+    number and use that number (you should also set cloexec early on program
+    start). For example to run nginx you need::
+
+        tcp-ports:
+        - fd: 3
+          port: 80
+        environ:
+          NGINX: "3;"
+
+    To run gunicorn you may want::
+
+        tcp-ports:
+        - fd: 3
+          port: 80
+        environ:
+          GUNICORN_FD: "3"
+
+    Parameters:
+
+    port
+      TCP port number. This is the only required parameter
+
+      .. warning::
+
+         * The paramters (except ``fd``) do not change after socket is
+           bound even if configuration change
+         * You can't bind same port with different hostnames this limitation
+           may be lifted in the later versions
+
+      Port parameter should be unique amoungst all containers. But sharing
+      port works because it is useful if you are doing smooth software
+      upgrade (i.e. you have few old processes running and few new processes
+      running both sharing same port/file-descriptor). *Running them on single
+      port is not the best practices for smooth software upgrade but that
+      topic if out of scope of this documentation.*
+
+    host
+      (default is ``0.0.0.0`` meaning all addresses) Host to bind to. It must
+      be IP address, hostname is not supported.
+
+    listen-backlog
+      (default ``128``) the value to pass to the `listen()` system call. The
+      value is capped by ``net.core.somaxconn``
+
+    name
+      (no value by default) Name of the socket passed in ``LISTEN_FD_NAMES``
+      environment variable (this is systemd-compatible)
+
+    fd
+      (default is index of this item in the list + ``3`` )
+      File descriptor number. Should be unique if specified
+
+    reuse-addr
+      (default ``true``) Sets ``SO_REUSEADDR`` socket option
+
+    reuse-port
+      (default ``false``) If set to ``true`` this changes behavior of the
+      lithos with respect of the socket. In default case lithos binds socket
+      as quick as possible and passes to each child on start. When this set
+      to ``true``, lithos creates a separate socket and calls bind for each
+      process start. This has two consequences:
+
+      * Socket is not bound when no processes started (i.e. they are failing)
+      * Each process gets separate in-kernel queue of connections to accept
+
+      This should be set to ``true`` only on very high performant servers that
+      experience assymetric workload in default case.
+
+    .. warning:: It's too easy to mess up files with ``fd`` and without. You
+       should either omit all of them and use ``systemd``-compatible socket
+       enumeration. Or set ``fd`` value on all of them, and configure the
+       application to use specific file descriptor number (for example by
+       environment). Mixing the two styles together will always confuse you.
+
+    .. _systemd: http://www.freedesktop.org/software/systemd/man/sd_listen_fds_with_names.html
 
 
 
