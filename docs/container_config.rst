@@ -170,39 +170,37 @@ Reference
     so may all do ``accept()`` simultaneously. The configuration looks like::
 
         tcp-ports:
-        - fd: 3
-          name: "some name"
-          port: 7777
-          host: 0.0.0.0
-          listen-backlog: 128
-          reuse-addr: true
-          reuse-port: false
+          7777:
+            fd: 3
+            host: 0.0.0.0
+            listen-backlog: 128
+            reuse-addr: true
+            reuse-port: false
 
-    All the fields except ``port`` are optional.  The way we pass socket to
-    process is compatible with systemd_.
+    All the fields except ``fd`` are optional.
 
-    To get rid of systemd dependency just set ``fd: N`` to file descriptor
-    number and use that number (you should also set cloexec early on program
-    start). For example to run nginx you need::
+    Programs may require to pass listening file descriptor number by some
+    means (usually environment). For example to run nginx with port bound
+    (so you don't need to start it as root) you need::
 
         tcp-ports:
-        - fd: 3
-          port: 80
+          80:
+            fd: 3
         environ:
           NGINX: "3;"
 
     To run gunicorn you may want::
 
         tcp-ports:
-        - fd: 3
-          port: 80
+          80:
+            port: 80
         environ:
           GUNICORN_FD: "3"
 
     Parameters:
 
-    port
-      TCP port number. This is the only required parameter
+    *key*
+      TCP port number.
 
       .. warning::
 
@@ -218,6 +216,9 @@ Reference
       port is not the best practices for smooth software upgrade but that
       topic if out of scope of this documentation.*
 
+    fd
+      *Required*. File descriptor number
+
     host
       (default is ``0.0.0.0`` meaning all addresses) Host to bind to. It must
       be IP address, hostname is not supported.
@@ -225,14 +226,6 @@ Reference
     listen-backlog
       (default ``128``) the value to pass to the `listen()` system call. The
       value is capped by ``net.core.somaxconn``
-
-    name
-      (no value by default) Name of the socket passed in ``LISTEN_FD_NAMES``
-      environment variable (this is systemd-compatible)
-
-    fd
-      (default is index of this item in the list + ``3`` )
-      File descriptor number. Should be unique if specified
 
     reuse-addr
       (default ``true``) Sets ``SO_REUSEADDR`` socket option
@@ -249,14 +242,3 @@ Reference
 
       This should be set to ``true`` only on very high performant servers that
       experience assymetric workload in default case.
-
-    .. warning:: It's too easy to mess up files with ``fd`` and without. You
-       should either omit all of them and use ``systemd``-compatible socket
-       enumeration. Or set ``fd`` value on all of them, and configure the
-       application to use specific file descriptor number (for example by
-       environment). Mixing the two styles together will always confuse you.
-
-    .. _systemd: http://www.freedesktop.org/software/systemd/man/sd_listen_fds_with_names.html
-
-
-

@@ -482,7 +482,7 @@ fn close_unused_sockets(sockets: &mut HashMap<u16, Socket>,
         }).collect();
 }
 
-fn open_socket(cfg: &TcpPort) -> Result<RawFd, String> {
+fn open_socket(port: u16, cfg: &TcpPort) -> Result<RawFd, String> {
     let sock = try!(socket(AddressFamily::Inet,
             SockType::Stream, SockFlag::empty())
             .map_err(|e| format!("Can't create socket: {:?}", e)));
@@ -494,7 +494,7 @@ fn open_socket(cfg: &TcpPort) -> Result<RawFd, String> {
         result = result.and_then(|_| setsockopt(sock, ReusePort, &true));
     }
     let addr = SockAddr::Inet(InetAddr::from_std(
-        &(&cfg.host[..], cfg.port).to_socket_addrs().unwrap().next().unwrap()
+        &(&cfg.host[..], port).to_socket_addrs().unwrap().next().unwrap()
         ));
     result =  result.and_then(|_| bind(sock, &addr));
     result =  result.and_then(|_| listen(sock, cfg.listen_backlog));
@@ -506,15 +506,16 @@ fn open_socket(cfg: &TcpPort) -> Result<RawFd, String> {
     }
 }
 
-fn open_sockets_for(socks: &mut HashMap<u16, Socket>, ports: &Vec<TcpPort>,
+fn open_sockets_for(socks: &mut HashMap<u16, Socket>,
+                    ports: &HashMap<u16, TcpPort>,
                     cmd: &mut Command)
     -> Result<(), String>
 {
-    for item in ports {
-        if !socks.contains_key(&item.port) {
+    for (&port, item) in ports {
+        if !socks.contains_key(&port) {
             if !item.reuse_port {
-                let sock = try!(open_socket(item));
-                socks.insert(item.port, Socket {
+                let sock = try!(open_socket(port, item));
+                socks.insert(port, Socket {
                     fd: sock,
                 });
             }
@@ -525,10 +526,9 @@ fn open_sockets_for(socks: &mut HashMap<u16, Socket>, ports: &Vec<TcpPort>,
     if socks.len() > 0 {
         cmd.close_fds(socks.values().map(|x| x.fd).min().unwrap()
                       ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
-        for (n, p) in ports.iter().enumerate() {
+        for (p, item) in ports.iter() {
             unsafe {
-                cmd.file_descriptor_raw(p.fd.unwrap_or(3+n as RawFd),
-                    socks.get(&p.port).unwrap().fd);
+                cmd.file_descriptor_raw(item.fd, socks.get(p).unwrap().fd);
             }
         }
     }
@@ -755,7 +755,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                         restart_min: restart_min,
                         config: child_string.clone(), // should avoid cloning?
                         inner_config: cfg.clone(),
-                        ports: cfg.tcp_ports.iter().map(|x| x.port).collect(),
+                        ports: cfg.tcp_ports.keys().cloned().collect(),
                     };
                     (name, process)
                 })

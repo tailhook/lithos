@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::default::Default;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
@@ -65,10 +66,8 @@ pub struct IdMap {
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct TcpPort {
-    pub port: u16,
     pub host: String,
-    pub name: Option<String>,
-    pub fd: Option<RawFd>,
+    pub fd: RawFd,
     pub reuse_addr: bool,
     pub reuse_port: bool,
     pub listen_backlog: usize,
@@ -94,7 +93,7 @@ pub struct ContainerConfig {
     pub gid_map: Vec<IdMap>,
     pub stdout_stderr_file: Option<PathBuf>,
     pub restart_process_only: bool,
-    pub tcp_ports: Vec<TcpPort>,
+    pub tcp_ports: HashMap<u16, TcpPort>,
 }
 
 fn mapping_validator<'x>() -> Sequence<'x> {
@@ -139,15 +138,15 @@ impl ContainerConfig {
         .member("gid_map", mapping_validator())
         .member("stdout_stderr_file", Scalar::new().optional())
         .member("restart_process_only", Scalar::new().default(false))
-        .member("tcp_ports", Sequence::new(Structure::new()
-            .member("port", Scalar::new())
-            .member("host", Scalar::new().default("0.0.0.0"))
-            .member("name", Scalar::new().optional())
-            .member("fd", Numeric::new().min(0).optional())
-            .member("reuse_addr", Scalar::new().default(true))
-            .member("reuse_port", Scalar::new().default(false))
-            .member("listen_backlog", Scalar::new().default(128))
-        ))
+        .member("tcp_ports", Mapping::new(
+            Numeric::new().min(1).max(65535),
+            Structure::new()
+                .member("host", Scalar::new().default("0.0.0.0"))
+                .member("fd", Numeric::new().min(0).optional())
+                .member("reuse_addr", Scalar::new().default(true))
+                .member("reuse_port", Scalar::new().default(false))
+                .member("listen_backlog", Scalar::new().default(128))
+            ))
     }
 }
 
