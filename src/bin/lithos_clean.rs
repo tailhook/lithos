@@ -147,6 +147,15 @@ fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
     for dir in dirs.iter() {
         try!(scan_dir::ScanDir::dirs().read(dir, |iter| {
             for (entry, _) in iter {
+                // we know that file_type works, because scan_dir already
+                // tried
+                let typ = entry.file_type().unwrap();
+
+                if typ.is_symlink() {
+                    // Temporary fix: symlinks are ignored
+                    // TODO(tailhook) symlinks are used images (optionally)
+                    continue;
+                }
                 let path = entry.path().to_path_buf();
                 if !used.contains(&path) {
                     unused.push(path);
