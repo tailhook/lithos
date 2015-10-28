@@ -574,10 +574,11 @@ fn normal_loop(queue: &mut Queue<Process>,
         }
 
         close_unused_sockets(sockets, children);
-        match queue.peek_time()
-            .and_then(|d| trap.wait(d))
-            .or_else(|| trap.next())
-        {
+        let next_signal = match queue.peek_time() {
+            Some(deadline) => trap.wait(deadline),
+            None => trap.next(),
+        };
+        match next_signal {
             None => {
                 continue;
             }
