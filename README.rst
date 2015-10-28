@@ -2,8 +2,9 @@
 Lithos
 ======
 
-:Status: alpha
-:Security: totally insecure
+:Status: beta
+:Documentation: http://lithos.readthedocs.org
+
 
 Lithos is a process supervisor and containerizer for running services. Lithos
 is not intended to be system init. But rather tries to be a base tool to build
