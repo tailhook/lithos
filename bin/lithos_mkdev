@@ -16,7 +16,8 @@ mknod -m 666 "${target_dir}/random" c 1 8
 mknod -m 666 "${target_dir}/urandom" c 1 9
 mknod -m 666 "${target_dir}/tty" c 5 0
 mknod -m 666 "${target_dir}/full" c 1 7
-mknod -m 666 "${target_dir}/ptmx" c 5 2
+mkdir "${target_dir}/pts"
+ln -s "pts/ptmx" "${target_dir}/ptmx"
 
 ln -s /proc/self/fd "${target_dir}/fd"
 ln -s /proc/self/fd/0 "${target_dir}/stdin"

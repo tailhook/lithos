@@ -126,6 +126,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
     let devdir = mntdir.join("dev");
     try!(bind_mount(&master.devfs_dir, &devdir));
     try!(mount_ro_recursive(&devdir));
+    try!(mount_pseudo(&mntdir.join("dev/pts"),
+        "devpts", "newinstance", false));
     try!(mount_pseudo(&mntdir.join("sys"), "sysfs", "", true));
     try!(mount_pseudo(&mntdir.join("proc"), "proc", "", false));
 
