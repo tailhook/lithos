@@ -22,7 +22,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use quire::parse_config;
 use unshare::{Command, Stdio, reap_zombies};
-use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
+use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SigNum};
 use signal::trap::Trap;
 use time::{SteadyTime, Duration};
 
@@ -40,6 +40,33 @@ use lithos_knot_options::Options;
 
 mod lithos_knot_options;
 
+struct SignalIter<'a> {
+    trap: &'a mut Trap,
+    interrupt: bool,
+}
+
+impl<'a> SignalIter<'a> {
+    fn new(trap: &mut Trap) -> SignalIter {
+        SignalIter {
+            trap: trap,
+            interrupt: false,
+        }
+    }
+    fn interrupt(&mut self) {
+        self.interrupt = true;
+    }
+}
+
+impl<'a> Iterator for SignalIter<'a> {
+    type Item = SigNum;
+    fn next(&mut self) -> Option<SigNum> {
+        if self.interrupt {
+            return self.trap.wait(SteadyTime::now());
+        } else {
+            return self.trap.next();
+        }
+    }
+}
 
 fn run(options: Options) -> Result<(), String>
 {
@@ -172,10 +199,10 @@ fn run(options: Options) -> Result<(), String>
     }
     let rtimeo = Duration::milliseconds((local.restart_timeout*1000.0) as i64);
 
+    let mut trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let mut should_exit = local.kind != Daemon || !local.restart_process_only;
     loop {
         let start = time::SteadyTime::now();
-        let trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
 
         // Reopen file at each start
         let _file_guard = if let Some(ref path) = local.stdout_stderr_file {
@@ -193,7 +220,8 @@ fn run(options: Options) -> Result<(), String>
         let child = try!(cmd.spawn().map_err(|e|
             format!("Error running {:?}: {}", options.name, e)));
 
-        'child_wait: for signal in trap {
+        let mut iter = SignalIter::new(&mut trap);
+        while let Some(signal) = iter.next() {
             match signal {
                 SIGINT => {
                     // SIGINT is usually a Ctrl+C so it's sent to whole
@@ -212,7 +240,7 @@ fn run(options: Options) -> Result<(), String>
                     for (pid, status) in reap_zombies() {
                         if pid == child.pid() {
                             error!("Process {:?} {}", options.name, status);
-                            break 'child_wait;
+                            iter.interrupt();
                         }
                     }
                 }
