@@ -19,8 +19,12 @@ bin:
 	cargo build
 
 
-install:
-	cargo build --release
+install: bin-release _install
+
+bin-release:
+	cargo build --release -v
+
+_install:
 	install -d $(DESTDIR)$(PREFIX)/bin
 	install -m 755 target/release/lithos_tree $(DESTDIR)$(PREFIX)/bin/lithos_tree
 	install -m 755 target/release/lithos_knot $(DESTDIR)$(PREFIX)/bin/lithos_knot
@@ -32,4 +36,4 @@ install:
 	install -m 755 bin/lithos_mkdev $(DESTDIR)$(PREFIX)/bin/lithos_mkdev
 
 
-.PHONY: all bin install test
+.PHONY: all bin install test _install bin-release

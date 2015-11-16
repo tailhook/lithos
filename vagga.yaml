@@ -18,12 +18,13 @@ commands:
       set -ex
       ver=$(git describe)
       [ -d dist ] || mkdir dist
+      make bin-release
       checkinstall --default \
         --maintainer=paul@colomiets.name --pkglicense=MIT \
         --pkgname=lithos --nodoc --strip=no \
         --pkgver=${ver#v} \
         --pakdir=dist \
-        make install
+        make _install
 
   doc: !Command
     description: Build HTML docs
