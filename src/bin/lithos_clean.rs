@@ -23,7 +23,7 @@ use argparse::{Print};
 use rustc_serialize::json;
 
 use lithos::master_config::MasterConfig;
-use lithos::tree_config::TreeConfig;
+use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildConfig;
 
 
@@ -167,27 +167,27 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     let childval = ChildConfig::mapping_validator();
     try!(try!(scan_dir::ScanDir::files().read(&config_dir, |iter| {
         let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
-        for (entry, tree_fname) in yamls {
-            let tree_name = &tree_fname[..tree_fname.len()-5];  // strip .yaml
-            let tree_config: TreeConfig = try!(parse_config(&entry.path(),
-                &TreeConfig::validator(), Default::default()));
-            image_dirs.insert(tree_config.image_dir.clone());
+        for (entry, sandbox_fname) in yamls {
+            let sandbox_name = &sandbox_fname[..sandbox_fname.len()-5];  // strip .yaml
+            let sandbox_config: SandboxConfig = try!(parse_config(&entry.path(),
+                &SandboxConfig::validator(), Default::default()));
+            image_dirs.insert(sandbox_config.image_dir.clone());
 
             let cfg = master_file.parent().unwrap()
                 .join(&master.processes_dir)
-                .join(tree_config.config_file.as_ref().unwrap_or(
-                    &PathBuf::from(&(tree_name.to_string() + ".yaml"))));
+                .join(sandbox_config.config_file.as_ref().unwrap_or(
+                    &PathBuf::from(&(sandbox_name.to_string() + ".yaml"))));
             let all_children: BTreeMap<String, ChildConfig>;
             all_children = try!(parse_config(&cfg, &childval, Default::default())
                 .map_err(|e| format!("Can't read child config {:?}: {}",
-                                     tree_config.config_file, e)));
+                                     sandbox_config.config_file, e)));
             for child in all_children.values() {
                 // Current are always added
-                images.insert(tree_config.image_dir.join(&child.image));
+                images.insert(sandbox_config.image_dir.join(&child.image));
             }
 
             let logname = master.config_log_dir
-                .join(format!("{}.log", tree_name));
+                .join(format!("{}.log", sandbox_name));
             // TODO(tailhook) look in log rotations
             let log = try!(File::open(&logname)
                 .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
@@ -200,7 +200,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 let (tm, cfg) = match (iter.next(), iter.next()) {
                         (Some(""), None) => continue, // last line, probably
                         (Some(date), Some(config)) => {
-                            // TODO(tailhook) remove or check tree name
+                            // TODO(tailhook) remove or check sandbox name
                             (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
                                  .map_err(|_| format!("Bad time at {:?}:{}",
                                     logname, line_no))),
@@ -239,7 +239,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             for &(_, ref cfg) in configs.iter() {
                 for child in cfg.values() {
                     // Current are always added
-                    images.insert(tree_config.image_dir.join(&child.image));
+                    images.insert(sandbox_config.image_dir.join(&child.image));
                 }
             }
         }

@@ -54,7 +54,7 @@ impl Decodable for Range {
 }
 
 #[derive(RustcDecodable)]
-pub struct TreeConfig {
+pub struct SandboxConfig {
     pub config_file: Option<PathBuf>,
     pub image_dir: PathBuf,
     pub log_file: Option<PathBuf>,
@@ -67,7 +67,7 @@ pub struct TreeConfig {
     pub additional_hosts: BTreeMap<String, String>,
 }
 
-impl TreeConfig {
+impl SandboxConfig {
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
         .member("config_file", Scalar::new().optional())

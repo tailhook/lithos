@@ -21,7 +21,7 @@ use quire::parse_config;
 
 use lithos::utils::{in_range, in_mapping, check_mapping, relative};
 use lithos::master_config::MasterConfig;
-use lithos::tree_config::TreeConfig;
+use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::network::{get_host_name, get_host_ip};
@@ -67,17 +67,17 @@ fn check_master_config(master: &MasterConfig, verbose: bool) {
     }
 }
 
-fn check_tree_config(tree: &TreeConfig) {
-    if tree.allow_users.len() == 0 {
+fn check_sandbox_config(sandbox: &SandboxConfig) {
+    if sandbox.allow_users.len() == 0 {
         err!("No allowed users range. Please add `allow-users: [1-1000]`");
     }
-    if tree.allow_groups.len() == 0 {
+    if sandbox.allow_groups.len() == 0 {
         err!("No allowed groups range. Please add `allow-groups: [1-1000]`");
     }
 }
 
 fn check(config_file: &Path, verbose: bool,
-    tree_name: Option<String>, alter_config: Option<PathBuf>)
+    sandbox_name: Option<String>, alter_config: Option<PathBuf>)
 {
     let mut alter_config = alter_config;
     let master: MasterConfig = match parse_config(&config_file,
@@ -97,21 +97,21 @@ fn check(config_file: &Path, verbose: bool,
         for (entry, current_fn) in yamls {
             // strip yaml suffix
             let current_name = &current_fn[..current_fn.len()-5];
-            let tree: TreeConfig = match parse_config(&entry.path(),
-                &TreeConfig::validator(), Default::default()) {
+            let sandbox: SandboxConfig = match parse_config(&entry.path(),
+                &SandboxConfig::validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
                     err!("Can't parse config: {}", e);
                     continue;
                 }
             };
-            check_tree_config(&tree);
+            check_sandbox_config(&sandbox);
 
             let default_config = config_file.parent().unwrap()
                 .join(&master.processes_dir)
-                .join(tree.config_file.as_ref().unwrap_or(
+                .join(sandbox.config_file.as_ref().unwrap_or(
                     &PathBuf::from(&current_fn)));
-            let config_file = match (current_name, &tree_name)
+            let config_file = match (current_name, &sandbox_name)
             {
                 (name, &Some(ref t)) if name == t
                 => alter_config.take().unwrap_or(default_config),
@@ -136,7 +136,7 @@ fn check(config_file: &Path, verbose: bool,
                 }
                 debug!("Opening config for {:?}", child_name);
                 let config: ContainerConfig = match parse_config(
-                    &tree.image_dir
+                    &sandbox.image_dir
                         .join(&child_cfg.image)
                         .join(&relative(cfg_path, &Path::new("/"))),
                     &ContainerConfig::validator(), Default::default()) {
@@ -156,7 +156,7 @@ fn check(config_file: &Path, verbose: bool,
                             config.user_id);
                     }
                 } else {
-                    if !in_range(&tree.allow_users, config.user_id) {
+                    if !in_range(&sandbox.allow_users, config.user_id) {
                         err!("User is not in allowed range (uid: {})",
                             config.user_id);
                     }
@@ -167,15 +167,15 @@ fn check(config_file: &Path, verbose: bool,
                             config.user_id);
                     }
                 } else {
-                    if !in_range(&tree.allow_groups, config.group_id) {
+                    if !in_range(&sandbox.allow_groups, config.group_id) {
                         err!("Group is not in allowed range (gid: {})",
                             config.group_id);
                     }
                 }
-                if !check_mapping(&tree.allow_users, &config.uid_map) {
+                if !check_mapping(&sandbox.allow_users, &config.uid_map) {
                     err!("Bad uid mapping (probably doesn't match allow_users)");
                 }
-                if !check_mapping(&tree.allow_groups, &config.gid_map) {
+                if !check_mapping(&sandbox.allow_groups, &config.gid_map) {
                     err!("Bad gid mapping (probably doesn't match allow_groups)");
                 }
             }
@@ -184,7 +184,7 @@ fn check(config_file: &Path, verbose: bool,
         err!("Can't read config directory {:?}: {}", config_dir, e);
     }).ok();
     if alter_config.is_some() {
-        err!("Tree {:?} is not used", tree_name);
+        err!("Tree {:?} is not used", sandbox_name);
     }
 }
 
@@ -216,7 +216,7 @@ fn main() {
     let mut config_file = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;
     let mut alter_config = None;
-    let mut tree_name = None;
+    let mut sandbox_name = None;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
@@ -233,11 +233,14 @@ fn main() {
             "Name of the alterate file name with configs.
              Useful to test configuration file before
              switching it to be primary one.
-             You must also specify --tree.")
+             You must also specify --sandbox.")
           .metavar("DIR");
-        ap.refer(&mut tree_name)
-          .add_option(&["-T", "--tree", "--subtree-name"], ParseOption,
-            "Name of the tree for which --config-dir takes effect")
+        ap.refer(&mut sandbox_name)
+          .add_option(&["--sandbox", "--sandbox-name",
+            // Compatibility names
+            "-T", "--tree", "--subtree-name",
+            ], ParseOption,
+            "Name of the sandbox for which --config-dir takes effect")
           .metavar("NAME");
         ap.add_option(&["--version"],
             Print(env!("CARGO_PKG_VERSION").to_string()),
@@ -249,10 +252,10 @@ fn main() {
             }
         }
     }
-    if alter_config.is_some() && tree_name.is_none() {
-        err!("Please specify --tree if you use --dir");
+    if alter_config.is_some() && sandbox_name.is_none() {
+        err!("Please specify --sandbox if you use --dir");
     }
     check_binaries();
-    check(&config_file, verbose, tree_name, alter_config);
+    check(&config_file, verbose, sandbox_name, alter_config);
     exit(EXIT_STATUS.load(Ordering::SeqCst) as i32);
 }

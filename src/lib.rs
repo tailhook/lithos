@@ -13,7 +13,7 @@ extern crate signal;
 extern crate rustc_serialize;
 
 pub mod master_config;
-pub mod tree_config;
+pub mod sandbox_config;
 pub mod container_config;
 pub mod child_config;
 pub mod mount;

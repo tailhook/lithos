@@ -26,12 +26,12 @@ use unshare::{Command, Namespace};
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
-use lithos::tree_config::TreeConfig;
+use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::ContainerKind::{Command};
 use lithos::child_config::ChildConfig;
 
 
-fn run(master_cfg: &Path, tree_name: String,
+fn run(master_cfg: &Path, sandbox_name: String,
     command_name: String, args: Vec<String>,
     log_stderr: bool, log_level: Option<log::LogLevel>)
     -> Result<(), String>
@@ -41,44 +41,44 @@ fn run(master_cfg: &Path, tree_name: String,
         .map_err(|e| format!("Error reading master config: {}", e)));
     try!(create_master_dirs(&master));
 
-    if !Regex::new(r"^[\w-]+$").unwrap().is_match(&tree_name) {
-        return Err(format!("Wrong tree name: {}", tree_name));
+    if !Regex::new(r"^[\w-]+$").unwrap().is_match(&sandbox_name) {
+        return Err(format!("Wrong sandbox name: {}", sandbox_name));
     }
     if !Regex::new(r"^[\w-]+$").unwrap().is_match(&command_name) {
         return Err(format!("Wrong command name: {}", command_name));
     }
 
-    let tree: TreeConfig = try!(parse_config(
+    let sandbox: SandboxConfig = try!(parse_config(
         &master_cfg.parent().unwrap()
-         .join(&master.sandboxes_dir).join(tree_name.clone() + ".yaml"),
-        &TreeConfig::validator(), Default::default())
-        .map_err(|e| format!("Error reading tree config: {}", e)));
+         .join(&master.sandboxes_dir).join(sandbox_name.clone() + ".yaml"),
+        &SandboxConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading sandbox config: {}", e)));
 
     let log_file;
-    if let Some(ref fname) = tree.log_file {
+    if let Some(ref fname) = sandbox.log_file {
         log_file = master.default_log_dir.join(fname);
     } else {
-        log_file = master.default_log_dir.join(format!("{}.log", tree_name));
+        log_file = master.default_log_dir.join(format!("{}.log", sandbox_name));
     }
     try!(init_logging(&master, &log_file,
-        &format!("{}-{}", master.syslog_app_name, tree_name),
+        &format!("{}-{}", master.syslog_app_name, sandbox_name),
         log_stderr,
         log_level
-            .or(tree.log_level
+            .or(sandbox.log_level
                 .and_then(|x| FromStr::from_str(&x).ok()))
             .or_else(|| FromStr::from_str(&master.log_level).ok())
             .unwrap_or(log::LogLevel::Warn)));
 
     let cfg = master_cfg.parent().unwrap()
         .join(&master.processes_dir)
-        .join(tree.config_file.as_ref().unwrap_or(
-            &PathBuf::from(&(tree_name.clone() + ".yaml"))));
+        .join(sandbox.config_file.as_ref().unwrap_or(
+            &PathBuf::from(&(sandbox_name.clone() + ".yaml"))));
     debug!("Children config {:?}", cfg);
-    let tree_children: BTreeMap<String, ChildConfig>;
-    tree_children = try!(parse_config(&cfg,
+    let sandbox_children: BTreeMap<String, ChildConfig>;
+    sandbox_children = try!(parse_config(&cfg,
             &ChildConfig::mapping_validator(), Default::default())
         .map_err(|e| format!("Error reading children config: {}", e)));
-    let child_cfg = try!(tree_children.get(&command_name)
+    let child_cfg = try!(sandbox_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));
 
 
@@ -88,7 +88,7 @@ fn run(master_cfg: &Path, tree_name: String,
     }
 
 
-    let name = format!("{}/cmd.{}.{}", tree_name,
+    let name = format!("{}/cmd.{}.{}", sandbox_name,
         command_name, unsafe { getpid() });
 
     let mut cmd = Command::new(env::current_exe().unwrap()
@@ -130,7 +130,7 @@ fn run(master_cfg: &Path, tree_name: String,
 fn main() {
     let mut master_config = PathBuf::from("/etc/lithos/master.yaml");
     let mut command_name = "".to_string();
-    let mut tree_name = "".to_string();
+    let mut sandbox_name = "".to_string();
     let mut args = vec!();
     let mut log_stderr: bool = false;
     let mut log_level: Option<log::LogLevel> = None;
@@ -148,9 +148,9 @@ fn main() {
         ap.refer(&mut log_level)
           .add_option(&["--log-level"], StoreOption,
             "Set log level (default info for now)");
-        ap.refer(&mut tree_name)
-          .add_argument("subtree", Parse,
-            "Name of the tree to run command for")
+        ap.refer(&mut sandbox_name)
+          .add_argument("sandbox", Parse,
+            "Name of the sandbox to run command for")
           .required();
         ap.refer(&mut command_name)
           .add_argument("name", Parse,
@@ -170,7 +170,7 @@ fn main() {
             }
         }
     }
-    match run(&master_config, tree_name, command_name, args,
+    match run(&master_config, sandbox_name, command_name, args,
               log_stderr, log_level)
     {
         Ok(()) => {

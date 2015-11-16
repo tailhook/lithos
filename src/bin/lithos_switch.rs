@@ -24,10 +24,10 @@ use quire::parse_config;
 use nix::sys::signal::{SIGQUIT, kill};
 
 use lithos::master_config::MasterConfig;
-use lithos::tree_config::TreeConfig;
+use lithos::sandbox_config::SandboxConfig;
 
 
-fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
+fn switch_config(master_cfg: &Path, sandbox_name: String, config_file: &Path)
     -> Result<(), String>
 {
     match Command::new(env::current_exe().unwrap()
@@ -37,8 +37,8 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
         .stderr(Stdio::inherit())
         .arg("--config")
         .arg(&master_cfg)
-        .arg("--tree")
-        .arg(&tree_name)
+        .arg("--sandbox")
+        .arg(&sandbox_name)
         .arg("--alternate-config")
         .arg(&config_file)
         .output()
@@ -63,25 +63,25 @@ fn switch_config(master_cfg: &Path, tree_name: String, config_file: &Path)
             return Err(format!("Can't parse master config: {}", e));
         }
     };
-    let tree_fn = master_cfg.parent().unwrap()
+    let sandbox_fn = master_cfg.parent().unwrap()
         .join(&master.sandboxes_dir)
-        .join(&(tree_name.clone() + ".yaml"));
-    let tree: TreeConfig = match parse_config(&tree_fn,
-        &TreeConfig::validator(), Default::default())
+        .join(&(sandbox_name.clone() + ".yaml"));
+    let sandbox: SandboxConfig = match parse_config(&sandbox_fn,
+        &SandboxConfig::validator(), Default::default())
     {
         Ok(cfg) => cfg,
         Err(e) => {
-            return Err(format!("Can't parse tree config: {}", e));
+            return Err(format!("Can't parse sandbox config: {}", e));
         }
     };
 
     let target_fn = master_cfg.parent().unwrap()
         .join(&master.processes_dir)
-        .join(tree.config_file.as_ref().unwrap_or(
-            &PathBuf::from(&(tree_name.clone() + ".yaml"))));
+        .join(sandbox.config_file.as_ref().unwrap_or(
+            &PathBuf::from(&(sandbox_name.clone() + ".yaml"))));
     debug!("Target filename {:?}", target_fn);
     let tmp_filename = target_fn.with_file_name(
-        &format!(".tmp.{}", tree_name));
+        &format!(".tmp.{}", sandbox_name));
     try!(copy(&config_file, &tmp_filename)
         .map_err(|e| format!("Error copying: {}", e)));
     try!(rename(&tmp_filename, &target_fn)
@@ -120,7 +120,7 @@ fn main() {
     let mut master_config = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;
     let mut config_file = PathBuf::from("");
-    let mut tree_name = "".to_string();
+    let mut sandbox_name = "".to_string();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
@@ -132,9 +132,9 @@ fn main() {
         ap.refer(&mut verbose)
           .add_option(&["-v", "--verbose"], StoreTrue,
             "Verbose configuration");
-        ap.refer(&mut tree_name)
-          .add_argument("tree", Parse,
-            "Name of the tree which configuration will be switched for")
+        ap.refer(&mut sandbox_name)
+          .add_argument("sandbox", Parse,
+            "Name of the sandbox which configuration will be switched for")
           .required()
           .metavar("NAME");
         ap.refer(&mut config_file)
@@ -157,7 +157,7 @@ fn main() {
             }
         }
     }
-    match switch_config(&master_config, tree_name, &config_file)
+    match switch_config(&master_config, sandbox_name, &config_file)
     {
         Ok(()) => {
             exit(0);

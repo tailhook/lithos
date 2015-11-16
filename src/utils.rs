@@ -16,7 +16,7 @@ use libc::{chmod, chdir, chown};
 use signal::trap::Trap;
 
 
-use super::tree_config::Range;
+use super::sandbox_config::Range;
 use super::container_config::IdMap;
 
 pub type Time = f64;

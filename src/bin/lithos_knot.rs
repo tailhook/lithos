@@ -29,7 +29,7 @@ use time::{SteadyTime, Duration};
 use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::master_config::MasterConfig;
-use lithos::tree_config::TreeConfig;
+use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
@@ -73,30 +73,30 @@ fn run(options: Options) -> Result<(), String>
     let master: MasterConfig = try!(parse_config(&options.master_config,
         &MasterConfig::validator(), Default::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
-    let tree_name = options.name[..].splitn(2, '/').next().unwrap();
-    let tree: TreeConfig = try!(parse_config(
+    let sandbox_name = options.name[..].splitn(2, '/').next().unwrap();
+    let sandbox: SandboxConfig = try!(parse_config(
         &options.master_config.parent().unwrap()
-         .join(&master.sandboxes_dir).join(tree_name.to_string() + ".yaml"),
-        &TreeConfig::validator(), Default::default())
-        .map_err(|e| format!("Error reading tree config: {}", e)));
+         .join(&master.sandboxes_dir).join(sandbox_name.to_string() + ".yaml"),
+        &SandboxConfig::validator(), Default::default())
+        .map_err(|e| format!("Error reading sandbox config: {}", e)));
 
     let log_file;
-    if let Some(ref fname) = tree.log_file {
+    if let Some(ref fname) = sandbox.log_file {
         log_file = master.default_log_dir.join(fname);
     } else {
-        log_file = master.default_log_dir.join(format!("{}.log", tree_name));
+        log_file = master.default_log_dir.join(format!("{}.log", sandbox_name));
     }
     try!(init_logging(&master, &log_file,
-        &format!("{}-{}", master.syslog_app_name, tree_name),
+        &format!("{}-{}", master.syslog_app_name, sandbox_name),
         options.log_stderr,
         options.log_level
-            .or(tree.log_level.as_ref()
+            .or(sandbox.log_level.as_ref()
                 .and_then(|x| FromStr::from_str(&x).ok()))
             .or_else(|| FromStr::from_str(&master.log_level).ok())
             .unwrap_or(log::LogLevel::Warn)));
 
     try!(mount_private(&Path::new("/")));
-    let image_path = tree.image_dir.join(&options.config.image);
+    let image_path = sandbox.image_dir.join(&options.config.image);
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
     try!(bind_mount(&image_path, &mount_dir));
     try!(mount_ro_recursive(&mount_dir));
@@ -113,7 +113,7 @@ fn run(options: Options) -> Result<(), String>
                 local.user_id));
         }
     } else {
-        if !in_range(&tree.allow_users, local.user_id) {
+        if !in_range(&sandbox.allow_users, local.user_id) {
             return Err(format!("User is not in allowed range (uid: {})",
                 local.user_id));
         }
@@ -124,16 +124,16 @@ fn run(options: Options) -> Result<(), String>
                 local.user_id));
         }
     } else {
-        if !in_range(&tree.allow_groups, local.group_id) {
+        if !in_range(&sandbox.allow_groups, local.group_id) {
             return Err(format!("Group is not in allowed range (gid: {})",
                 local.group_id));
         }
     }
-    if !check_mapping(&tree.allow_users, &local.uid_map) {
+    if !check_mapping(&sandbox.allow_users, &local.uid_map) {
         return Err("Bad uid mapping (probably doesn't match allow_users)"
             .to_string());
     }
-    if !check_mapping(&tree.allow_groups, &local.gid_map) {
+    if !check_mapping(&sandbox.allow_groups, &local.gid_map) {
         return Err("Bad gid mapping (probably doesn't match allow_groups)"
             .to_string());
     }
@@ -142,8 +142,8 @@ fn run(options: Options) -> Result<(), String>
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(&options.name);
-    try!(prepare_state_dir(state_dir, &local, &tree));
-    try!(setup_filesystem(&master, &tree, &local, state_dir));
+    try!(prepare_state_dir(state_dir, &local, &sandbox));
+    try!(setup_filesystem(&master, &sandbox, &local, state_dir));
     if let Some(cgroup_parent) = master.cgroup_name {
         // Warning setting cgroup relative to it's own cgroup may not work
         // if we ever want to restart lithos_knot in-place

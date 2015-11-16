@@ -47,7 +47,7 @@ use signal::trap::Trap;
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
-use lithos::tree_config::TreeConfig;
+use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, TcpPort};
 use lithos::container_config::ContainerKind::Daemon;
@@ -299,13 +299,13 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
     let pid_regex = Regex::new(r"\.\(\d+\)$").unwrap();
     let master = master.runtime_dir.join(&master.state_dir);
     scan_dir::ScanDir::dirs().read(&master, |iter| {
-        for (entry, tree_name) in iter {
+        for (entry, sandbox_name) in iter {
             let path = entry.path();
-            debug!("Checking tree dir: {:?}", path);
+            debug!("Checking sandbox dir: {:?}", path);
             let mut valid_dirs = 0;
             scan_dir::ScanDir::dirs().read(&path, |iter| {
                 for (entry, proc_name) in iter {
-                    let name = format!("{}/{}", tree_name, proc_name);
+                    let name = format!("{}/{}", sandbox_name, proc_name);
                     debug!("Checking process dir: {}", name);
                     if names.contains(&name) {
                         valid_dirs += 1;
@@ -335,7 +335,7 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
             if valid_dirs > 0 {
                 continue;
             }
-            warn!("Empty tree dir {:?}. Deleting...", path);
+            warn!("Empty sandbox dir {:?}. Deleting...", path);
             clean_dir(&path, true)
                 .map_err(|e| error!("Can't empty state dir {:?}: {}", path, e))
                 .ok();
@@ -672,20 +672,20 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
 {
     let dirpath = master_file.parent().unwrap().join(&master.sandboxes_dir);
     info!("Reading sandboxes from {:?}", dirpath);
-    let tree_validator = TreeConfig::validator();
+    let sandbox_validator = SandboxConfig::validator();
     scan_dir::ScanDir::files().read(&dirpath, |iter| {
         let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
         yamls.filter_map(|(entry, name)| {
-            let tree_config = entry.path();
-            let tree_name = name[..name.len()-5].to_string();
-            debug!("Reading config: {:?}", tree_config);
-            parse_config(&tree_config, &tree_validator, Default::default())
+            let sandbox_config = entry.path();
+            let sandbox_name = name[..name.len()-5].to_string();
+            debug!("Reading config: {:?}", sandbox_config);
+            parse_config(&sandbox_config, &sandbox_validator, Default::default())
                 .map_err(|e| error!("Can't read config {:?}: {}",
-                                    tree_config, e))
-                .map(|cfg: TreeConfig| (tree_name, cfg))
+                                    sandbox_config, e))
+                .map(|cfg: SandboxConfig| (sandbox_name, cfg))
                 .ok()
-        }).flat_map(|(name, tree)| {
-            read_subtree(master, bin, master_file, &name, &tree, options)
+        }).flat_map(|(name, sandbox)| {
+            read_subtree(master, bin, master_file, &name, &sandbox, options)
             .into_iter()
         }).collect()
     })
@@ -695,20 +695,20 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
 
 fn read_subtree<'x>(master: &MasterConfig,
     bin: &Binaries, master_file: &Path,
-    tree_name: &String, tree: &TreeConfig,
+    sandbox_name: &String, sandbox: &SandboxConfig,
     options: &Options)
     -> Vec<(String, Process)>
 {
     let now = SteadyTime::now();
     let cfg = master_file.parent().unwrap()
         .join(&master.processes_dir)
-        .join(tree.config_file.as_ref().map(Path::new)
-            .unwrap_or(Path::new(&(tree_name.clone() + ".yaml"))));
+        .join(sandbox.config_file.as_ref().map(Path::new)
+            .unwrap_or(Path::new(&(sandbox_name.clone() + ".yaml"))));
     debug!("Reading child config {:?}", cfg);
     parse_config(&cfg, &ChildConfig::mapping_validator(), Default::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
             OpenOptions::new().create(true).write(true).append(true)
-            .open(master.config_log_dir.join(tree_name.clone() + ".log"))
+            .open(master.config_log_dir.join(sandbox_name.clone() + ".log"))
             .and_then(|mut f| write!(&mut f, "{} {}\n",
                 time::now_utc().rfc3339(),
                 json::as_json(&cfg)))
@@ -716,7 +716,8 @@ fn read_subtree<'x>(master: &MasterConfig,
             .ok();
             cfg
         })
-        .map_err(|e| warn!("Can't read config {:?}: {}", tree.config_file, e))
+        .map_err(|e| warn!("Can't read config {:?}: {}",
+                            sandbox.config_file, e))
         .unwrap_or(BTreeMap::new())
         .into_iter()
         .filter(|&(_, ref child)| child.kind == Daemon)
@@ -726,13 +727,13 @@ fn read_subtree<'x>(master: &MasterConfig,
             //  Child doesn't need to know how many instances it's run
             //  And for comparison on restart we need to have "one" always
             child.instances = 1;
-            let image_dir = tree.image_dir.join(&child.image);
+            let image_dir = sandbox.image_dir.join(&child.image);
             let cfg_res = temporary_change_root(&image_dir, || {
                 parse_config(&child.config,
                     &ContainerConfig::validator(), Default::default())
                 .map_err(|e| format!("Error reading {:?} \
                     of sandbox {:?} of image {:?}: {}",
-                    &child.config, tree_name, child.image,  e))
+                    &child.config, sandbox_name, child.image,  e))
             });
             let cfg: Rc<ContainerConfig> = match cfg_res {
                 Ok(cfg) => Rc::new(cfg),
@@ -745,7 +746,7 @@ fn read_subtree<'x>(master: &MasterConfig,
 
             let items: Vec<(String, Process)> = (0..instances)
                 .map(|i| {
-                    let name = format!("{}/{}.{}", tree_name, child_name, i);
+                    let name = format!("{}/{}.{}", sandbox_name, child_name, i);
                     let cmd = new_child(bin, &name, master_file,
                         &child_string, options);
                     let restart_min = now + Duration::milliseconds(

@@ -15,7 +15,7 @@ use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
 use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
-use super::tree_config::TreeConfig;
+use super::sandbox_config::SandboxConfig;
 use super::container_config::{ContainerConfig, Volume};
 use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
 use super::child_config::ChildConfig;
@@ -35,7 +35,7 @@ fn map_dir(dir: &Path, dirs: &BTreeMap<PathBuf, PathBuf>) -> Option<PathBuf> {
     return None;
 }
 
-pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
+pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
     local: &ContainerConfig, state_dir: &Path)
     -> Result<(), String>
 {
@@ -135,7 +135,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &TreeConfig,
 }
 
 pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
-    tree: &TreeConfig)
+    tree: &SandboxConfig)
     -> Result<(), String>
 {
     // TODO(tailhook) chown files
