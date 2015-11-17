@@ -17,7 +17,7 @@ Contents:
    process_config
    container_config
    volumes
-
+   faq
 
 
 
@@ -25,6 +25,4 @@ Indices and tables
 ==================
 
 * :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
 
