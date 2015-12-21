@@ -193,7 +193,7 @@ Reference
 
         tcp-ports:
           80:
-            port: 80
+            fd: 3
         environ:
           GUNICORN_FD: "3"
 
