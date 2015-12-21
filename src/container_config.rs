@@ -53,8 +53,9 @@ pub struct ResolvConf {
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct HostsFile {
-    pub localhost: bool,
-    pub public_hostname: bool,
+    pub copy_from_host: bool,
+    pub localhost: Option<bool>,
+    pub public_hostname: Option<bool>,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone, Copy, Debug)]
@@ -132,8 +133,9 @@ impl ContainerConfig {
         .member("resolv_conf", Structure::new()
             .member("copy_from_host", Scalar::new().default(true)))
         .member("hosts_file", Structure::new()
-            .member("localhost", Scalar::new().default(true))
-            .member("public_hostname", Scalar::new().default(true)))
+            .member("copy_from_host", Scalar::new().default(false))
+            .member("localhost", Scalar::new().optional())
+            .member("public_hostname", Scalar::new().optional()))
         .member("uid_map", mapping_validator())
         .member("gid_map", mapping_validator())
         .member("stdout_stderr_file", Scalar::new().optional())

@@ -114,15 +114,39 @@ Reference
         hosts-file:
             localhost: true
             public-hostname: true
-
-    Which means add to ``hosts`` file the ``localhost`` name and the result
-    of ``gethostname`` system call along with the ip address that name
-    resolves into.
+            copy-from-host: false
 
     .. warning:: To make use of it you should symlink ``ln -s
        /state/hosts /etc/hosts`` in the container's image. It's
        done this way so you can introspect and presumably update
        ``hosts`` from the outside of container.
+
+   Parameters:
+
+   copy-from-host
+        (default ``false``) Copy hosts file from host machine. It's false
+        by default for two reasons:
+
+        1. We want to isolate system as much as possible
+        2. Some systems (like Ubuntu) like to put an address ``127.0.1.1`` on
+           the public hostname, which doesn't play well with discovery
+           subsystems based on hostnames (e.g. for akka_)
+
+        Note: even if ``copy-from-host`` is ``true``, :opt:`additional-hosts`
+        from sandbox config work, which may lead to duplicate or conflicting
+        entries if some names are specified in both places.
+
+   .. _akka: http://akka.io/
+
+   localhost
+        (default is true when ``copy-from-host`` is false)
+        A boolean which defines whether to add
+        ``127.0.0.1 localhost`` record to ``hosts``
+
+   public-hostname
+        (default is true when ``copy-from-host`` is false)
+        Add to ``hosts`` file the result of ``gethostname`` system call
+        along with the ip address that name resolves into.
 
 .. opt:: uid-map, gid-map
 

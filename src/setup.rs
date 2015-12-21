@@ -1,3 +1,4 @@
+use std::io;
 use std::io::{Write, stderr};
 use std::fs::{File};
 use std::fs::{create_dir_all, copy, metadata};
@@ -149,18 +150,28 @@ pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
         try!(copy(&Path::new("/etc/resolv.conf"), &dir.join("resolv.conf"))
             .map_err(|e| format!("State dir: {}", e)));
     }
-    if local.hosts_file.localhost || local.hosts_file.public_hostname
+    let copy_hosts = local.hosts_file.copy_from_host;
+    let add_localhost = local.hosts_file.localhost.unwrap_or(!copy_hosts);
+    let add_hostname = local.hosts_file.public_hostname.unwrap_or(!copy_hosts);
+    if add_localhost || add_hostname || copy_hosts
         || tree.additional_hosts.len() > 0
     {
         let fname = dir.join("hosts");
         try!(File::create(&fname)
             .and_then(|mut file| {
-                if local.hosts_file.localhost {
+                if copy_hosts {
+                    let mut source = try!(File::open("/etc/hosts"));
+                    try!(io::copy(&mut source, &mut file));
+                    // In case file has no newline at the end and we are
+                    // going to add some records
+                    try!(file.write_all(b"\n"));
+                }
+                if add_localhost {
                     try!(file.write_all(
                         "127.0.0.1 localhost.localdomain localhost\n"
                         .as_bytes()));
                 }
-                if local.hosts_file.public_hostname {
+                if add_hostname {
                     try!(writeln!(&mut file, "{} {}",
                         try!(get_host_ip()),
                         try!(get_host_name())));
