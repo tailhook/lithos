@@ -49,3 +49,74 @@ Or like this::
 It means that lithos have failed on step #3. And that it failed to mount the
 directory in the guest container file system (``/dev/pts`` and ``/storage``
 respectively)
+
+
+How to Organize Logging?
+========================
+
+There is variety of ways. Here are some hints...
+
+
+Syslog
+------
+
+You may accept logs by UDP. Since lithos has no network namespacing (yet).
+The UDP syslog just works.
+
+To setup unix soket syslog you may configure syslog daemon on the
+host system to listen for the socket inside the container's ``/dev``.
+For example, here is how to `configure rsyslog`__ for default lithos config::
+
+    module(load="imuxsock") # needs to be done just once
+    input(type="imuxsock" Socket="/var/lib/lithos/dev/log")
+
+__ http://www.rsyslog.com/doc/v8-stable/configuration/modules/imuxsock.html
+
+Alternatively, (but *not* recommended) you may configure :opt:`devfs-dir`::
+
+    devfs-dir: /dev
+
+
+Stdout/Stderr
+-------------
+
+It's recommended to use syslog or any similar solutions for logs. But there
+are still reasons to write logs to a file:
+
+1. You may want to log early start errors (when you have not yet initialized
+   the logging subsystem of the application)
+2. If you have single server and don't want additional daemons
+
+Lithos has strong preference to make anything configuration from container
+config if possible. This kind of logging is no exception. So you can
+do logging with config similar to:
+
+.. code-block:: yaml
+
+    volumes:
+      /log: !Persistent { path: "/log" }
+
+    stdout-stderr-file: /log/stdio.log
+
+See :ref:`container_config` for more info. You also need ``/log`` to be in
+:opt:`writable-paths`.
+
+What If I don't Configure Stdout/Stderr?
+----------------------------------------
+
+The stdout and stderr are just inherited from ``lithos_tree``. So for example
+if you had started lithos by ``upstart`` your logs will end up in the
+``/var/log/upstart/lithos.log`` by default. All sandboxes will be mixed
+together.
+
+
+Why There is no per-Sandbox Logging?
+------------------------------------
+
+Because another useful thing in lithos is ``lithos_cmd`` which runs from
+the shell that started the command. This means that both writing the log
+to the default place and putting it to the user screen will be unintuitive
+to do depending on your current point of view.
+
+So we prefer user to explicitly state where to log data to in each command and
+always inherit stdout/stderr by default.

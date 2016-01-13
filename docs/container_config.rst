@@ -165,9 +165,11 @@ Reference
 
 .. opt:: stdout-stderr-file
 
-    This redirects both stdout and stderr to a file. The path must be absolute
-    and is opened outside of the container (so depending on ``volumes`` may be
-    both visible or non-visible from the container itself)
+    This redirects both stdout and stderr to a file. The path is opened inside
+    the container. So must reside on one of the mounted writeable
+    :ref:`volumes`. Probably you want :volume:`Persistent` volume.
+    While it can be on :volume:`Tmpfs` or :volume:`Statedir` the applicability
+    of such thing is very limited.
 
 .. opt:: restart-process-only
 
