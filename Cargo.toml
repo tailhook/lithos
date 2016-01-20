@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.rst"
 keywords = ["linux", "namespaces", "containers"]
 homepage = "http://github.com/tailhook/lithos"
-version = "0.4.7"
+version = "0.4.8"
 authors = ["paul@colomiets.name"]
 
 [dependencies]
@@ -14,7 +14,7 @@ regex = "0.1"
 rustc-serialize = "0.3"
 libc = "0.1"
 argparse = "0.2.1"
-quire = "0.1.1"
+quire = "0.1.4"
 shaman = "0.1"
 fern = "0.3"
 time = "0.1"
