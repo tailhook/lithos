@@ -54,6 +54,12 @@ Reference
     The memory limit for process and it's children. This is enforced by
     cgroups. Default: nolimit. (Doesn't work yet)
 
+.. opt:: cpu-shares
+
+    The number of CPU shares for the process. Default is ``1024`` which means
+    all processes get equal share. You may split them to different values
+    like ``768`` for one process and ``256`` for another one.
+
 .. opt:: fileno-limit
 
     The limit on file descriptors for process. Default ``1024``.
