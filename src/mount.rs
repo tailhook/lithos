@@ -185,7 +185,7 @@ pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
     if readonly {
         flags |= MS_RDONLY;
     }
-    debug!("Pseusofs mount {} {} {}", target.display(), name, options);
+    debug!("Pseudofs mount {} {} {}", target.display(), name, options);
     let rc = unsafe { mount(
         c_name.as_ptr(),
         c_target.as_ptr(),
