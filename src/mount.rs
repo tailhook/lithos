@@ -170,8 +170,12 @@ pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
         return Ok(());
     } else {
         let err = IoError::last_os_error();
-        return Err(format!("Can't mount bind {} to {}: {}",
-            source.display(), target.display(), err));
+
+        return Err(format!("Can't mount bind {:?} to {:?}: {}.
+            Source dir: {}, destination dir: {}",
+            source, target, err,
+            if source.exists() { "exists" } else { "missing" },
+            if target.exists() { "exists" } else { "missing" }));
     }
 }
 
