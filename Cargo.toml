@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.rst"
 keywords = ["linux", "namespaces", "containers"]
 homepage = "http://github.com/tailhook/lithos"
-version = "0.4.8"
+version = "0.4.9"
 authors = ["paul@colomiets.name"]
 
 [dependencies]
