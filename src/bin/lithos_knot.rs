@@ -15,7 +15,8 @@ use std::str::FromStr;
 use std::io::{stderr, Write};
 use std::fs::OpenOptions;
 use std::path::{Path};
-use std::thread::sleep_ms;
+use std::time::Duration as StdDuration;
+use std::thread::sleep;
 use std::default::Default;
 use std::process::exit;
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -253,7 +254,7 @@ fn run(options: Options) -> Result<(), String>
         }
         let left = rtimeo - (SteadyTime::now() - start);
         if left > Duration::zero() {
-            sleep_ms(left.num_milliseconds() as u32);
+            sleep(StdDuration::from_millis(left.num_milliseconds() as u64));
         }
     }
 

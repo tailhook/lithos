@@ -6,7 +6,6 @@ use std::os::unix::io::RawFd;
 
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping};
-use self::Volume::*;
 
 
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]

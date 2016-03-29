@@ -1,4 +1,3 @@
-use std::str::{from_utf8};
 use std::ptr::{null, copy};
 use std::ffi::{CString};
 use std::io::Error as IoError;

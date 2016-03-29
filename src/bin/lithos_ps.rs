@@ -16,7 +16,8 @@ use std::io::Error as IoError;
 use std::mem::swap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::thread::sleep_ms;
+use std::time::Duration;
+use std::thread::sleep;
 use std::str::FromStr;
 use std::io::BufReader;
 use std::default::Default;
@@ -603,7 +604,7 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
         .collect();
     let mut old_time = get_time();
     loop {
-        sleep_ms(1000);
+        sleep(Duration::new(1, 0));
 
         let new_children: BTreeMap<String, Instance> = try!(scan_processes())
             .masters.into_iter()
