@@ -19,7 +19,6 @@ use std::time::Duration as StdDuration;
 use std::thread::sleep;
 use std::default::Default;
 use std::process::exit;
-use std::os::unix::io::{AsRawFd, FromRawFd};
 
 use quire::parse_config;
 use unshare::{Command, Stdio, reap_zombies};
@@ -206,16 +205,14 @@ fn run(options: Options) -> Result<(), String>
         let start = time::SteadyTime::now();
 
         // Reopen file at each start
-        let _file_guard = if let Some(ref path) = local.stdout_stderr_file {
+        if let Some(ref path) = local.stdout_stderr_file {
             let f = try!(OpenOptions::new()
-                .create(true).append(true).open(path)
+                .create(true).append(true).write(true).open(path)
                 .map_err(|e| format!(
                     "Error opening output file {:?}: {}", path, e)));
-            cmd.stdout(unsafe { Stdio::from_raw_fd(f.as_raw_fd()) });
-            cmd.stderr(unsafe { Stdio::from_raw_fd(f.as_raw_fd()) });
-            Some(f)
-        } else {
-            None
+            cmd.stdout(try!(Stdio::dup_file(&f)
+                .map_err(|e| format!("Duplicating file descriptor: {}", e))));
+            cmd.stderr(Stdio::from_file(f));
         };
 
         let child = try!(cmd.spawn().map_err(|e|
