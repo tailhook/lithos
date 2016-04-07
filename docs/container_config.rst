@@ -52,13 +52,17 @@ Reference
 .. opt:: memory-limit
 
     The memory limit for process and it's children. This is enforced by
-    cgroups. Default: nolimit. (Doesn't work yet)
+    cgroups, so this needs `memory` cgroup to be enabled (otherwise its no-op).
+    See :opt:`cgroup-controllers` for more info.  Default: nolimit.
 
 .. opt:: cpu-shares
 
     The number of CPU shares for the process. Default is ``1024`` which means
     all processes get equal share. You may split them to different values
     like ``768`` for one process and ``256`` for another one.
+
+    This is enforced by cgroups, so this needs `cpu` cgroup to be enabled
+    (otherwise its no-op).  See :opt:`cgroup-controllers` for more info.
 
 .. opt:: fileno-limit
 
