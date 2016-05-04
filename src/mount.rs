@@ -185,26 +185,6 @@ pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
     }
 }
 
-pub fn mount_tmpfs(target: &Path, options: &str) -> Result<(), String> {
-    let c_tmpfs = CString::new("tmpfs").unwrap();
-    let c_target = cpath(target);
-    let c_opts = CString::new(options).unwrap();
-    debug!("Tmpfs mount {} {}", target.display(), options);
-    let rc = unsafe { mount(
-        c_tmpfs.as_ptr(),
-        c_target.as_ptr(),
-        c_tmpfs.as_ptr(),
-        MS_NOSUID | MS_NODEV | MS_NOATIME,
-        c_opts.as_ptr()) };
-    if rc == 0 {
-        return Ok(());
-    } else {
-        let err = IoError::last_os_error();
-        return Err(format!("Can't mount tmpfs {} (options: {}): {}",
-            target.display(), options, err));
-    }
-}
-
 pub fn unmount(target: &Path) -> Result<(), String> {
     let c_target = cpath(target);
     let rc = unsafe { umount2(c_target.as_ptr(), MNT_DETACH) };

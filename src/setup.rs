@@ -11,9 +11,9 @@ use fern;
 use syslog;
 use time;
 use quire::parse_config;
-use libmount::BindMount;
+use libmount::{self, BindMount};
 
-use super::mount::{mount_ro_recursive, mount_tmpfs};
+use super::mount::{mount_ro_recursive};
 use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
@@ -100,8 +100,9 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
                     .map_err(|x| x.to_string()));
             }
             &Tmpfs(ref opt) => {
-                try!(mount_tmpfs(&dest,
-                    &format!("size={},mode=0{:o}", opt.size, opt.mode)));
+                try!(libmount::Tmpfs::new(&dest)
+                    .size_bytes(opt.size).mode(opt.mode)
+                    .mount().map_err(|e| e.to_string()));
             }
             &Statedir(ref opt) => {
                 let relative_dir = relative(&opt.path, &root);
