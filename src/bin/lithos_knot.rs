@@ -95,6 +95,13 @@ fn run(options: Options) -> Result<(), String>
             .or_else(|| FromStr::from_str(&master.log_level).ok())
             .unwrap_or(log::LogLevel::Warn)));
 
+    let stderr_path = master.stdio_log_dir
+        .join(format!("{}.log", sandbox_name));
+    let stderr_file = try!(OpenOptions::new()
+                .create(true).append(true).write(true).open(&stderr_path)
+                .map_err(|e| format!(
+                    "Error opening stderr file {:?}: {}", stderr_path, e)));
+
     try!(mount_private(&Path::new("/")));
     let image_path = sandbox.image_dir.join(&options.config.image);
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
@@ -213,6 +220,11 @@ fn run(options: Options) -> Result<(), String>
             cmd.stdout(try!(Stdio::dup_file(&f)
                 .map_err(|e| format!("Duplicating file descriptor: {}", e))));
             cmd.stderr(Stdio::from_file(f));
+        } else {
+            cmd.stdout(try!(Stdio::dup_file(&stderr_file)
+                .map_err(|e| format!("Duplicating file descriptor: {}", e))));
+            cmd.stderr(try!(Stdio::dup_file(&stderr_file)
+                .map_err(|e| format!("Duplicating file descriptor: {}", e))));
         };
 
         let child = try!(cmd.spawn().map_err(|e|

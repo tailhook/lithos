@@ -16,6 +16,7 @@ pub struct MasterConfig {
     pub devfs_dir: PathBuf,
     pub default_log_dir: PathBuf,
     pub config_log_dir: PathBuf,
+    pub stdio_log_dir: PathBuf,
     pub log_file: PathBuf,
     pub syslog_facility: Option<String>,
     pub syslog_app_name: String,
@@ -41,6 +42,8 @@ impl MasterConfig {
         .member("log_level", Scalar::new().default("warn"))
         .member("config_log_dir", Scalar::new()
             .default("/var/log/lithos/config"))
+        .member("stdio_log_dir", Scalar::new()
+            .default("/var/log/lithos/stderr"))
         .member("cgroup_name",
             Scalar::new().optional().default("lithos.slice"))
         .member("cgroup_controllers", Sequence::new(Scalar::new()))
@@ -58,5 +61,7 @@ pub fn create_master_dirs(cfg: &MasterConfig) -> Result<(), String> {
         .map_err(|e| format!("Cant create log dir: {}", e)));
     try!(ensure_dir(&cfg.config_log_dir)
         .map_err(|e| format!("Cant create configuration log dir: {}", e)));
+    try!(ensure_dir(&cfg.stdio_log_dir)
+        .map_err(|e| format!("Cant create stdio log dir: {}", e)));
     return Ok(());
 }

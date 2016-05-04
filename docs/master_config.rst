@@ -72,6 +72,40 @@ anyway. Here is the reference of the parameters along with the default values:
    (default ``/var/log/lithos``) The directory where master and each of the
    application logs are created (unless are overrided by sandbox config).
 
+.. opt:: config-log-dir
+
+   (default ``/var/log/lithos/config``) The directory where configurations of
+   the processes are stored. These are used by ``lithos_clean`` to find out
+   when it's safe to clean directories. You may also reconstruct
+   processes configuration at any point in time using this directory.
+
+.. opt:: stdio-log-dir
+
+   (default ``/var/log/lithos/stderr``) The directory where stderr of the
+   processes will be forwarded. One file per sandbox is created.
+
+   These files are created by lithos and file descriptor is passed to the
+   application as both the stdout and stderr. Lithos does not parse, copy or
+   otherwise proxy the data. The operating system does all the work. This also
+   means lithos can't rotate or do any other magical things with the log.
+
+   This should be used only to tackle the critical errors. Application should
+   send log to a syslog or write some rotating log files on it's own, because
+   there is no good tools to groups lines of the stderr into solid log messages
+   that include tracebacks and other fancy stuff.
+
+   Good utilities to manage the files:
+
+   * ``logrotate`` in ``copytruncate`` mode
+   * ``rsyslog`` with file input plugin
+
+   This can be overridden in process by :opt:`stdout-stderr-file`.
+
+   .. note:: The path is reopened on process restart.
+      If :opt:`restart-process-only` is `true` then it's only reopened when
+      configuration changes. This is good to know if you remove or rename
+      the file by hand.
+
 .. opt:: log-file
 
    (default ``master.log``) Master log file. Relative paths are treated from

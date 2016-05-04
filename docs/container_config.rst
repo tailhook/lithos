@@ -181,6 +181,8 @@ Reference
     While it can be on :volume:`Tmpfs` or :volume:`Statedir` the applicability
     of such thing is very limited.
 
+    Usually log is put into the directory specified by :opt:`stdio-log-dir`.
+
 .. opt:: restart-process-only
 
     (default ``false``) If true when restarting process (i.e. in case
