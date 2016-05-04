@@ -237,8 +237,8 @@ fn recover_sockets(sockets: &mut HashMap<u16, Socket>) {
                         }
                     }
                 }
-                Ok(SockAddr::Unix(_)) => {
-                    debug!("Fd {} is unix socket", fd);
+                Ok(_) => {
+                    debug!("Fd {} is different kind of socket", fd);
                 }
                 Err(_) => {
                     debug!("Fd {} is not a socket", fd);
@@ -484,7 +484,7 @@ fn close_unused_sockets(sockets: &mut HashMap<u16, Socket>,
 
 fn open_socket(port: u16, cfg: &TcpPort) -> Result<RawFd, String> {
     let sock = try!(socket(AddressFamily::Inet,
-            SockType::Stream, SockFlag::empty())
+            SockType::Stream, SockFlag::empty(), 0)
             .map_err(|e| format!("Can't create socket: {:?}", e)));
     let mut result = Ok(());
     if cfg.reuse_addr {

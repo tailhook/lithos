@@ -27,7 +27,7 @@ use unshare::{Command, Namespace};
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::sandbox_config::SandboxConfig;
-use lithos::container_config::ContainerKind::{Command};
+use lithos::container_config::ContainerKind;
 use lithos::child_config::ChildConfig;
 
 
@@ -83,7 +83,7 @@ fn run(master_cfg: &Path, sandbox_name: String,
 
 
 
-    if child_cfg.kind != Command {
+    if child_cfg.kind != ContainerKind::Command {
         return Err(format!("The target container is: {:?}", child_cfg.kind));
     }
 
