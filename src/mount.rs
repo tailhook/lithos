@@ -159,26 +159,6 @@ pub fn mount_private(target: &Path) -> Result<(), String> {
     }
 }
 
-pub fn bind_mount(source: &Path, target: &Path) -> Result<(), String> {
-    let c_source = cpath(source);
-    let c_target = cpath(target);
-    debug!("Bind mount {} -> {}", source.display(), target.display());
-    let rc = unsafe {
-        mount(c_source.as_ptr(), c_target.as_ptr(),
-        null(), MS_BIND|MS_REC, null()) };
-    if rc == 0 {
-        return Ok(());
-    } else {
-        let err = IoError::last_os_error();
-
-        return Err(format!("Can't mount bind {:?} to {:?}: {}.
-            Source dir: {}, destination dir: {}",
-            source, target, err,
-            if source.exists() { "exists" } else { "missing" },
-            if target.exists() { "exists" } else { "missing" }));
-    }
-}
-
 pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
     -> Result<(), String>
 {

@@ -10,6 +10,7 @@ extern crate nix;
 extern crate quire;
 extern crate regex;
 extern crate signal;
+extern crate libmount;
 extern crate rustc_serialize;
 
 pub mod master_config;

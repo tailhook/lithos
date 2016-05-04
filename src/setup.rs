@@ -11,8 +11,9 @@ use fern;
 use syslog;
 use time;
 use quire::parse_config;
+use libmount::BindMount;
 
-use super::mount::{bind_mount, mount_ro_recursive, mount_tmpfs};
+use super::mount::{mount_ro_recursive, mount_tmpfs};
 use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
@@ -63,7 +64,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
                     }
                     Some(path) => path,
                 };
-                try!(bind_mount(&path, &dest));
+                try!(BindMount::new(&path, &dest).mount()
+                    .map_err(|x| x.to_string()));
                 try!(mount_ro_recursive(&dest));
             }
             &Persistent(ref opt) => {
@@ -94,7 +96,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
                                 volume: {}", e)));
                     }
                 }
-                try!(bind_mount(&path, &dest));
+                try!(BindMount::new(&path, &dest).mount()
+                    .map_err(|x| x.to_string()));
             }
             &Tmpfs(ref opt) => {
                 try!(mount_tmpfs(&dest,
@@ -120,12 +123,14 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
                         .map_err(|e| format!("Can't chmod persistent \
                             volume: {}", e)));
                 }
-                try!(bind_mount(&dir, &dest));
+                try!(BindMount::new(&dir, &dest).mount()
+                    .map_err(|x| x.to_string()));
             }
         }
     }
     let devdir = mntdir.join("dev");
-    try!(bind_mount(&master.devfs_dir, &devdir));
+    try!(BindMount::new(&master.devfs_dir, &devdir).mount()
+        .map_err(|x| x.to_string()));
     try!(mount_ro_recursive(&devdir));
     try!(mount_pseudo(&mntdir.join("dev/pts"),
         "devpts", "newinstance", false));

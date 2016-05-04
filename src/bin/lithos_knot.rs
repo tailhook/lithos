@@ -6,6 +6,7 @@ extern crate signal;
 extern crate unshare;
 extern crate argparse;
 extern crate syslog;
+extern crate libmount;
 extern crate rustc_serialize;
 #[macro_use] extern crate log;
 #[macro_use] extern crate lithos;
@@ -25,6 +26,7 @@ use unshare::{Command, Stdio, reap_zombies};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SigNum};
 use signal::trap::Trap;
 use time::{SteadyTime, Duration};
+use libmount::BindMount;
 
 use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
@@ -34,7 +36,7 @@ use lithos::container_config::{ContainerConfig};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 use lithos::setup::{init_logging};
-use lithos::mount::{unmount, mount_private, bind_mount, mount_ro_recursive};
+use lithos::mount::{unmount, mount_private, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
 use lithos_knot_options::Options;
 
@@ -105,7 +107,8 @@ fn run(options: Options) -> Result<(), String>
     try!(mount_private(&Path::new("/")));
     let image_path = sandbox.image_dir.join(&options.config.image);
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
-    try!(bind_mount(&image_path, &mount_dir));
+    try!(BindMount::new(&image_path, &mount_dir).mount()
+        .map_err(|e| e.to_string()));
     try!(mount_ro_recursive(&mount_dir));
 
     let local: ContainerConfig;
