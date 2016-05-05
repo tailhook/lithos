@@ -17,6 +17,7 @@ Contents:
    process_config
    container_config
    volumes
+   tips/index
    faq
 
 
