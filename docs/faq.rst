@@ -63,7 +63,7 @@ Syslog
 You may accept logs by UDP. Since lithos has no network namespacing (yet).
 The UDP syslog just works.
 
-To setup unix soket syslog you may configure syslog daemon on the
+To setup syslog using unix sockets you may configure syslog daemon on the
 host system to listen for the socket inside the container's ``/dev``.
 For example, here is how to `configure rsyslog`__ for default lithos config::
 
@@ -87,36 +87,7 @@ are still reasons to write logs to a file:
    the logging subsystem of the application)
 2. If you have single server and don't want additional daemons
 
-Lithos has strong preference to make anything configuration from container
-config if possible. This kind of logging is no exception. So you can
-do logging with config similar to:
-
-.. code-block:: yaml
-
-    volumes:
-      /log: !Persistent { path: "/log" }
-
-    stdout-stderr-file: /log/stdio.log
-
-See :ref:`container_config` for more info. You also need ``/log`` to be in
-:opt:`writable-paths`.
-
-What If I don't Configure Stdout/Stderr?
-----------------------------------------
-
-The stdout and stderr are just inherited from ``lithos_tree``. So for example
-if you had started lithos by ``upstart`` your logs will end up in the
-``/var/log/upstart/lithos.log`` by default. All sandboxes will be mixed
-together.
-
-
-Why There is no per-Sandbox Logging?
-------------------------------------
-
-Because another useful thing in lithos is ``lithos_cmd`` which runs from
-the shell that started the command. This means that both writing the log
-to the default place and putting it to the user screen will be unintuitive
-to do depending on your current point of view.
-
-So we prefer user to explicitly state where to log data to in each command and
-always inherit stdout/stderr by default.
+Starting with version ``v0.5.0`` lithos has a per-sandbox log file which
+contains all the stdout/stderr output of the processes. By default it's in
+``/var/log/lithos/stderr/<sandbox_name>.log``. See :opt:`stdio-log-dir` for
+more info.
