@@ -139,8 +139,8 @@ fn main() {
           .metavar("NAME");
         ap.refer(&mut config_file)
           .add_argument("new_config", Parse, "
-            Name of the configuration file to this sandbox switch to.
-            The file is copied over current config after configuration is
+            Name of the process configuration file for this sandbox to switch
+            to. The file is copied over current config after configuration is
             validated and just before sending a signal to lithos_tree.")
           .metavar("FILE")
           .required();
