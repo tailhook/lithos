@@ -139,12 +139,9 @@ fn main() {
           .metavar("NAME");
         ap.refer(&mut config_file)
           .add_argument("new_config", Parse, "
-            Name of the configuration directory to switch to. It doesn't
-            have to be a directory inside `config-dir`, and it will be copied
-            there. However, if directory with the same name exists in the
-            `config-dir` it's assumed that it's already copied and will not
-            be updated. Be sure to use unique directory for each deployment.
-            ")
+            Name of the configuration file to this sandbox switch to.
+            The file is copied over current config after configuration is
+            validated and just before sending a signal to lithos_tree.")
           .metavar("FILE")
           .required();
         ap.add_option(&["--version"],
