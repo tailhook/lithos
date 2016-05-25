@@ -72,7 +72,8 @@ if that exists:
         ...
         handler = app.make_handler()
         if os.environ.get("LISTEN_FDS") == "1":
-            srv = await loop.create_server(handler, sock=socket.fromfd(3))
+            srv = await loop.create_server(handler,
+                sock=socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM))
         else:
             srv = await loop.create_server(handler, host, port)
 
