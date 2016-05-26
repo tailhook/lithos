@@ -26,4 +26,5 @@ pub mod limits;
 pub mod cgroup;
 pub mod itertools;
 pub mod timer_queue;
+pub mod id_map;
 #[cfg(test)] pub mod ascii;  // actually a lithos_ps module

@@ -57,13 +57,23 @@ Reference
 .. opt:: allow-users
 
    List of ranges of user ids which can be used by container. For containers
-   which do not have user namespaces enabled it's just a limit for ``user-id``
-   setting. For user namespaces it limits all the user ids available to
-   the namespace.
+   without user namespaces, it's just a limit of the ``user-id`` setting.
 
    Example::
 
-    allow-users: [1, 99, 1000-2000]
+     allow-users: [1, 99, 1000-2000]
+
+   For containers which have uid maps enabled **in sandbox** this is a list of
+   users available *after* uid mapping applied. For example, the following
+   maps uid 100000 as root in namespace (e.g. for file permissions),
+   but doesn't allow to start process as root (even if it's 100000 ouside)::
+
+     uid-map: [{outside: 100000, inside: 0, count: 65536}]
+     allow-users: [1-65535]
+
+   For containers which do have uid maps enabled **in container config**,
+   it limits all the user ids available to the namespace (i.e. for the
+   outside setting of the uid map).
 
 .. opt:: allow-groups
 
@@ -88,6 +98,22 @@ Reference
    Mapping of ``hostname: ip`` for names that will be added to ``/etc/hosts``
    file. This is occasinally used for cheap but static service discovery.
 
+.. opt:: uid-map, gid-map
 
+    The list of mapping for uids(gids) in the user namespace of the container.
+    If they are not specified the user namespace is not used. This setting
+    allows to run processes with ``uid`` zero without the risk of being
+    the ``root`` on host system.
+
+    Here is a example of maps::
+
+        uid-map:
+        - {inside: 0, outside: 1000, count: 1}
+        - {inside: 1, outside: 1, count: 1}
+        gid-map:
+        - {inside: 0, outside: 100, count: 1}
+
+    .. note:: Currently you may have uid-map either in a sandbox or in a
+       container config, not both.
 
 

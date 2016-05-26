@@ -6,6 +6,7 @@ use std::os::unix::io::RawFd;
 
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping};
+use id_map::{IdMap, IdMapExt, mapping_validator};
 
 
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
@@ -57,12 +58,6 @@ pub struct HostsFile {
     pub public_hostname: Option<bool>,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone, Copy, Debug)]
-pub struct IdMap {
-    pub inside: u32,
-    pub outside: u32,
-    pub count: u32,
-}
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct TcpPort {
@@ -96,20 +91,13 @@ pub struct ContainerConfig {
     pub tcp_ports: HashMap<u16, TcpPort>,
 }
 
-fn mapping_validator<'x>() -> Sequence<'x> {
-    Sequence::new(
-        Structure::new()
-        .member("inside", Numeric::new())
-        .member("outside", Numeric::new())
-        .member("count", Numeric::new()))
-}
 
 impl ContainerConfig {
     pub fn map_uid(&self, internal_uid: u32) -> Option<u32> {
-        _map_id(&self.uid_map, internal_uid)
+        self.uid_map.map_id(internal_uid)
     }
     pub fn map_gid(&self, internal_gid: u32) -> Option<u32> {
-        _map_id(&self.gid_map, internal_gid)
+        self.gid_map.map_id(internal_gid)
     }
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
@@ -170,14 +158,3 @@ pub fn volume_validator<'x>() -> Enum<'x> {
         .member("group", Numeric::new().default(0)))
 }
 
-fn _map_id(map: &Vec<IdMap>, /*internal*/id: u32) -> Option<u32> {
-    if map.len() == 0 {
-        return Some(id);
-    }
-    for rng in map.iter() {
-        if id >= rng.inside && id <= rng.inside + rng.count {
-            return Some(rng.outside + (id - rng.inside));
-        }
-    }
-    None
-}

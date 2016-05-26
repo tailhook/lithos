@@ -7,6 +7,7 @@ use rustc_serialize::{Decoder, Decodable};
 use regex::Regex;
 use quire::validate::{Validator, Structure};
 use quire::validate::{Sequence, Mapping, Scalar};
+use id_map::{IdMap, mapping_validator};
 
 #[derive(Clone, Debug)]
 pub struct Range {
@@ -65,6 +66,8 @@ pub struct SandboxConfig {
     pub allow_groups: Vec<Range>,
     pub allow_tcp_ports: Vec<Range>,
     pub additional_hosts: BTreeMap<String, String>,
+    pub uid_map: Vec<IdMap>,
+    pub gid_map: Vec<IdMap>,
 }
 
 impl SandboxConfig {
@@ -84,6 +87,8 @@ impl SandboxConfig {
         .member("allow_users", Sequence::new(Scalar::new()))
         .member("allow_groups", Sequence::new(Scalar::new()))
         .member("allow_tcp_ports", Sequence::new(Scalar::new()))
+        .member("uid_map", mapping_validator())
+        .member("gid_map", mapping_validator())
         .member("additional_hosts", Mapping::new(
             Scalar::new(),
             Scalar::new()))

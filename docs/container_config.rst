@@ -173,6 +173,9 @@ Reference
         gid-map:
         - {inside: 0, outside: 100, count: 1}
 
+    .. note:: Currently you may have uid-map either in a sandbox or in a
+       container config, not both.
+
 .. opt:: stdout-stderr-file
 
     This redirects both stdout and stderr to a file. The path is opened inside

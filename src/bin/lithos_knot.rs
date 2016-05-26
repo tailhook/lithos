@@ -194,7 +194,19 @@ fn run(options: Options) -> Result<(), String>
 
     cmd.args(&local.arguments);
     cmd.args(&options.args);
-    if local.uid_map.len() > 0 || local.gid_map.len() > 0 {
+    if sandbox.uid_map.len() > 0 || sandbox.gid_map.len() > 0 {
+        cmd.set_id_maps(
+            sandbox.uid_map.iter().map(|u| unshare::UidMap {
+                inside_uid: u.inside,
+                outside_uid: u.outside,
+                count: u.count,
+            }).collect(),
+            sandbox.gid_map.iter().map(|g| unshare::GidMap {
+                inside_gid: g.inside,
+                outside_gid: g.outside,
+                count: g.count,
+            }).collect());
+    } else if local.uid_map.len() > 0 || local.gid_map.len() > 0 {
         cmd.set_id_maps(
             local.uid_map.iter().map(|u| unshare::UidMap {
                 inside_uid: u.inside,

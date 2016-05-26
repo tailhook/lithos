@@ -17,7 +17,7 @@ use signal::trap::Trap;
 
 
 use super::sandbox_config::Range;
-use super::container_config::IdMap;
+use super::id_map::IdMap;
 
 pub type Time = f64;
 pub const ABNORMAL_TERM_SIGNALS: &'static [SigNum] = &[

@@ -25,6 +25,7 @@ use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::ContainerConfig;
 use lithos::child_config::ChildConfig;
 use lithos::network::{get_host_name, get_host_ip};
+use lithos::id_map::{IdMapExt};
 
 static EXIT_STATUS: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -74,6 +75,7 @@ fn check_sandbox_config(sandbox: &SandboxConfig) {
     if sandbox.allow_groups.len() == 0 {
         err!("No allowed groups range. Please add `allow-groups: [1-1000]`");
     }
+    // TODO(tailhook) check allow_users/allow_groups against uid_map/gid_map
 }
 
 fn check(config_file: &Path, verbose: bool,
@@ -151,22 +153,44 @@ fn check(config_file: &Path, verbose: bool,
                     }
                 };
                 if config.uid_map.len() > 0 {
+                    if sandbox.uid_map.len() > 0 {
+                        err!("Can't have uid_maps in both the sandbox and a \
+                              container itself");
+                    }
                     if !in_mapping(&config.uid_map, config.user_id) {
                         err!("User is not in mapped range (uid: {})",
                             config.user_id);
                     }
                 } else {
+                    if sandbox.uid_map.len() > 0 {
+                        if sandbox.uid_map.map_id(config.user_id).is_none() {
+                            err!("User is not in mapped range \
+                                (uid: {})",
+                                config.user_id);
+                        }
+                    }
                     if !in_range(&sandbox.allow_users, config.user_id) {
                         err!("User is not in allowed range (uid: {})",
                             config.user_id);
                     }
                 }
                 if config.gid_map.len() > 0 {
+                    if sandbox.gid_map.len() > 0 {
+                        err!("Can't have uid_maps in both the sandbox and a \
+                              container itself");
+                    }
                     if !in_mapping(&config.gid_map, config.group_id) {
                         err!("Group is not in mapped range (gid: {})",
                             config.user_id);
                     }
                 } else {
+                    if sandbox.gid_map.len() > 0 {
+                        if sandbox.gid_map.map_id(config.group_id).is_none() {
+                            err!("Group is not in mapped range \
+                                (gid: {})",
+                                config.group_id);
+                        }
+                    }
                     if !in_range(&sandbox.allow_groups, config.group_id) {
                         err!("Group is not in allowed range (gid: {})",
                             config.group_id);
