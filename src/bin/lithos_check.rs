@@ -16,7 +16,7 @@ use std::default::Default;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
-use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print};
+use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print, Collect};
 use quire::parse_config;
 
 use lithos::utils::{in_range, in_mapping, check_mapping, relative};
@@ -78,6 +78,33 @@ fn check_sandbox_config(sandbox: &SandboxConfig) {
     // TODO(tailhook) check allow_users/allow_groups against uid_map/gid_map
 }
 
+fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
+{
+    // Only checks things that can be checked without other configs
+    let config: ContainerConfig = match parse_config(config_file,
+        &ContainerConfig::validator(), Default::default())
+    {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            err!("Can't read child config {:?}: {}", config_file, e);
+            return Err(());
+        }
+    };
+    if config.uid_map.len() > 0 {
+        if !in_mapping(&config.uid_map, config.user_id) {
+            err!("User is not in mapped range (uid: {})",
+                config.user_id);
+        }
+    }
+    if config.gid_map.len() > 0 {
+        if !in_mapping(&config.gid_map, config.group_id) {
+            err!("Group is not in mapped range (gid: {})",
+                config.user_id);
+        }
+    }
+    Ok(config)
+}
+
 fn check(config_file: &Path, verbose: bool,
     sandbox_name: Option<String>, alter_config: Option<PathBuf>)
 {
@@ -137,29 +164,17 @@ fn check(config_file: &Path, verbose: bool,
                     continue;
                 }
                 debug!("Opening config for {:?}", child_name);
-                let config: ContainerConfig = match parse_config(
-                    &sandbox.image_dir
-                        .join(&child_cfg.image)
-                        .join(&relative(cfg_path, &Path::new("/"))),
-                    &ContainerConfig::validator(), Default::default()) {
-                    Ok(cfg) => cfg,
-                    Err(e) => {
-                        err!("Can't read child config {:?}: {}.\n\
-                            Sometimes the reason of reading configuration is \
-                            absolute symlinks for config, in that case it may \
-                            work in real daemon, but better fix it.",
-                            child_name, e);
-                        continue;
-                    }
+                let config = match check_container(&sandbox.image_dir
+                    .join(&child_cfg.image)
+                    .join(&relative(cfg_path, &Path::new("/"))))
+                {
+                    Ok(config) => config,
+                    Err(()) => continue,
                 };
                 if config.uid_map.len() > 0 {
                     if sandbox.uid_map.len() > 0 {
                         err!("Can't have uid_maps in both the sandbox and a \
                               container itself");
-                    }
-                    if !in_mapping(&config.uid_map, config.user_id) {
-                        err!("User is not in mapped range (uid: {})",
-                            config.user_id);
                     }
                 } else {
                     if sandbox.uid_map.len() > 0 {
@@ -178,10 +193,6 @@ fn check(config_file: &Path, verbose: bool,
                     if sandbox.gid_map.len() > 0 {
                         err!("Can't have uid_maps in both the sandbox and a \
                               container itself");
-                    }
-                    if !in_mapping(&config.gid_map, config.group_id) {
-                        err!("Group is not in mapped range (gid: {})",
-                            config.user_id);
                     }
                 } else {
                     if sandbox.gid_map.len() > 0 {
@@ -241,6 +252,7 @@ fn main() {
     let mut verbose = false;
     let mut alter_config = None;
     let mut sandbox_name = None;
+    let mut check_containers = Vec::<String>::new();
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Checks if lithos configuration is ok");
@@ -258,7 +270,7 @@ fn main() {
              Useful to test configuration file before
              switching it to be primary one.
              You must also specify --sandbox.")
-          .metavar("DIR");
+          .metavar("FILE");
         ap.refer(&mut sandbox_name)
           .add_option(&["--sandbox", "--sandbox-name",
             // Compatibility names
@@ -266,6 +278,15 @@ fn main() {
             ], ParseOption,
             "Name of the sandbox for which --config-dir takes effect")
           .metavar("NAME");
+        ap.refer(&mut check_containers)
+          .add_option(&["--check-container"], Collect, "
+            Instead of checking full lithos configuration check the
+            container's configuration in the FILE. This is useful to check
+            container locally, where you don't have lithos configured,
+            before actually uploading the container. Multiple files may be
+            specified in multiple arguments.
+            ")
+          .metavar("FILE");
         ap.add_option(&["--version"],
             Print(env!("CARGO_PKG_VERSION").to_string()),
             "Show version");
@@ -279,7 +300,13 @@ fn main() {
     if alter_config.is_some() && sandbox_name.is_none() {
         err!("Please specify --sandbox if you use --dir");
     }
-    check_binaries();
-    check(&config_file, verbose, sandbox_name, alter_config);
+    if check_containers.len() > 0 {
+        for file in &check_containers {
+            check_container(Path::new(file)).ok();
+        }
+    } else {
+        check_binaries();
+        check(&config_file, verbose, sandbox_name, alter_config);
+    }
     exit(EXIT_STATUS.load(Ordering::SeqCst) as i32);
 }
