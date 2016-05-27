@@ -27,23 +27,18 @@ it doesn't include:
 Running Examples
 ================
 
-There is a configuration for building test image for vagga. You may use another
-tool to build image. For vagga just run::
+Testing it in vagrant::
 
-    vagga _build busybox
+    vagrant up && vagrant ssh
 
-If you haven't built image by vagga you need to build it yourself and change
-``image-dir`` setting in ``examples/sleep/limits/sleep.yaml``.
+In vagrant shell::
 
-You also need to create ``/dev`` folder if you haven't run lithos before::
+    $ ./example_configs.sh
+    $ sudo lithos_tree
 
-    lithos_mkdev /var/lib/lithos/dev
+If you want to change containers, sources or configs of this test vagrant
+deployment just rerun ``./example_configs.sh``.
 
-Now, run lithos, but specify full path to the config::
-
-    sudo lithos_tree --config ${PWD}/examples/sleep/master.yaml
-
-.. warning:: Lithos will clobber runtime directories ``/run/lithos``,
-    so don't run examples on production machine. You can also change the
-    runtime and log directories in configuration if you wish.
-
+(Note: in this test deployment lithos doesn't properly reload configs, because
+images does not version properly. Just restart `lithos_tree` to apply the
+changes)

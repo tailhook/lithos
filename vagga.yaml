@@ -49,39 +49,19 @@ commands:
 
 containers:
 
-  busybox:
+  py-example:
     # This one is used as a container inside the lithos example
     setup:
-    - !Alpine v3.1
+    - !Alpine v3.3
+    - !Install [python3]
     - !EnsureDir /config
-    - !Text
-      /config/sleep.yaml: |
-          kind: Daemon
-          user_id: 1
-          volumes:
-            /tmp: !Tmpfs { size: 100Mi }
-          memory_limit: 104857600
-          cpu_shares: 3
-          executable: /bin/sleep
-          arguments: [60]
-          uid-map:
-          - {inside: 0, outside: 1000, count: 1}
-          - {inside: 1, outside: 1, count: 1}
-          gid-map:
-          - {inside: 0, outside: 100, count: 1}
-      /config/busybox.yaml: |
-          kind: Command
-          user_id: 1
-          volumes:
-            /tmp: !Tmpfs { size: 100Mi }
-          memory_limit: 104857600
-          cpu_shares: 3
-          executable: /bin/busybox
-          uid-map:
-          - {inside: 0, outside: 1000, count: 1}
-          - {inside: 1, outside: 1, count: 1}
-          gid-map:
-          - {inside: 0, outside: 100, count: 1}
+    - !EnsureDir /code
+    - !Copy
+      source: /work/examples/py/code/sock.py
+      path: /code/sock.py
+    - !Copy
+      source: /work/examples/py/code/socket.yaml
+      path: /config/socket.yaml
 
   ubuntu:
     setup:

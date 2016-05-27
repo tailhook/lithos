@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
 sudo -k
-echo Copying examples/sleep into the system
+echo Copying examples/py into the system
 echo WARNING: this will remove /etc/lithos from the system
 echo ... hoping you run this in virtual machine
 echo ... but let you think 10 seconds
@@ -9,13 +9,13 @@ echo ... but let you think 10 seconds
 for i in $(seq 10 -1 0); do echo -n "$i \r"; sleep 1; done;
 echo Okay proceeding...
 
-sudo rsync -av --delete-after examples/sleep/ /etc/lithos
+sudo rsync -av --delete-after examples/py/configs/ /etc/lithos
 
-vagga _build busybox
+vagga _build py-example
 
 [ -d /var/lib/lithos/images ] || sudo mkdir -p /var/lib/lithos/images
 
-sudo rsync -a --delete-after .vagga/busybox/ /var/lib/lithos/images/busybox
+sudo rsync -a --delete-after .vagga/py-example/ /var/lib/lithos/images/py-example
 
 echo Done.
 echo Ensure that you have run '`vagga run`' before.

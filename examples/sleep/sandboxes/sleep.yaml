@@ -1,3 +1,0 @@
-allow-users: [1, 1000, 100000-110000]
-allow-groups: [0, 100, 2000-12000]
-image-dir: /var/lib/lithos/images

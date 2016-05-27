@@ -1,0 +1,11 @@
+kind: Daemon
+user_id: 1
+volumes:
+  /tmp: !Tmpfs { size: 100Mi }
+memory_limit: 104857600
+cpu_shares: 3
+executable: /usr/bin/python3
+arguments: [/code/sock.py]
+tcp-ports:
+  77:
+    fd: 3

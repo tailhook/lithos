@@ -6,7 +6,7 @@ Vagrant.configure(2) do |config|
 
   config.vm.provision "shell", inline: <<-SHELL
     set -ex
-    echo 'deb http://ubuntu.zerogw.com vagga main' | tee /etc/apt/sources.list.d/vagga.list
+    echo 'deb http://ubuntu.zerogw.com vagga-testing main' | tee /etc/apt/sources.list.d/vagga.list
     apt-get update
     apt-get install -y --force-yes vagga cgroup-lite
   SHELL

@@ -1,0 +1,4 @@
+socket:
+  instances: 2
+  image: py-example
+  config: /config/socket.yaml
