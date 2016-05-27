@@ -1,4 +1,5 @@
 use std::ptr;
+use std::io;
 use std::fs::{create_dir, remove_dir_all, read_dir, remove_file, remove_dir};
 use std::fs::{metadata};
 use std::path::{Path, PathBuf};
@@ -25,11 +26,16 @@ pub const ABNORMAL_TERM_SIGNALS: &'static [SigNum] = &[
     SIGUSR1, SIGUSR2,
 ];
 
+pub struct FsUidGuard(bool);
 
 extern {
     fn chroot(dir: *const c_char) -> c_int;
     fn pivot_root(new_root: *const c_char, put_old: *const c_char) -> c_int;
     fn gettimeofday(tp: *mut timeval, tzp: *mut c_void) -> c_int;
+
+    // TODO(tailhook) move to libc and nix
+    fn setfsuid(uid: uid_t) -> c_int;
+    fn setfsgid(gid: gid_t) -> c_int;
 }
 
 
@@ -241,4 +247,43 @@ pub fn relative(child: &Path, base: &Path) -> PathBuf {
         }
     }
     return res
+}
+
+impl FsUidGuard {
+    pub fn set(uid: u32, gid: u32) -> FsUidGuard {
+        if uid != 0 || gid != 0 {
+            unsafe { setfsuid(uid) };
+            if unsafe { setfsuid(uid) } != uid as i32 {
+                error!("Can't set fs gid to open socket: {}. Ignoring.",
+                    io::Error::last_os_error());
+            }
+            unsafe { setfsgid(gid) };
+            if unsafe { setfsgid(gid) } != gid as i32 {
+                error!("Can't set fs uid to open socket: {}. Ignoring.",
+                    io::Error::last_os_error());
+            }
+            FsUidGuard(true)
+        } else {
+            FsUidGuard(false)
+        }
+    }
+}
+
+impl Drop for FsUidGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe { setfsuid(0) };
+            if unsafe { setfsuid(0) } != 0 {
+                let err = io::Error::last_os_error();
+                error!("Can't return fs uid back to zero: {}. Aborting.", err);
+                panic!("Can't return fs uid back to zero: {}. Aborting.", err);
+            }
+            unsafe { setfsgid(0) };
+            if unsafe { setfsgid(0) } != 0 {
+                let err = io::Error::last_os_error();
+                error!("Can't return fs gid back to zero: {}. Aborting.", err);
+                panic!("Can't return fs gid back to zero: {}. Aborting.", err);
+            }
+        }
+    }
 }

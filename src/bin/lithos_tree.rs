@@ -35,9 +35,9 @@ use nix::sys::socket::{getsockname, SockAddr};
 use nix::sys::socket::{setsockopt, bind, listen};
 use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
-use libc::pid_t;
+use libc::{pid_t};
 use libc::funcs::posix88::unistd::{getpid};
-use libc::close;
+use libc::{close};
 use regex::Regex;
 use quire::parse_config;
 use rustc_serialize::json;
@@ -54,8 +54,10 @@ use lithos::container_config::ContainerKind::Daemon;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
 use lithos::cgroup;
+use lithos::id_map::IdMapExt;
 use lithos_tree_options::Options;
 use lithos::timer_queue::Queue;
+use lithos::utils;
 
 mod lithos_tree_options;
 
@@ -66,6 +68,7 @@ struct Process {
     config: Rc<String>,
     inner_config: Rc<ContainerConfig>,
     ports: Vec<u16>,
+    socket_cred: (u32, u32),
 }
 
 struct Socket {
@@ -85,6 +88,7 @@ impl Child {
         }
     }
 }
+
 
 fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
     cfg: &str, options: &Options)
@@ -482,10 +486,17 @@ fn close_unused_sockets(sockets: &mut HashMap<u16, Socket>,
         }).collect();
 }
 
-fn open_socket(port: u16, cfg: &TcpPort) -> Result<RawFd, String> {
-    let sock = try!(socket(AddressFamily::Inet,
+fn open_socket(port: u16, cfg: &TcpPort, uid: u32, gid: u32)
+    -> Result<RawFd, String>
+{
+
+    let sock = {
+        let _fsuid_guard = utils::FsUidGuard::set(uid, gid);
+        try!(socket(AddressFamily::Inet,
             SockType::Stream, SockFlag::empty(), 0)
-            .map_err(|e| format!("Can't create socket: {:?}", e)));
+            .map_err(|e| format!("Can't create socket: {:?}", e)))
+    };
+
     let mut result = Ok(());
     if cfg.reuse_addr {
         result = result.and_then(|_| setsockopt(sock, ReuseAddr, &true));
@@ -508,13 +519,14 @@ fn open_socket(port: u16, cfg: &TcpPort) -> Result<RawFd, String> {
 
 fn open_sockets_for(socks: &mut HashMap<u16, Socket>,
                     ports: &HashMap<u16, TcpPort>,
-                    cmd: &mut Command)
+                    cmd: &mut Command,
+                    uid: u32, gid: u32)
     -> Result<(), String>
 {
     for (&port, item) in ports {
         if !socks.contains_key(&port) {
             if !item.reuse_port {
-                let sock = try!(open_socket(port, item));
+                let sock = try!(open_socket(port, item, uid, gid));
                 socks.insert(port, Socket {
                     fd: sock,
                 });
@@ -548,7 +560,8 @@ fn normal_loop(queue: &mut Queue<Process>,
             let restart_min = now + Duration::milliseconds(
                 (child.inner_config.restart_timeout * 1000.) as i64);
             match open_sockets_for(sockets, &child.inner_config.tcp_ports,
-                                   &mut child.cmd)
+                                   &mut child.cmd,
+                                   child.socket_cred.0, child.socket_cred.1)
             {
                 Ok(()) => {}
                 Err(e) => {
@@ -743,6 +756,15 @@ fn read_subtree<'x>(master: &MasterConfig,
                 }
             };
             let child_string = Rc::new(json::encode(&child).unwrap());
+            let mut sock_uid = cfg.user_id;
+            let mut sock_gid = cfg.group_id;
+            if sandbox.uid_map.len() > 0 {
+                sock_uid = sandbox.uid_map.map_id(sock_uid).unwrap_or(0);
+                sock_gid = sandbox.gid_map.map_id(sock_gid).unwrap_or(0);
+            } else if cfg.uid_map.len() > 0 {
+                sock_uid = cfg.uid_map.map_id(sock_uid).unwrap_or(0);
+                sock_gid = cfg.gid_map.map_id(sock_gid).unwrap_or(0);
+            }
 
             let items: Vec<(String, Process)> = (0..instances)
                 .map(|i| {
@@ -758,6 +780,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                         config: child_string.clone(), // should avoid cloning?
                         inner_config: cfg.clone(),
                         ports: cfg.tcp_ports.keys().cloned().collect(),
+                        socket_cred: (sock_uid, sock_gid),
                     };
                     (name, process)
                 })
