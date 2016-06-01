@@ -10,7 +10,7 @@ commands:
     container: rust-musl
     run: |
       cargo build --target=x86_64-unknown-linux-musl
-      tar -cf dist/lithos-check-$(git describe).tar.gz \
+      tar -czf dist/lithos-check-$(git describe).tar.gz \
         -C target/x86_64-unknown-linux-musl/debug lithos_check
 
   cargo: !Command
