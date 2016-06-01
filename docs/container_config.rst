@@ -20,7 +20,7 @@ The somewhat minimal configuration is looks like following:
     kind: Daemon
     user_id: 1
     volumes:
-      /tmp: tmpfs:size=100m
+      /tmp: !Tmpfs { size: 100m }
     executable: /bin/sleep
     arguments: [60]
 
