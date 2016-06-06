@@ -105,3 +105,43 @@ Or you can pass ``fd=3`` to ``werkzeug.serving.BaseWSGIServer``.
 
 Another hint: **do not use processes != 1**. Better use lithos's
 ``instances`` to control the number of processes.
+
+
+.. _tp-golang:
+
+Golang + net/http
+=================
+
+Previous code like this:
+
+.. code-block:: go
+
+    import "net/http"
+
+    srv := &http.Server{ .. }
+    if err := srv.ListenAndServe(); err != nil {
+        log.Fatalf("Error listening")
+    }
+
+You should wrap into something like this:
+
+.. code-block:: go
+
+    import "os"
+    import "net"
+    import "net/http"
+
+    srv := &http.Server{ .. }
+    if os.Getenv("LISTEN_FDS") == "1" {
+        listener, err := net.FileListener(os.NewFile(3, "fd 3"))
+        if err != nil {
+            log.Fatalf("Can't open fd 3")
+        }
+        if err := srv.Serve(listener); err != nil {
+            log.Fatalf("Error listening on fd 3")
+        }
+    } else {
+        if err := srv.ListenAndServe(); err != nil {
+            log.Fatalf("Error listening")
+        }
+    }
