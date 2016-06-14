@@ -57,7 +57,7 @@ commands:
         --repository-base dist/repos \
         dist/lithos-check-*.deb "$@"
       bulk repo-add --config bulk.yaml --repository-base dist/repos \
-        dist/lithos-*.deb "$@"
+        dist/lithos-[0-9]*.deb "$@"
 
 containers:
 

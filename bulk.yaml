@@ -51,36 +51,42 @@ repositories:
   component: lithos
   keep-releases: 1
   match-version: ^\d+\.\d+\.\d+\+precise1$
+  add-empty-i386-repo: true
 
 - kind: debian
   suite: precise
   component: lithos-stable
   keep-releases: 1000
   match-version: ^\d+\.\d+\.\d+\+precise1$
+  add-empty-i386-repo: true
 
 - kind: debian
   suite: precise
   component: lithos-testing
   keep-releases: 100
   match-version: \+precise1$
+  add-empty-i386-repo: true
 
 - kind: debian
   suite: precise
   component: lithos-noinit
   keep-releases: 1
   match-version: ^\d+\.\d+\.\d\+precise1.noinit$
+  add-empty-i386-repo: true
 
 - kind: debian
   suite: precise
   component: lithos-noinit-stable
   keep-releases: 1000
   match-version: ^\d+\.\d+\.\d\+precise1.noinit$
+  add-empty-i386-repo: true
 
 - kind: debian
   suite: precise
   component: lithos-noinit-testing
   keep-releases: 100
   match-version: \+precise1.noinit$
+  add-empty-i386-repo: true
 
 # xenial
 - kind: debian
