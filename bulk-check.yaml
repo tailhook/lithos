@@ -1,0 +1,28 @@
+minimum-bulk: v0.4.5
+
+metadata:
+  name: lithos-check
+  short-description: Utility to check lithos configuration files offline
+  long-description: |
+    While this utility is in the lithos package itself you may want to rust
+    have lithos_check without all other stuff on development machine. Just to
+    check configuration file syntax.
+
+repositories:
+
+- kind: debian
+  suite: static
+  component: lithos-check
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d+$
+
+- kind: debian
+  suite: static
+  component: lithos-check-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d+$
+
+- kind: debian
+  suite: static
+  component: lithos-check-testing
+  keep-releases: 100

@@ -2,7 +2,7 @@ commands:
 
   make: !Command
     description: Build lithos in ubuntu container
-    container: ubuntu
+    container: xenial
     run: [make]
 
   _static-lithos_check-package: !Command
@@ -15,24 +15,8 @@ commands:
 
   cargo: !Command
     description: Build lithos in ubuntu container
-    container: ubuntu
+    container: xenial
     run: [cargo]
-
-  build-ubuntu-package: !Command
-    description: Build ubuntu (xenial) package
-    container: ubuntu
-    write-mode: transient-hard-link-copy
-    run: |
-      set -ex
-      ver=$(git describe)
-      [ -d dist ] || mkdir dist
-      make bin-release
-      checkinstall --default \
-        --maintainer=paul@colomiets.name --pkglicense=MIT \
-        --pkgname=lithos --nodoc --strip=no \
-        --pkgver=${ver#v} \
-        --pakdir=dist \
-        make _install
 
   doc: !Command
     description: Build HTML docs
@@ -42,10 +26,38 @@ commands:
 
   make-docs: !Command
     description: Build
-    container: ubuntu
+    container: docs
     work-dir: docs
     run: [make]
 
+  _package-trusty: !Command
+    container: trusty
+    run: [make, ubuntu-packages, SYSTEM_KIND=upstart]
+
+  _package-precise: !Command
+    container: precise
+    run: [make, ubuntu-packages, SYSTEM_KIND=upstart]
+
+  _package-xenial: !Command
+    container: xenial
+    run: [make, ubuntu-packages, SYSTEM_KIND=systemd]
+
+  _package-lithos_check: !Command
+    container: rust-musl
+    run: [make, ubuntu-lithos_check-package]
+
+  packages: !Command
+    container: xenial
+    description: Build packages and repostories (mostly for CI)
+    prerequisites: [_package-trusty, _package-precise, _package-xenial,
+                    _package-lithos_check]
+    accepts_arguments: true
+    run: |
+      bulk repo-add --config bulk-check.yaml \
+        --repository-base dist/repos \
+        dist/lithos-check-*.deb "$@"
+      bulk repo-add --config bulk.yaml --repository-base dist/repos \
+        dist/lithos-*.deb "$@"
 
 containers:
 
@@ -63,17 +75,37 @@ containers:
       source: /work/examples/py/code/socket.yaml
       path: /config/socket.yaml
 
-  ubuntu:
+  xenial:
     setup:
     - !Ubuntu xenial
-    - !UbuntuUniverse
-    - !Install [make, checkinstall, wget, gcc, libc6-dev, ca-certificates, git]
-    - !TarInstall
-      url: http://static.rust-lang.org/dist/rust-1.8.0-x86_64-unknown-linux-gnu.tar.gz
+    - &pkgs !Install [make, gcc, libc-dev, ca-certificates, git, lsb-release]
+    - &rust !TarInstall
+      url: http://static.rust-lang.org/dist/rust-1.9.0-x86_64-unknown-linux-gnu.tar.gz
       script: "./install.sh --prefix=/usr --components=rustc,cargo \
                --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
-    environ:
+    - &bulk !Tar
+      url: "http://files.zerogw.com/bulk/bulk-0.4.5.tar.gz"
+      sha256: 8ee5a5f6386c1b408543a82bf22f184ddbc8add8e5eb6cb6b7e8492e5d4036e3
+      path: /
+    environ: &environ
       HOME: /work/target
+
+  trusty:
+    setup:
+    - !Ubuntu trusty
+    - *pkgs
+    - *rust
+    - *bulk
+    environ: *environ
+
+  precise:
+    setup:
+    - !Ubuntu precise
+    - *pkgs
+    - *rust
+    - *bulk
+    environ: *environ
+
 
   rust-musl:
     environ: &rustenv
@@ -82,34 +114,16 @@ containers:
       HOME: /work/target
     setup:
     - !Ubuntu xenial
-    - !Install [build-essential, ca-certificates, git]
-    - !BuildDeps [cmake, libc++-dev, curl, autoconf, automake, libtool]
-    # Build script derived from
-    # https://github.com/rust-lang/rust-buildbot/blob/master/slaves/linux/build-musl.sh
+    - *pkgs
     - !TarInstall
-      url: http://www.musl-libc.org/releases/musl-1.1.14.tar.gz
-      script: |
-        ./configure --prefix=/musl --disable-shared
-        make -j2
-        make install
-
-    - !Tar
-      url: http://llvm.org/releases/3.8.0/llvm-3.8.0.src.tar.xz
-      path: /tmp/llvm
-    - !TarInstall
-      url: http://llvm.org/releases/3.8.0/libunwind-3.8.0.src.tar.xz
-      script: |
-        cmake . -DLLVM_PATH=/tmp/llvm/llvm-3.8.0.src -DLIBUNWIND_ENABLE_SHARED=0
-        make -j2
-        cp lib/libunwind.a /musl/lib
-    - !TarInstall
-      url: "http://static.rust-lang.org/dist/rust-1.8.0-x86_64-unknown-linux-gnu.tar.gz"
+      url: "http://static.rust-lang.org/dist/rust-1.9.0-x86_64-unknown-linux-gnu.tar.gz"
       script: "./install.sh --prefix=/usr --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - !TarInstall
-      url: "http://static.rust-lang.org/dist/rust-std-1.8.0-x86_64-unknown-linux-musl.tar.gz"
+      url: "http://static.rust-lang.org/dist/rust-std-1.9.0-x86_64-unknown-linux-musl.tar.gz"
       script: "./install.sh --prefix=/musl \
                --components=rust-std-x86_64-unknown-linux-musl"
     - !Sh 'ln -s /musl/lib/rustlib/x86_64-unknown-linux-musl /usr/lib/rustlib/x86_64-unknown-linux-musl'
+    - *bulk
 
   docs:
     setup:

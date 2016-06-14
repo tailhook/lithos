@@ -1,0 +1,145 @@
+minimum-bulk: v0.4.5
+
+metadata:
+  name: lithos
+  short-description: A process supervisor with containers
+  long-description: |
+    Lithos allows you to run and restart containers
+
+repositories:
+
+# trusty
+- kind: debian
+  suite: trusty
+  component: lithos
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d+\+trusty1$
+
+- kind: debian
+  suite: trusty
+  component: lithos-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d+\+trusty1$
+
+- kind: debian
+  suite: trusty
+  component: lithos-testing
+  keep-releases: 100
+  match-version: \+trusty1$
+
+- kind: debian
+  suite: trusty
+  component: lithos-noinit
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d+\+trusty1.noinit$
+
+- kind: debian
+  suite: trusty
+  component: lithos-noinit-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d+\+trusty1.noinit$
+
+- kind: debian
+  suite: trusty
+  component: lithos-noinit-testing
+  keep-releases: 100
+  match-version: \+trusty1.noinit$
+
+# precise
+- kind: debian
+  suite: precise
+  component: lithos
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d+\+precise1$
+
+- kind: debian
+  suite: precise
+  component: lithos-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d+\+precise1$
+
+- kind: debian
+  suite: precise
+  component: lithos-testing
+  keep-releases: 100
+  match-version: \+precise1$
+
+- kind: debian
+  suite: precise
+  component: lithos-noinit
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d\+precise1.noinit$
+
+- kind: debian
+  suite: precise
+  component: lithos-noinit-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d\+precise1.noinit$
+
+- kind: debian
+  suite: precise
+  component: lithos-noinit-testing
+  keep-releases: 100
+  match-version: \+precise1.noinit$
+
+# xenial
+- kind: debian
+  suite: xenial
+  component: lithos
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d+\+xenial1$
+
+- kind: debian
+  suite: xenial
+  component: lithos-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d+\+xenial1$
+
+- kind: debian
+  suite: xenial
+  component: lithos-testing
+  keep-releases: 100
+  match-version: \+xenial1$
+
+- kind: debian
+  suite: xenial
+  component: lithos-noinit
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d\+xenial1.noinit$
+
+- kind: debian
+  suite: xenial
+  component: lithos-noinit-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d\+xenial1.noinit$
+
+- kind: debian
+  suite: xenial
+  component: lithos-noinit-testing
+  keep-releases: 100
+  match-version: \+xenial1.noinit$
+
+
+versions:
+
+- file: Cargo.toml
+  block-start: ^\[package\]
+  block-end: ^\[.*\]
+  regex: ^version\s*=\s*"(\S+)"
+
+- file: web/webpack.config.js
+  regex: VERSION:\s*JSON\.stringify\("([^"]+)"\)
+
+- file: docs/conf.py
+  regex: ^version\s*=\s*'(\S+)'
+  partial-version: ^\d+\.\d+
+
+- file: docs/conf.py
+  regex: ^release\s*=\s*'(\S+)'
+
+  # for more automation we also update the lockfile
+
+- file: Cargo.lock
+  block-start: ^\[root\]
+  regex: ^version\s*=\s*"(\S+)"
+  block-end: ^\[.*\]

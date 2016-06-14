@@ -1,0 +1,10 @@
+[Unit]
+Description=Lithos Supervisor service
+
+[Service]
+Type=simple
+Environment="RUST_LOG=warn"
+ExecStart=/usr/bin/lithos_tree
+
+[Install]
+WantedBy=multi-user.target
