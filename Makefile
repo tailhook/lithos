@@ -45,7 +45,7 @@ ubuntu-packages: version:=$(shell git describe --dirty)
 ubuntu-packages: codename:=$(shell lsb_release --codename --short)
 ubuntu-packages:
 	rm -rf pkg
-	rm -rf target/debug/lithos_*
+	rm -rf target/release/lithos_*
 	bulk with-version "$(version)" cargo build --release
 	make _install DESTDIR=/work/pkg
 	bulk pack --package-version="$(version)+$(codename)1.noinit"
