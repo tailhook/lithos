@@ -722,9 +722,13 @@ fn read_subtree<'x>(master: &MasterConfig,
         .map(|cfg: BTreeMap<String, ChildConfig>| {
             OpenOptions::new().create(true).write(true).append(true)
             .open(master.config_log_dir.join(sandbox_name.clone() + ".log"))
-            .and_then(|mut f| write!(&mut f, "{} {}\n",
-                time::now_utc().rfc3339(),
-                json::as_json(&cfg)))
+            .and_then(|mut f| {
+                // we want as atomic writes as possible, so format into a buf
+                let buf = format!("{} {}\n",
+                    time::now_utc().rfc3339(),
+                    json::as_json(&cfg));
+                f.write_all(buf.as_bytes())
+            })
             .map_err(|e| error!("Error writing config log: {}", e))
             .ok();
             cfg
