@@ -14,9 +14,14 @@ commands:
         -C target/x86_64-unknown-linux-musl/debug lithos_check
 
   cargo: !Command
-    description: Build lithos in ubuntu container
+    description: Run any cargo command
     container: xenial
     run: [cargo]
+
+  bulk: !Command
+    description: Run any bulk command
+    container: xenial
+    run: [bulk]
 
   doc: !Command
     description: Build HTML docs
