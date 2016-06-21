@@ -145,6 +145,10 @@ fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
 {
     let mut unused = Vec::new();
     for dir in dirs.iter() {
+        if !dir.exists() {
+            warn!("Directory {:?} does not exists", dir);
+            continue;
+        }
         try!(scan_dir::ScanDir::dirs().skip_symlinks(true).read(dir, |iter| {
             for (entry, _) in iter {
                 let path = entry.path().to_path_buf();
