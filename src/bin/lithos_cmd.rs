@@ -122,7 +122,7 @@ fn run(master_cfg: &Path, sandbox_name: String,
         Err(e) => error!("Can't run {:?}: {}", cmd, e),
     }
 
-    clean_child(&name, &master);
+    clean_child(&name, &master, false);
 
     return Ok(());
 }

@@ -615,11 +615,11 @@ fn normal_loop(queue: &mut Queue<Process>,
                     match children.remove(&pid) {
                         Some(Child::Process(child)) => {
                             error!("Process {:?} {}", child.name, status);
-                            clean_child(&child.name, &master);
+                            clean_child(&child.name, &master, true);
                             queue.add(child.restart_min, child);
                         }
                         Some(Child::Unidentified(name)) => {
-                            clean_child(&name, &master);
+                            clean_child(&name, &master, false);
                         }
                         None => {
                             info!("Unknown process {:?} {}", pid, status);
@@ -659,7 +659,7 @@ fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
                     match children.remove(&pid) {
                         Some(child) => {
                             info!("Process {:?} {}", child.get_name(), status);
-                            clean_child(child.get_name(), &master);
+                            clean_child(child.get_name(), &master, false);
                         }
                         None => {
                             info!("Unknown process {:?} {}", pid, status);
