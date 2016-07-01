@@ -107,6 +107,31 @@ Another hint: **do not use processes != 1**. Better use lithos's
 ``instances`` to control the number of processes.
 
 
+.. _tp-twisted:
+
+Python + Twisted
+================
+
+Old code that looks like:
+
+.. code-block:: python
+
+    reactor.listenTCP(PORT, factory)
+
+You need to change into something like this:
+
+.. code-block:: python
+
+   if os.environ.get("LISTEN_FD") == "3":
+       import socket
+       sock = socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM)
+       sock.set_blocking(False)
+       reactor.adoptStreamPort(sock.fileno(), AF_INET, factory)
+       sock.close()
+       os.close(3)
+   else:
+       reactor.listenTCP(PORT, factory)
+
 .. _tp-golang:
 
 Golang + net/http
