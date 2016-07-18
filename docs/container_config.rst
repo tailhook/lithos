@@ -238,6 +238,8 @@ Reference
         environ:
           GUNICORN_FD: "3"
 
+    More examples are in :ref:`tcp-ports-tips`
+
     Parameters:
 
     *key*
@@ -247,10 +249,12 @@ Reference
 
          * The paramters (except ``fd``) do not change after socket is
            bound even if configuration change
-         * You can't bind same port with different hostnames this limitation
-           may be lifted in the later versions
+         * You can't bind same port with different hostnames in a
+           **single process** (previously there was a global limit for the
+           single port for whole lithos master, currently this is limited
+           just because ``tcp-ports`` is a mapping)
 
-      Port parameter should be unique amoungst all containers. But sharing
+      Port parameter should be unique amongst all containers. But sharing
       port works because it is useful if you are doing smooth software
       upgrade (i.e. you have few old processes running and few new processes
       running both sharing same port/file-descriptor). *Running them on single

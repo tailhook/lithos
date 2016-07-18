@@ -21,7 +21,7 @@ use std::fs::{File, OpenOptions, metadata};
 use std::io::{stderr, Read, Write};
 use std::str::{FromStr};
 use std::fs::{remove_dir};
-use std::net::ToSocketAddrs;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::default::Default;
 use std::process::exit;
@@ -67,7 +67,7 @@ struct Process {
     name: String,
     config: Rc<String>,
     inner_config: Rc<ContainerConfig>,
-    ports: Vec<u16>,
+    addresses: Vec<InetAddr>,
     socket_cred: (u32, u32),
 }
 
@@ -221,7 +221,7 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
     return Ok(());
 }
 
-fn recover_sockets(sockets: &mut HashMap<u16, Socket>) {
+fn recover_sockets(sockets: &mut HashMap<InetAddr, Socket>) {
     scan_dir::ScanDir::all().read("/proc/self/fd", |iter| {
         let fds = iter
             .filter_map(|(_, name)| FromStr::from_str(&name).ok())
@@ -232,12 +232,12 @@ fn recover_sockets(sockets: &mut HashMap<u16, Socket>) {
                     let sock = Socket {
                         fd: fd,
                     };
-                    match sockets.insert(addr.port(), sock) {
+                    match sockets.insert(addr, sock) {
                         None => {}
                         Some(old) => {
-                            error!("Port {} has two sockets: fd={} and fd={}, \
-                                discarding latter.",
-                                addr.port(), fd, old.fd);
+                            error!("Addreesss {} has two sockets: \
+                                fd={} and fd={}, discarding latter.",
+                                addr, fd, old.fd);
                         }
                     }
                 }
@@ -465,19 +465,19 @@ fn run(config_file: &Path, options: &Options)
     return Ok(());
 }
 
-fn close_unused_sockets(sockets: &mut HashMap<u16, Socket>,
+fn close_unused_sockets(sockets: &mut HashMap<InetAddr, Socket>,
                         children: &HashMap<pid_t, Child>)
 {
     let empty = Vec::new();
-    let used_ports: HashSet<u16> = children.values().flat_map(|ch| {
+    let used_addresses: HashSet<InetAddr> = children.values().flat_map(|ch| {
         match ch {
-            &Child::Process(ref p) => p.ports.iter().cloned(),
+            &Child::Process(ref p) => p.addresses.iter().cloned(),
             &Child::Unidentified(_) => empty.iter().cloned(),
         }
     }).collect();
     *sockets = replace(sockets, HashMap::new())
         .into_iter().filter(|&(p, ref s)| {
-            if used_ports.contains(&p) {
+            if used_addresses.contains(&p) {
                 true
             } else {
                 unsafe { close(s.fd) };
@@ -486,7 +486,7 @@ fn close_unused_sockets(sockets: &mut HashMap<u16, Socket>,
         }).collect();
 }
 
-fn open_socket(port: u16, cfg: &TcpPort, uid: u32, gid: u32)
+fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
     -> Result<RawFd, String>
 {
 
@@ -504,10 +504,7 @@ fn open_socket(port: u16, cfg: &TcpPort, uid: u32, gid: u32)
     if cfg.reuse_port {
         result = result.and_then(|_| setsockopt(sock, ReusePort, &true));
     }
-    let addr = SockAddr::Inet(InetAddr::from_std(
-        &(&cfg.host[..], port).to_socket_addrs().unwrap().next().unwrap()
-        ));
-    result =  result.and_then(|_| bind(sock, &addr));
+    result =  result.and_then(|_| bind(sock, &SockAddr::Inet(addr)));
     result =  result.and_then(|_| listen(sock, cfg.listen_backlog));
     if let Err(e) = result {
         unsafe { close(sock) };
@@ -517,17 +514,18 @@ fn open_socket(port: u16, cfg: &TcpPort, uid: u32, gid: u32)
     }
 }
 
-fn open_sockets_for(socks: &mut HashMap<u16, Socket>,
+fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
                     ports: &HashMap<u16, TcpPort>,
                     cmd: &mut Command,
                     uid: u32, gid: u32)
     -> Result<(), String>
 {
     for (&port, item) in ports {
-        if !socks.contains_key(&port) {
+        let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
+        if !socks.contains_key(&addr) {
             if !item.reuse_port {
-                let sock = try!(open_socket(port, item, uid, gid));
-                socks.insert(port, Socket {
+                let sock = try!(open_socket(addr, item, uid, gid));
+                socks.insert(addr, Socket {
                     fd: sock,
                 });
             }
@@ -538,9 +536,12 @@ fn open_sockets_for(socks: &mut HashMap<u16, Socket>,
     if socks.len() > 0 {
         cmd.close_fds(socks.values().map(|x| x.fd).min().unwrap()
                       ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
-        for (p, item) in ports.iter() {
+        for (&port, item) in ports {
+            let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
             unsafe {
-                cmd.file_descriptor_raw(item.fd, socks.get(p).unwrap().fd);
+                cmd.file_descriptor_raw(
+                    item.fd,
+                    socks.get(&addr).unwrap().fd);
             }
         }
     }
@@ -549,7 +550,7 @@ fn open_sockets_for(socks: &mut HashMap<u16, Socket>,
 
 fn normal_loop(queue: &mut Queue<Process>,
     children: &mut HashMap<pid_t, Child>,
-    sockets: &mut HashMap<u16, Socket>,
+    sockets: &mut HashMap<InetAddr, Socket>,
     trap: &mut Trap, master: &MasterConfig)
 {
     loop {
@@ -633,7 +634,7 @@ fn normal_loop(queue: &mut Queue<Process>,
 }
 
 fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
-    sockets: &mut HashMap<u16, Socket>,
+    sockets: &mut HashMap<InetAddr, Socket>,
     trap: &mut Trap,
     master: &MasterConfig)
 {
@@ -783,7 +784,10 @@ fn read_subtree<'x>(master: &MasterConfig,
                         restart_min: restart_min,
                         config: child_string.clone(), // should avoid cloning?
                         inner_config: cfg.clone(),
-                        ports: cfg.tcp_ports.keys().cloned().collect(),
+                        addresses: cfg.tcp_ports.iter().map(|(&port, item)| {
+                            InetAddr::from_std(
+                                &SocketAddr::new(item.host.0, port))
+                        }).collect(),
                         socket_cred: (sock_uid, sock_gid),
                     };
                     (name, process)

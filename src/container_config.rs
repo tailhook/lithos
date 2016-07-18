@@ -1,9 +1,11 @@
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::default::Default;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;
 
+use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping};
 use id_map::{IdMap, IdMapExt, mapping_validator};
@@ -58,10 +60,11 @@ pub struct HostsFile {
     pub public_hostname: Option<bool>,
 }
 
+pub struct Host(pub IpAddr);
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct TcpPort {
-    pub host: String,
+    pub host: Host,
     pub fd: RawFd,
     pub reuse_addr: bool,
     pub reuse_port: bool,
@@ -158,3 +161,15 @@ pub fn volume_validator<'x>() -> Enum<'x> {
         .member("group", Numeric::new().default(0)))
 }
 
+impl Decodable for Host {
+    fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
+        try!(d.read_str()).parse().map(Host)
+            .map_err(|x| d.error(&format!("{}", x)))
+    }
+}
+
+impl Encodable for Host {
+    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
+        format!("{}", self.0).encode(s)
+    }
+}
