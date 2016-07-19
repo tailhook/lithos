@@ -35,12 +35,6 @@ _install:
 	install -m 755 target/release/lithos_ps $(DESTDIR)$(PREFIX)/bin/lithos_ps
 	install -m 755 bin/lithos_mkdev $(DESTDIR)$(PREFIX)/bin/lithos_mkdev
 
-install-systemd:
-	install -D ./systemd.service $(DESTDIR)$(PREFIX)/lib/systemd/system/lithos.service
-
-install-upstart:
-	install -D ./upstart.conf $(DESTDIR)/etc/init/lithos.conf
-
 ubuntu-packages: version:=$(shell git describe --dirty)
 ubuntu-packages: codename:=$(shell lsb_release --codename --short)
 ubuntu-packages:
@@ -48,8 +42,6 @@ ubuntu-packages:
 	rm -rf target/release/lithos_*
 	bulk with-version "$(version)" cargo build --release
 	make _install DESTDIR=/work/pkg
-	bulk pack --package-version="$(version)+$(codename)1.noinit"
-	make install-$(SYSTEM_KIND) DESTDIR=/work/pkg
 	bulk pack --package-version="$(version)+$(codename)1"
 
 ubuntu-lithos_check-package: version:=$(shell git describe --dirty)
@@ -63,4 +55,4 @@ ubuntu-lithos_check-package:
 	bulk pack --config=bulk-check.yaml --package-version="$(version)"
 
 
-.PHONY: all bin install test _install bin-release install-systemd install-upstart ubuntu-packages ubuntu-lithos_check-package
+.PHONY: all bin install test _install bin-release ubuntu-packages ubuntu-lithos_check-package

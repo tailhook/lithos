@@ -37,15 +37,15 @@ commands:
 
   _package-trusty: !Command
     container: trusty
-    run: [make, ubuntu-packages, SYSTEM_KIND=upstart]
+    run: [make, ubuntu-packages]
 
   _package-precise: !Command
     container: precise
-    run: [make, ubuntu-packages, SYSTEM_KIND=upstart]
+    run: [make, ubuntu-packages]
 
   _package-xenial: !Command
     container: xenial
-    run: [make, ubuntu-packages, SYSTEM_KIND=systemd]
+    run: [make, ubuntu-packages]
 
   _package-lithos_check: !Command
     container: rust-musl
