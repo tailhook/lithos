@@ -11,6 +11,9 @@ use quire::validate::{Mapping};
 use id_map::{IdMap, IdMapExt, mapping_validator};
 
 
+pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
+
+
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub struct TmpfsInfo {
     pub size: usize,
@@ -78,6 +81,7 @@ pub struct ContainerConfig {
     pub user_id: u32,
     pub group_id: u32,
     pub restart_timeout: f32,
+    pub kill_timeout: f32,
     pub memory_limit: u64,
     pub fileno_limit: u64,
     pub cpu_shares: usize,
@@ -114,6 +118,9 @@ impl ContainerConfig {
         .member("fileno_limit", Numeric::new().default(1024))
         .member("cpu_shares", Numeric::new().default(1024))
         .member("restart_timeout", Numeric::new().min(0).max(86400).default(1))
+        .member("kill_timeout",
+            Numeric::new().min(0).max(86400)
+                .default(DEFAULT_KILL_TIMEOUT as i64))
         .member("executable", Scalar::new())
         .member("arguments", Sequence::new(Scalar::new()))
         .member("environ", Mapping::new(

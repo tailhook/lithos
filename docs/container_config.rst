@@ -77,6 +77,20 @@ Reference
     restarts, i.e. if process were running more than this number of seconds
     it will be restarted immediately.
 
+.. opt:: kill-timeout
+
+    (default ``5`` seconds) The time to wait for application to die. If it is
+    not dead by this number of seconds we kill it with ``KILL``.
+
+    You should not rely on this timeout to be precise for multiple reasons:
+
+    1. Unidentified children are killed with a default timeout (5 sec).
+       This includes children which are being killed when their configuration
+       is removed.
+    2. When lithos is restarted (i.e. to reload a configuration) during
+       the timeout, the timeout is reset. I.e. the process may hang more than
+       this time.
+
 .. opt:: executable
 
     The path to executable to run. Only absolute paths are allowed.

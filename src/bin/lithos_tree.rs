@@ -29,7 +29,7 @@ use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
 
 use time::{SteadyTime, Duration};
-use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
+use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SIGKILL};
 use nix::sys::signal::kill;
 use nix::sys::socket::{getsockname, SockAddr};
 use nix::sys::socket::{setsockopt, bind, listen};
@@ -49,7 +49,7 @@ use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildConfig;
-use lithos::container_config::{ContainerConfig, TcpPort};
+use lithos::container_config::{ContainerConfig, TcpPort, DEFAULT_KILL_TIMEOUT};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
@@ -58,6 +58,8 @@ use lithos::id_map::IdMapExt;
 use lithos_tree_options::Options;
 use lithos::timer_queue::Queue;
 use lithos::utils;
+
+use self::Timeout::*;
 
 mod lithos_tree_options;
 
@@ -78,6 +80,11 @@ struct Socket {
 enum Child {
     Process(Process),
     Unidentified(String),
+}
+
+enum Timeout {
+    Start(Process),
+    Kill(pid_t),
 }
 
 impl Child {
@@ -253,9 +260,11 @@ fn recover_sockets(sockets: &mut HashMap<InetAddr, Socket>) {
 }
 
 fn recover_processes(children: &mut HashMap<pid_t, Child>,
-    configs: &mut HashMap<String, Process>, config_file: &Path)
+    configs: &mut HashMap<String, Process>,
+    queue: &mut Queue<Timeout>, config_file: &Path)
 {
     let mypid = unsafe { getpid() };
+    let now = SteadyTime::now();
 
     // Recover old workers
     scan_dir::ScanDir::all().read("/proc", |iter| {
@@ -274,7 +283,9 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                             .map_err(|e|
                                 error!("Error sending TERM to {}: {:?}",
                                     pid, e)).ok();
-                            // TODO(tailhook) add to unidentified list?
+                            queue.add(now +
+                                    duration(child.inner_config.kill_timeout),
+                                Kill(pid));
                         }
                         children.insert(pid, Child::Process(child));
                     }
@@ -285,6 +296,9 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                         kill(pid, SIGTERM)
                         .map_err(|e| error!("Error sending TERM to {}: {:?}",
                             pid, e)).ok();
+                        queue.add(
+                            now + duration(DEFAULT_KILL_TIMEOUT),
+                            Kill(pid));
                     }
                 };
             } else {
@@ -292,6 +306,9 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                 kill(pid, SIGTERM)
                     .map_err(|e| error!("Error sending TERM to {}: {:?}",
                         pid, e)).ok();
+                queue.add(
+                    now + duration(DEFAULT_KILL_TIMEOUT),
+                    Kill(pid));
                 continue;
             }
         }
@@ -436,11 +453,12 @@ fn run(config_file: &Path, options: &Options)
     let mut configs = read_sandboxes(&master, &bin, &config_file, options);
 
     info!("Recovering Sockets");
+    let mut queue = Queue::new();
     let mut sockets = HashMap::new();
     recover_sockets(&mut sockets);
     info!("Recovering Processes");
     let mut children = HashMap::new();
-    recover_processes(&mut children, &mut configs, &config_file);
+    recover_processes(&mut children, &mut configs, &mut queue, &config_file);
     close_unused_sockets(&mut sockets, &mut children);
 
     let recovered = children.values()
@@ -453,7 +471,7 @@ fn run(config_file: &Path, options: &Options)
     remove_dangling_cgroups(&recovered, &master);
 
     info!("Starting Processes");
-    let mut queue = schedule_new_workers(configs);
+    schedule_new_workers(configs, &mut queue);
 
     normal_loop(&mut queue, &mut children, &mut sockets, &mut trap, &master);
     if children.len() > 0 {
@@ -548,7 +566,11 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
     Ok(())
 }
 
-fn normal_loop(queue: &mut Queue<Process>,
+fn duration(inp: f32) -> Duration {
+    Duration::milliseconds((inp * 1000.) as i64)
+}
+
+fn normal_loop(queue: &mut Queue<Timeout>,
     children: &mut HashMap<pid_t, Child>,
     sockets: &mut HashMap<InetAddr, Socket>,
     trap: &mut Trap, master: &MasterConfig)
@@ -557,34 +579,48 @@ fn normal_loop(queue: &mut Queue<Process>,
         let now = SteadyTime::now();
 
         let mut buf = Vec::new();
-        for mut child in queue.pop_until(now) {
-            let restart_min = now + Duration::milliseconds(
-                (child.inner_config.restart_timeout * 1000.) as i64);
-            match open_sockets_for(sockets, &child.inner_config.tcp_ports,
-                                   &mut child.cmd,
-                                   child.socket_cred.0, child.socket_cred.1)
-            {
-                Ok(()) => {}
-                Err(e) => {
-                    error!("Error starting {:?}, error opening sockets: {}",
-                        child.name, e);
-                    buf.push((restart_min, child));
-                    continue;
+        for timeout in queue.pop_until(now) {
+            match timeout {
+                Start(mut child) => {
+                    let restart_min = now +
+                        duration(child.inner_config.restart_timeout);
+                    match open_sockets_for(
+                        sockets, &child.inner_config.tcp_ports,
+                        &mut child.cmd,
+                        child.socket_cred.0, child.socket_cred.1)
+                    {
+                        Ok(()) => {}
+                        Err(e) => {
+                            error!("Error starting {:?}, \
+                                error opening sockets: {}",
+                                child.name, e);
+                            buf.push((restart_min, child));
+                            continue;
+                        }
+                    }
+                    match child.cmd.spawn() {
+                        Ok(c) => {
+                            child.restart_min = restart_min;
+                            children.insert(c.pid(), Child::Process(child));
+                        }
+                        Err(e) => {
+                            error!("Error starting {:?}: {}", child.name, e);
+                            buf.push((restart_min, child));
+                        }
+                    }
                 }
-            }
-            match child.cmd.spawn() {
-                Ok(c) => {
-                    child.restart_min = restart_min;
-                    children.insert(c.pid(), Child::Process(child));
-                }
-                Err(e) => {
-                    error!("Error starting {:?}: {}", child.name, e);
-                    buf.push((restart_min, child));
+                Kill(pid) => {
+                    if children.contains_key(&pid) {  // if not already dead
+                        error!("Process {:?} looks like hanging. \
+                            Sending kill...",
+                            pid);
+                        kill(pid, SIGKILL).ok();
+                    }
                 }
             }
         }
         for (restart_min, v) in buf.into_iter() {
-            queue.add(restart_min, v);
+            queue.add(restart_min, Start(v));
         }
 
         close_unused_sockets(sockets, children);
@@ -617,7 +653,7 @@ fn normal_loop(queue: &mut Queue<Process>,
                         Some(Child::Process(child)) => {
                             error!("Process {:?} {}", child.name, status);
                             clean_child(&child.name, &master, true);
-                            queue.add(child.restart_min, child);
+                            queue.add(child.restart_min, Start(child));
                         }
                         Some(Child::Unidentified(name)) => {
                             clean_child(&name, &master, false);
@@ -775,8 +811,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                     let name = format!("{}/{}.{}", sandbox_name, child_name, i);
                     let cmd = new_child(bin, &name, master_file,
                         &child_string, options);
-                    let restart_min = now + Duration::milliseconds(
-                        (cfg.restart_timeout * 1000.) as i64);
+                    let restart_min = now + duration(cfg.restart_timeout);
                     let process = Process {
                         cmd: cmd,
                         name: name.clone(),
@@ -796,14 +831,12 @@ fn read_subtree<'x>(master: &MasterConfig,
         }).collect()
 }
 
-fn schedule_new_workers(configs: HashMap<String, Process>)
-    -> Queue<Process>
+fn schedule_new_workers(configs: HashMap<String, Process>,
+    queue: &mut Queue<Timeout>)
 {
-    let mut result = Queue::new();
     for (_, item) in configs.into_iter() {
-        result.add(SteadyTime::now(), item);
+        queue.add(SteadyTime::now(), Start(item));
     }
-    return result;
 }
 
 struct Binaries {
