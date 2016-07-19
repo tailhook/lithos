@@ -6,9 +6,14 @@ Vagrant.configure(2) do |config|
 
   config.vm.provision "shell", inline: <<-SHELL
     set -ex
-    echo 'deb http://ubuntu.zerogw.com vagga-testing main' | tee /etc/apt/sources.list.d/vagga.list
+    echo 'deb [trusted=yes] http://ubuntu.zerogw.com vagga-testing main' | tee /etc/apt/sources.list.d/vagga.list
     apt-get update
-    apt-get install -y --force-yes vagga cgroup-lite
+    apt-get install -y vagga
+    apt-get install cgroup-lite  # until we migrate to trusty
+    cd /vagrant
+    vagga _build py-example
+    vagga _build trusty
+    ./example_configs.sh
   SHELL
 
   config.vm.provision "shell", run: "always", inline: <<-SHELL
