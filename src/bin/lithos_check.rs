@@ -153,7 +153,7 @@ fn check(config_file: &Path, verbose: bool,
                 &ChildConfig::mapping_validator(), Default::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
-                    err!("Can't read child config {:?}: {}", config_file, e);
+                    warn!("Can't read child config {:?}: {}", config_file, e);
                     continue;
                 }
             };
