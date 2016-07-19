@@ -86,7 +86,7 @@ fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
     {
         Ok(cfg) => cfg,
         Err(e) => {
-            err!("Can't read child config {:?}: {}", config_file, e);
+            err!("Can't read container config {:?}: {}", config_file, e);
             return Err(());
         }
     };

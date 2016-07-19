@@ -734,8 +734,7 @@ fn read_subtree<'x>(master: &MasterConfig,
             .ok();
             cfg
         })
-        .map_err(|e| warn!("Can't read config {:?}: {}",
-                            sandbox.config_file, e))
+        .map_err(|e| warn!("Can't read config {:?}: {}", cfg, e))
         .unwrap_or(BTreeMap::new())
         .into_iter()
         .filter(|&(_, ref child)| child.kind == Daemon)
