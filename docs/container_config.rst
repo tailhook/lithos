@@ -18,7 +18,7 @@ The somewhat minimal configuration is looks like following:
 .. code-block:: yaml
 
     kind: Daemon
-    user_id: 1
+    user-id: 1
     volumes:
       /tmp: !Tmpfs { size: 100m }
     executable: /bin/sleep
