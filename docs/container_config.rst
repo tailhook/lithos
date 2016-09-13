@@ -55,6 +55,9 @@ Reference
     cgroups, so this needs `memory` cgroup to be enabled (otherwise its no-op).
     See :opt:`cgroup-controllers` for more info.  Default: nolimit.
 
+    You can use ``ki``, ``Mi`` and ``Gi`` units for memory accounting.
+    See integer-units_.
+
 .. opt:: cpu-shares
 
     The number of CPU shares for the process. Default is ``1024`` which means
@@ -301,3 +304,5 @@ Reference
 
       This should be set to ``true`` only on very high performant servers that
       experience assymetric workload in default case.
+
+.. _integer-units: http://rust-quire.readthedocs.io/en/latest/user.html#units
