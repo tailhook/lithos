@@ -2,9 +2,9 @@
 
 sudo -k
 echo Copying examples/py into the system
-echo WARNING: this will remove /etc/lithos from the system
-echo ... hoping you run this in virtual machine
-echo ... but let you think 10 seconds
+echo WARNING: This Command will remove /etc/lithos from the system
+echo ... hopefully you run this in a virtual machine
+echo ... but let you think for 10 seconds
 
 for i in $(seq 10 -1 0); do echo -n "$i \r"; sleep 1; done;
 echo Okay proceeding...
@@ -18,6 +18,6 @@ vagga _build py-example
 sudo rsync -a --delete-after .vagga/py-example/ /var/lib/lithos/images/py-example
 
 echo Done.
-echo Ensure that you have run '`vagga run`' before.
+echo Ensure that you have run '`vagga make`' before.
 echo Then run '`sudo ./target/debug/lithos_tree`' or whatever command you wish
 
