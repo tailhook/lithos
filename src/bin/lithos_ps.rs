@@ -476,7 +476,7 @@ fn print_instance(inst: &Instance, opt: &Options) -> ascii::TreeNode {
 fn print_child(name: &String, child: &Child, opt: &Options)
     -> ascii::TreeNode
 {
-    if child.instances.len() == 1 {
+    if child.instances.len() == 1 && child.instances.contains_key(&0) {
         return print_instance(&child.instances[&0], opt);
     } else {
         return ascii::TreeNode {
