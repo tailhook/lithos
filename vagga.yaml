@@ -85,7 +85,7 @@ containers:
     - !Ubuntu xenial
     - &pkgs !Install [make, gcc, libc-dev, ca-certificates, git, lsb-release]
     - &rust !TarInstall
-      url: https://static.rust-lang.org/dist/rust-1.9.0-x86_64-unknown-linux-gnu.tar.gz
+      url: https://static.rust-lang.org/dist/rust-1.12.0-x86_64-unknown-linux-gnu.tar.gz
       script: "./install.sh --prefix=/usr --components=rustc,cargo \
                --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - &bulk !Tar

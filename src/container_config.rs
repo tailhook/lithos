@@ -1,6 +1,5 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::default::Default;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::os::unix::io::RawFd;

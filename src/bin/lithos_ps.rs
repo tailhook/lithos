@@ -10,7 +10,6 @@ extern crate argparse;
 
 use regex::Regex;
 use std::rc::Rc;
-use std::env::args;
 use std::io::{stdout, stderr, Write, Read, BufRead};
 use std::io::Error as IoError;
 use std::mem::swap;

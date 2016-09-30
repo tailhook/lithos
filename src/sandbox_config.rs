@@ -1,11 +1,10 @@
-use std::default::Default;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::path::PathBuf;
 
 use rustc_serialize::{Decoder, Decodable};
 use regex::Regex;
-use quire::validate::{Validator, Structure};
+use quire::validate::{Structure};
 use quire::validate::{Sequence, Mapping, Scalar};
 use id_map::{IdMap, mapping_validator};
 

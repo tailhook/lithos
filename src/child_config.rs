@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::default::Default;
 use rustc_serialize::Decodable;
 
-use quire::validate::{Validator, Structure, Scalar, Numeric, Mapping};
+use quire::validate::{Structure, Scalar, Numeric, Mapping};
 use quire;
 
 use super::container_config::ContainerKind;

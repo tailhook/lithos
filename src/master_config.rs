@@ -1,7 +1,5 @@
-use std::default::Default;
 use std::path::PathBuf;
 
-use rustc_serialize::{Decoder};
 use quire::validate::{Structure, Sequence};
 use quire::validate::{Scalar};
 use super::utils::ensure_dir;
