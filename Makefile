@@ -1,14 +1,5 @@
-RUSTC ?= rustc
-CC ?= gcc
-AR ?= ar
-
 PREFIX ?= /usr
 DESTDIR ?=
-
-LITHOSLIB = liblithos.rlib
-QUIRELIB = rust-quire/libquire.rlib
-ARGPARSELIB = rust-argparse/libargparse.rlib
-REGEXLIB = regex/libregex.rlib
 
 all: bin
 
@@ -16,7 +7,7 @@ test: lithos_test
 	./lithos_test
 
 bin:
-	cargo build
+	cargo build --verbose
 
 
 install: bin-release _install
