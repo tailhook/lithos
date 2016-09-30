@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
+use std::time::Instant;
 use std::collections::BinaryHeap;
 
-use time::SteadyTime;
 
 
 struct Item<T:Sized> {
-    pub deadline: SteadyTime,
+    pub deadline: Instant,
     value: T,
 }
 
@@ -33,7 +33,7 @@ pub struct Queue<T:Sized>(BinaryHeap<Item<T>>);
 
 pub struct QueueIter<'a, T> where T: 'a {
     queue: &'a mut Queue<T>,
-    max_time: SteadyTime,
+    max_time: Instant,
 }
 
 impl<'a, T> Iterator for QueueIter<'a, T> {
@@ -51,13 +51,13 @@ impl<T> Queue<T> {
     pub fn new() -> Queue<T> {
         Queue(BinaryHeap::new())
     }
-    pub fn add(&mut self, deadline: SteadyTime, value: T) {
+    pub fn add(&mut self, deadline: Instant, value: T) {
         self.0.push(Item { deadline: deadline, value: value });
     }
-    pub fn peek_time(&self) -> Option<SteadyTime> {
+    pub fn peek_time(&self) -> Option<Instant> {
         return self.0.peek().map(|x| x.deadline)
     }
-    pub fn pop_until<'x>(&'x mut self, max_time: SteadyTime)
+    pub fn pop_until<'x>(&'x mut self, max_time: Instant)
         -> QueueIter<'x, T>
     {
         QueueIter { queue: self, max_time: max_time }

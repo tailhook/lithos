@@ -23,12 +23,12 @@ use std::str::{FromStr};
 use std::fs::{remove_dir};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::time::{Instant, Duration};
 use std::default::Default;
 use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
 
-use time::{SteadyTime, Duration};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SIGKILL};
 use nix::sys::signal::kill;
 use nix::sys::socket::{getsockname, SockAddr};
@@ -64,7 +64,7 @@ use self::Timeout::*;
 mod lithos_tree_options;
 
 struct Process {
-    restart_min: SteadyTime,
+    restart_min: Instant,
     cmd: Command,
     name: String,
     config: Rc<String>,
@@ -264,7 +264,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
     queue: &mut Queue<Timeout>, config_file: &Path)
 {
     let mypid = unsafe { getpid() };
-    let now = SteadyTime::now();
+    let now = Instant::now();
 
     // Recover old workers
     scan_dir::ScanDir::all().read("/proc", |iter| {
@@ -567,7 +567,7 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
 }
 
 fn duration(inp: f32) -> Duration {
-    Duration::milliseconds((inp * 1000.) as i64)
+    Duration::from_millis((inp * 1000.) as u64)
 }
 
 fn normal_loop(queue: &mut Queue<Timeout>,
@@ -576,7 +576,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
     trap: &mut Trap, master: &MasterConfig)
 {
     loop {
-        let now = SteadyTime::now();
+        let now = Instant::now();
 
         let mut buf = Vec::new();
         for timeout in queue.pop_until(now) {
@@ -749,7 +749,7 @@ fn read_subtree<'x>(master: &MasterConfig,
     options: &Options)
     -> Vec<(String, Process)>
 {
-    let now = SteadyTime::now();
+    let now = Instant::now();
     let cfg = master_file.parent().unwrap()
         .join(&master.processes_dir)
         .join(sandbox.config_file.as_ref().map(Path::new)
@@ -835,7 +835,7 @@ fn schedule_new_workers(configs: HashMap<String, Process>,
     queue: &mut Queue<Timeout>)
 {
     for (_, item) in configs.into_iter() {
-        queue.add(SteadyTime::now(), Start(item));
+        queue.add(Instant::now(), Start(item));
     }
 }
 

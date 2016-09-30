@@ -16,7 +16,7 @@ use std::str::FromStr;
 use std::io::{stderr, Write};
 use std::fs::OpenOptions;
 use std::path::{Path};
-use std::time::Duration as StdDuration;
+use std::time::{Instant, Duration};
 use std::thread::sleep;
 use std::default::Default;
 use std::process::exit;
@@ -25,7 +25,6 @@ use quire::parse_config;
 use unshare::{Command, Stdio, reap_zombies};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SigNum};
 use signal::trap::Trap;
-use time::{SteadyTime, Duration};
 use libmount::BindMount;
 
 use lithos::cgroup;
@@ -63,7 +62,7 @@ impl<'a> Iterator for SignalIter<'a> {
     type Item = SigNum;
     fn next(&mut self) -> Option<SigNum> {
         if self.interrupt {
-            return self.trap.wait(SteadyTime::now());
+            return self.trap.wait(Instant::now());
         } else {
             return self.trap.next();
         }
@@ -219,12 +218,12 @@ fn run(options: Options) -> Result<(), String>
                 count: g.count,
             }).collect());
     }
-    let rtimeo = Duration::milliseconds((local.restart_timeout*1000.0) as i64);
+    let rtimeo = Duration::from_millis((local.restart_timeout*1000.0) as u64);
 
     let mut trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let mut should_exit = local.kind != Daemon || !local.restart_process_only;
     loop {
-        let start = time::SteadyTime::now();
+        let start = Instant::now();
 
         // Reopen file at each start
         if let Some(ref path) = local.stdout_stderr_file {
@@ -276,9 +275,9 @@ fn run(options: Options) -> Result<(), String>
         if should_exit {
             break;
         }
-        let left = rtimeo - (SteadyTime::now() - start);
-        if left > Duration::zero() {
-            sleep(StdDuration::from_millis(left.num_milliseconds() as u64));
+        let left = rtimeo - (Instant::now() - start);
+        if left > Duration::new(0, 0) {
+            sleep(left);
         }
     }
 
