@@ -93,6 +93,7 @@ pub struct ContainerConfig {
     pub uid_map: Vec<IdMap>,
     pub gid_map: Vec<IdMap>,
     pub stdout_stderr_file: Option<PathBuf>,
+    pub interactive: bool,
     pub restart_process_only: bool,
     pub tcp_ports: HashMap<u16, TcpPort>,
 }
@@ -135,6 +136,7 @@ impl ContainerConfig {
         .member("uid_map", mapping_validator())
         .member("gid_map", mapping_validator())
         .member("stdout_stderr_file", Scalar::new().optional())
+        .member("interactive", Scalar::new().default(false))
         .member("restart_process_only", Scalar::new().default(false))
         .member("tcp_ports", Mapping::new(
             Numeric::new().min(1).max(65535),

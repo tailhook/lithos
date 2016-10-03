@@ -203,6 +203,23 @@ Reference
 
     Usually log is put into the directory specified by :opt:`stdio-log-dir`.
 
+.. opt:: interactive
+
+    (default ``false``) Useful only for containers of kind ``Command``. If
+    ``true`` lithos_cmd doesn't clobber stdin and doesn't redirect stdout and
+    stderr to a log file, effectively allowing command to be used for
+    interactive commands or as a part of pipeline.
+
+    .. note:: for certain use cases, like pipelines it might be better to use
+       fifo's (see ``man mkfifo``) and a ``Daemon`` instead of this one
+       because daemons may be restarted on death or for software upgrade,
+       while ``Command`` is not supervised by lithos.
+
+    .. versionadded:: 0.6.3
+
+    .. versionchanged:: ≥0.5
+       Commands were always interactive
+
 .. opt:: restart-process-only
 
     (default ``false``) If true when restarting process (i.e. in case

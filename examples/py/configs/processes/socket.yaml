@@ -2,3 +2,8 @@ socket:
   instances: 2
   image: py-example
   config: /config/socket.yaml
+
+py:
+  kind: Command
+  image: py-example
+  config: /config/py.yaml

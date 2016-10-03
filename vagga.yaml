@@ -79,6 +79,9 @@ containers:
     - !Copy
       source: /work/examples/py/code/socket.yaml
       path: /config/socket.yaml
+    - !Copy
+      source: /work/examples/py/code/py.yaml
+      path: /config/py.yaml
 
   xenial:
     setup:

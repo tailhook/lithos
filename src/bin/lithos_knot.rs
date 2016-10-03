@@ -225,21 +225,27 @@ fn run(options: Options) -> Result<(), String>
     loop {
         let start = Instant::now();
 
-        // Reopen file at each start
-        if let Some(ref path) = local.stdout_stderr_file {
-            let f = try!(OpenOptions::new()
-                .create(true).append(true).write(true).open(path)
-                .map_err(|e| format!(
-                    "Error opening output file {:?}: {}", path, e)));
-            cmd.stdout(try!(Stdio::dup_file(&f)
-                .map_err(|e| format!("Duplicating file descriptor: {}", e))));
-            cmd.stderr(Stdio::from_file(f));
-        } else {
-            cmd.stdout(try!(Stdio::dup_file(&stderr_file)
-                .map_err(|e| format!("Duplicating file descriptor: {}", e))));
-            cmd.stderr(try!(Stdio::dup_file(&stderr_file)
-                .map_err(|e| format!("Duplicating file descriptor: {}", e))));
-        };
+        if !local.interactive {
+            if let Some(ref path) = local.stdout_stderr_file {
+                // Reopen file at each start
+                let f = try!(OpenOptions::new()
+                    .create(true).append(true).write(true).open(path)
+                    .map_err(|e| format!(
+                        "Error opening output file {:?}: {}", path, e)));
+                cmd.stdout(try!(Stdio::dup_file(&f)
+                    .map_err(|e| format!(
+                        "Duplicating file descriptor: {}", e))));
+                cmd.stderr(Stdio::from_file(f));
+            } else {
+                // Can't reopen, because file is outside of container
+                cmd.stdout(try!(Stdio::dup_file(&stderr_file)
+                    .map_err(|e| format!(
+                        "Duplicating file descriptor: {}", e))));
+                cmd.stderr(try!(Stdio::dup_file(&stderr_file)
+                    .map_err(|e| format!(
+                        "Duplicating file descriptor: {}", e))));
+            };
+        }
 
         let child = try!(cmd.spawn().map_err(|e|
             format!("Error running {:?}: {}", options.name, e)));
