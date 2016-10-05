@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.rst"
 keywords = ["linux", "namespaces", "containers"]
 homepage = "http://github.com/tailhook/lithos"
-version = "0.6.3"
+version = "0.6.4"
 authors = ["paul@colomiets.name"]
 
 [dependencies]
@@ -21,7 +21,7 @@ time = "0.1"
 log = "0.3"
 env_logger = "0.3"
 nix = "0.5"
-unshare = "0.1.13"
+unshare = "0.1.14"
 signal = "0.3.2"
 syslog = "3.1.0"
 scan_dir = "0.3.3"
