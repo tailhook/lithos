@@ -124,7 +124,7 @@ You need to change into something like this:
 
 .. code-block:: python
 
-   if os.environ.get("LISTEN_FD") == "3":
+   if os.environ.get("LISTEN_FD") == "1":
        import socket
        sock = socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM)
        sock.set_blocking(False)
