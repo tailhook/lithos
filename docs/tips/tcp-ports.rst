@@ -172,3 +172,29 @@ You should wrap into something like this:
             log.Fatalf("Error listening")
         }
     }
+
+.. _tp-nodejs-express:
+
+Node.js with Express Framework
+==============================
+
+Normal way to run express:
+
+.. code-block:: javascript
+
+    let port = 3000
+    app.listen(port, function() {
+        console.log('server is listening on', this.address().port);
+    })
+
+Turns into the following code:
+
+.. code-block:: javascript
+
+    let port = 3000;
+    if (process.env.LISTEN_FDS && parseInt(process.env.LISTEN_FDS, 10) === 1) {
+        port = {fd:3};
+    }
+    app.listen(port, function() {
+        console.log('server is listening on', this.address().port);
+    })
