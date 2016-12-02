@@ -181,70 +181,78 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 .join(&master.processes_dir)
                 .join(sandbox_config.config_file.as_ref().unwrap_or(
                     &PathBuf::from(&(sandbox_name.to_string() + ".yaml"))));
-            let all_children: BTreeMap<String, ChildConfig>;
-            all_children = try!(parse_config(&cfg, &childval, Default::default())
-                .map_err(|e| format!("Can't read child config {:?}: {}",
-                                     sandbox_config.config_file, e)));
-            for child in all_children.values() {
-                // Current are always added
-                images.insert(sandbox_config.image_dir.join(&child.image));
+            if cfg.exists() {
+                let all_children: BTreeMap<String, ChildConfig>;
+                all_children = try!(parse_config(&cfg, &childval, Default::default())
+                    .map_err(|e| format!("Can't read child config {:?}: {}",
+                                         sandbox_config.config_file, e)));
+                for child in all_children.values() {
+                    // Current are always added
+                    images.insert(sandbox_config.image_dir.join(&child.image));
+                }
+            } else {
+                info!("No current processes for {}", sandbox_name);
             }
 
             let logname = master.config_log_dir
                 .join(format!("{}.log", sandbox_name));
-            // TODO(tailhook) look in log rotations
-            let log = try!(File::open(&logname)
-                .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
-            let mut configs;
-            configs = VecDeque::<(Tm, BTreeMap<String, ChildConfig>)>::new();
-            for (line_no, line) in BufReader::new(log).lines().enumerate() {
-                let line = try!(line
-                    .map_err(|e| format!("Readline error: {}", e)));
-                let mut iter = line.splitn(2, " ");
-                let (tm, cfg) = match (iter.next(), iter.next()) {
-                        (Some(""), None) => continue, // last line, probably
-                        (Some(date), Some(config)) => {
-                            // TODO(tailhook) remove or check sandbox name
-                            (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
-                                 .map_err(|_| format!("Bad time at {:?}:{}",
-                                    logname, line_no))),
-                             try!(json::decode(config)
-                                 .map_err(|_| format!("Bad config at {:?}:{}",
-                                    logname, line_no))),
-                            )
+            if logname.exists() {
+                // TODO(tailhook) look in log rotations
+                let log = try!(File::open(&logname)
+                    .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
+                let mut configs;
+                configs = VecDeque::<(Tm, BTreeMap<String, ChildConfig>)>::new();
+                for (line_no, line) in BufReader::new(log).lines().enumerate() {
+                    let line = try!(line
+                        .map_err(|e| format!("Readline error: {}", e)));
+                    let mut iter = line.splitn(2, " ");
+                    let (tm, cfg) = match (iter.next(), iter.next()) {
+                            (Some(""), None) => continue, // last line, probably
+                            (Some(date), Some(config)) => {
+                                // TODO(tailhook) remove or check sandbox name
+                                (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
+                                     .map_err(|_| format!("Bad time at {:?}:{}",
+                                        logname, line_no))),
+                                 try!(json::decode(config)
+                                     .map_err(|_| format!("Bad config at {:?}:{}",
+                                        logname, line_no))),
+                                )
+                            }
+                            _ => {
+                                return Err(format!("Bad line at {:?}:{}",
+                                                   logname, line_no));
+                            }
+                        };
+                    if let Some(&(_, ref ocfg)) = configs.back(){
+                        if *ocfg == cfg {
+                            continue;
                         }
-                        _ => {
-                            return Err(format!("Bad line at {:?}:{}",
-                                               logname, line_no));
-                        }
-                    };
-                if let Some(&(_, ref ocfg)) = configs.back(){
-                    if *ocfg == cfg {
-                        continue;
+                    }
+                    configs.push_back((tm, cfg));
+                    if configs.len() >= ver_max as usize {
+                        configs.pop_front();
                     }
                 }
-                configs.push_back((tm, cfg));
-                if configs.len() >= ver_max as usize {
-                    configs.pop_front();
-                }
-            }
-            min_time.map(|min_time| {
-                while configs.len() > ver_min as usize {
-                    if let Some(&(tm, _)) = configs.front() {
-                        if tm > min_time {
+                min_time.map(|min_time| {
+                    while configs.len() > ver_min as usize {
+                        if let Some(&(tm, _)) = configs.front() {
+                            if tm > min_time {
+                                break;
+                            }
+                        } else {
                             break;
                         }
-                    } else {
-                        break;
+                        configs.pop_front();
                     }
-                    configs.pop_front();
+                });
+                for &(_, ref cfg) in configs.iter() {
+                    for child in cfg.values() {
+                        // Current are always added
+                        images.insert(sandbox_config.image_dir.join(&child.image));
+                    }
                 }
-            });
-            for &(_, ref cfg) in configs.iter() {
-                for child in cfg.values() {
-                    // Current are always added
-                    images.insert(sandbox_config.image_dir.join(&child.image));
-                }
+            } else {
+                info!("No log for {} probably never used", sandbox_name);
             }
         }
         Ok(())
