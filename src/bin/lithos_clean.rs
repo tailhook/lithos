@@ -8,6 +8,7 @@ extern crate scan_dir;
 extern crate rustc_serialize;
 
 use std::env;
+use std::rc::Rc;
 use std::io::{BufReader, BufRead};
 use std::fs::{File, remove_dir_all};
 use std::path::{PathBuf, Path};
@@ -32,6 +33,11 @@ enum Action {
     Used,
     Unused,
     DeleteUnused,
+}
+
+enum Candidate {
+    Config(Tm, BTreeMap<String, ChildConfig>),
+    BrokenLine(Rc<PathBuf>, usize),
 }
 
 
@@ -161,6 +167,27 @@ fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
     Ok(unused)
 }
 
+impl PartialEq for Candidate {
+    fn eq(&self, other: &Candidate) -> bool {
+        use Candidate::*;
+        match (self, other) {
+            (&BrokenLine(..), &BrokenLine(..)) => true,
+            (&Config(_, ref a), &Config(_, ref b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+fn parse_line(line: &str) -> Result<(Tm, BTreeMap<String, ChildConfig>), ()> {
+    let mut iter = line.splitn(2, " ");
+    let date = iter.next().ok_or(())?;
+    let config = iter.next().ok_or(())?;
+    Ok((
+        time::strptime(date, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?,
+        json::decode(config).map_err(|_| ())?,
+    ))
+}
+
 fn find_used_images(master: &MasterConfig, master_file: &Path,
     min_time: Option<Tm>, ver_min: u32, ver_max: u32)
     -> Result<(HashSet<PathBuf>, HashSet<PathBuf>), String>
@@ -194,61 +221,62 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 info!("No current processes for {}", sandbox_name);
             }
 
-            let logname = master.config_log_dir
-                .join(format!("{}.log", sandbox_name));
+            let logname = Rc::new(master.config_log_dir
+                .join(format!("{}.log", sandbox_name)));
             if logname.exists() {
                 // TODO(tailhook) look in log rotations
-                let log = try!(File::open(&logname)
+                let log = try!(File::open(&*logname)
                     .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
                 let mut configs;
-                configs = VecDeque::<(Tm, BTreeMap<String, ChildConfig>)>::new();
+                configs = VecDeque::<Candidate>::new();
                 for (line_no, line) in BufReader::new(log).lines().enumerate() {
                     let line = try!(line
                         .map_err(|e| format!("Readline error: {}", e)));
-                    let mut iter = line.splitn(2, " ");
-                    let (tm, cfg) = match (iter.next(), iter.next()) {
-                            (Some(""), None) => continue, // last line, probably
-                            (Some(date), Some(config)) => {
-                                // TODO(tailhook) remove or check sandbox name
-                                (try!(time::strptime(date, "%Y-%m-%dT%H:%M:%SZ")
-                                     .map_err(|_| format!("Bad time at {:?}:{}",
-                                        logname, line_no))),
-                                 try!(json::decode(config)
-                                     .map_err(|_| format!("Bad config at {:?}:{}",
-                                        logname, line_no))),
-                                )
-                            }
-                            _ => {
-                                return Err(format!("Bad line at {:?}:{}",
-                                                   logname, line_no));
-                            }
-                        };
-                    if let Some(&(_, ref ocfg)) = configs.back(){
-                        if *ocfg == cfg {
-                            continue;
-                        }
+                    if line.trim() == "" {
+                        continue; // Probably last line
                     }
-                    configs.push_back((tm, cfg));
+                    let cand = match parse_line(&line) {
+                        Ok((tm, cfg)) => Candidate::Config(tm, cfg),
+                        Err(()) => {
+                            warn!("Broken line {}: {}",
+                                logname.display(), line_no);
+                            Candidate::BrokenLine(logname.clone(), line_no)
+                        }
+                    };
+                    if configs.back() == Some(&cand) {
+                        continue;
+                    }
+                    configs.push_back(cand);
                     if configs.len() >= ver_max as usize {
                         configs.pop_front();
                     }
                 }
                 min_time.map(|min_time| {
                     while configs.len() > ver_min as usize {
-                        if let Some(&(tm, _)) = configs.front() {
-                            if tm > min_time {
+                        match configs.front() {
+                            Some(&Candidate::Config(tm, _)) if tm > min_time
+                            => {
                                 break;
                             }
-                        } else {
-                            break;
+                            _ => {}
                         }
                         configs.pop_front();
                     }
                 });
-                for &(_, ref cfg) in configs.iter() {
-                    for child in cfg.values() {
-                        // Current are always added
-                        images.insert(sandbox_config.image_dir.join(&child.image));
+                for cand in configs.iter() {
+                    match *cand {
+                        Candidate::Config(_, ref cfg) => {
+                            for child in cfg.values() {
+                                // Current are always added
+                                images.insert(
+                                    sandbox_config.image_dir
+                                    .join(&child.image));
+                            }
+                        }
+                        Candidate::BrokenLine(..) => {
+                            return Err(format!("Can't reliably find out \
+                                used images for sandbox {}", sandbox_name));
+                        }
                     }
                 }
             } else {
