@@ -317,7 +317,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
 
 fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
 {
-    let pid_regex = Regex::new(r"\.\(\d+\)$").unwrap();
+    let pid_regex = Regex::new(r"\.(\d+)$").unwrap();
     let master = master.runtime_dir.join(&master.state_dir);
     scan_dir::ScanDir::dirs().read(&master, |iter| {
         for (entry, sandbox_name) in iter {
