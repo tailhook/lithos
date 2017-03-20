@@ -18,6 +18,7 @@ mknod -m 666 "${target_dir}/tty" c 5 0
 mknod -m 666 "${target_dir}/full" c 1 7
 mkdir "${target_dir}/pts"
 ln -s "pts/ptmx" "${target_dir}/ptmx"
+mkdir "${target_dir}/shm"
 
 ln -s /proc/self/fd "${target_dir}/fd"
 ln -s /proc/self/fd/0 "${target_dir}/stdin"
