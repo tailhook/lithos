@@ -48,6 +48,15 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
     let mut volumes: Vec<(&String, &Volume)> = local.volumes.iter().collect();
     volumes.sort_by(|&(mp1, _), &(mp2, _)| mp1.len().cmp(&mp2.len()));
 
+    let devdir = mntdir.join("dev");
+    try!(BindMount::new(&master.devfs_dir, &devdir).mount()
+        .map_err(|x| x.to_string()));
+    try!(mount_ro_recursive(&devdir));
+    try!(mount_pseudo(&mntdir.join("dev/pts"),
+        "devpts", "newinstance", false));
+    try!(mount_pseudo(&mntdir.join("sys"), "sysfs", "", true));
+    try!(mount_pseudo(&mntdir.join("proc"), "proc", "", false));
+
     for &(mp_str, volume) in volumes.iter() {
         let tmp_mp = PathBuf::from(&mp_str[..]);
         assert!(tmp_mp.is_absolute());  // should be checked earlier
@@ -129,14 +138,6 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
             }
         }
     }
-    let devdir = mntdir.join("dev");
-    try!(BindMount::new(&master.devfs_dir, &devdir).mount()
-        .map_err(|x| x.to_string()));
-    try!(mount_ro_recursive(&devdir));
-    try!(mount_pseudo(&mntdir.join("dev/pts"),
-        "devpts", "newinstance", false));
-    try!(mount_pseudo(&mntdir.join("sys"), "sysfs", "", true));
-    try!(mount_pseudo(&mntdir.join("proc"), "proc", "", false));
 
     return Ok(());
 }
