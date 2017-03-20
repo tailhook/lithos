@@ -11,3 +11,4 @@ Contents:
    :maxdepth: 1
 
    tcp-ports
+   vagga
