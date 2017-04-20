@@ -4,6 +4,7 @@ extern crate lithos;
 extern crate quire;
 extern crate regex;
 extern crate rustc_serialize;
+extern crate serde_json;
 extern crate unshare;
 #[macro_use] extern crate log;
 
@@ -15,11 +16,11 @@ use std::path::{Path, PathBuf};
 use std::io::{stderr, Write};
 use std::collections::BTreeMap;
 
-use regex::Regex;
-use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption, Print};
-use rustc_serialize::json;
 use libc::getpid;
+use quire::{parse_config, Options};
+use regex::Regex;
+use serde_json::to_string;
 use unshare::{Command, Namespace};
 
 use lithos::setup::{clean_child, init_logging};
@@ -99,7 +100,7 @@ fn run(master_cfg: &Path, sandbox_name: String,
     cmd.arg("--master");
     cmd.arg(master_cfg);
     cmd.arg("--config");
-    cmd.arg(json::encode(&child_cfg).unwrap());
+    cmd.arg(to_string(&child_cfg).unwrap());
     cmd.env_clear();
     cmd.env("TERM", env::var("TERM").unwrap_or("dumb".to_string()));
     if let Ok(x) = env::var("RUST_LOG") {

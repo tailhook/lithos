@@ -1,18 +1,21 @@
 #![crate_name="lithos"]
 #![crate_type="lib"]
 
-#[macro_use] extern crate lazy_static;
-#[macro_use] extern crate log;
 extern crate fern;
-extern crate syslog;
-extern crate time;
 extern crate libc;
+extern crate libmount;
 extern crate nix;
 extern crate quire;
 extern crate regex;
-extern crate signal;
-extern crate libmount;
 extern crate rustc_serialize;
+extern crate serde;
+extern crate serde_json;
+extern crate signal;
+extern crate syslog;
+extern crate time;
+#[macro_use] extern crate lazy_static;
+#[macro_use] extern crate log;
+#[macro_use] extern crate serde_derive;
 
 pub mod master_config;
 pub mod sandbox_config;

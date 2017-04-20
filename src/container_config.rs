@@ -48,7 +48,7 @@ pub enum Volume {
     Statedir(StatedirInfo),
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug, PartialEq, Eq)]
+#[derive(RustcDecodable, RustcEncodable, Serialize, Debug, PartialEq, Eq)]
 pub enum ContainerKind {
     Daemon,
     Command,

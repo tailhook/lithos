@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::env;
-use std::io::{Write};
 use std::io::{stdout, stderr};
+use std::io::{Write};
 use std::path::{PathBuf};
 
 use log;
@@ -35,6 +36,7 @@ impl Options {
                 instances: 0,
                 image: "".to_string(),
                 config: "".to_string(),
+                variables: HashMap::new(),
                 kind: Daemon,
             },
             name: "".to_string(),

@@ -7,6 +7,7 @@ extern crate quire;
 extern crate lithos;
 extern crate time;
 extern crate fern;
+extern crate serde_json;
 extern crate syslog;
 extern crate signal;
 extern crate unshare;
@@ -37,7 +38,7 @@ use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
 use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use quire::{parse_config, Options as COptions};
 use regex::Regex;
-use rustc_serialize::json;
+use serde_json::to_string;
 use signal::exec_handler;
 use signal::trap::Trap;
 use unshare::{Command, reap_zombies, Namespace};
@@ -763,7 +764,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                 // we want as atomic writes as possible, so format into a buf
                 let buf = format!("{} {}\n",
                     time::now_utc().rfc3339(),
-                    json::as_json(&cfg));
+                    to_string(&cfg).unwrap());
                 f.write_all(buf.as_bytes())
             })
             .map_err(|e| error!("Error writing config log: {}", e))
@@ -804,7 +805,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                     return Vec::new().into_iter();
                 }
             };
-            let child_string = Rc::new(json::encode(&child).unwrap());
+            let child_string = Rc::new(to_string(&child).unwrap());
             let mut sock_uid = cfg.user_id;
             let mut sock_gid = cfg.group_id;
             if sandbox.uid_map.len() > 0 {
