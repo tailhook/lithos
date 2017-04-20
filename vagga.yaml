@@ -3,7 +3,7 @@ commands:
   make: !Command
     description: Build lithos in ubuntu container
     container: xenial
-    run: [make]
+    run: [cargo, build]
 
   _static-lithos_check-package: !Command
     description: Build static lithos_check package (.tar.gz)
