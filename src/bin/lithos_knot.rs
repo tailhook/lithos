@@ -18,10 +18,9 @@ use std::fs::OpenOptions;
 use std::path::{Path};
 use std::time::{Instant, Duration};
 use std::thread::sleep;
-use std::default::Default;
 use std::process::exit;
 
-use quire::parse_config;
+use quire::{parse_config, Options as COptions};
 use unshare::{Command, Stdio, reap_zombies};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SigNum};
 use signal::trap::Trap;
@@ -72,13 +71,13 @@ impl<'a> Iterator for SignalIter<'a> {
 fn run(options: Options) -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&options.master_config,
-        &MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), &COptions::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
     let sandbox_name = options.name[..].splitn(2, '/').next().unwrap();
     let sandbox: SandboxConfig = try!(parse_config(
         &options.master_config.parent().unwrap()
          .join(&master.sandboxes_dir).join(sandbox_name.to_string() + ".yaml"),
-        &SandboxConfig::validator(), Default::default())
+        &SandboxConfig::validator(), &COptions::default())
         .map_err(|e| format!("Error reading sandbox config: {}", e)));
 
     let log_file;

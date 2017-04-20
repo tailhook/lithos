@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::collections::VecDeque;
 
 use time::{Tm, Duration, now_utc};
-use quire::parse_config;
+use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
 use argparse::{Print};
 use rustc_serialize::json;
@@ -94,7 +94,7 @@ fn main() {
         ap.parse_args_or_exit();
     }
     let master: MasterConfig = match parse_config(&config_file,
-        &MasterConfig::validator(), Default::default()) {
+        &MasterConfig::validator(), &Options::default()) {
         Ok(cfg) => cfg,
         Err(e) => {
             error!("Can't parse config: {}", e);
@@ -196,12 +196,13 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
     let childval = ChildConfig::mapping_validator();
-    try!(try!(scan_dir::ScanDir::files().read(&config_dir, |iter| {
+    scan_dir::ScanDir::files().read(&config_dir, |iter| {
         let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
         for (entry, sandbox_fname) in yamls {
             let sandbox_name = &sandbox_fname[..sandbox_fname.len()-5];  // strip .yaml
-            let sandbox_config: SandboxConfig = try!(parse_config(&entry.path(),
-                &SandboxConfig::validator(), Default::default()));
+            let sandbox_config: SandboxConfig = parse_config(&entry.path(),
+                &SandboxConfig::validator(), &Options::default())
+                .map_err(|e| e.to_string())?;
             image_dirs.insert(sandbox_config.image_dir.clone());
 
             let cfg = master_file.parent().unwrap()
@@ -210,9 +211,10 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                     &PathBuf::from(&(sandbox_name.to_string() + ".yaml"))));
             if cfg.exists() {
                 let all_children: BTreeMap<String, ChildConfig>;
-                all_children = try!(parse_config(&cfg, &childval, Default::default())
+                all_children =
+                    parse_config(&cfg, &childval, &Options::default())
                     .map_err(|e| format!("Can't read child config {:?}: {}",
-                                         sandbox_config.config_file, e)));
+                                         sandbox_config.config_file, e))?;
                 for child in all_children.values() {
                     // Current are always added
                     images.insert(sandbox_config.image_dir.join(&child.image));
@@ -284,6 +286,6 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             }
         }
         Ok(())
-    }).map_err(|e| format!("Read dir error: {}", e))));
+    }).map_err(|e| format!("Read dir error: {}", e))??;
     Ok((images, image_dirs))
 }

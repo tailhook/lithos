@@ -1,12 +1,7 @@
-use std::rc::Rc;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::TryRecvError::Empty;
 use std::str::FromStr;
-use std::default::Default;
-use rustc_serialize::Decodable;
 
 use quire::validate::{Structure, Scalar, Numeric, Mapping};
-use quire;
+use quire::{Options, parse_string};
 
 use super::container_config::ContainerKind;
 
@@ -36,17 +31,8 @@ impl ChildConfig {
 impl FromStr for ChildConfig {
     type Err = ();
     fn from_str(body: &str) -> Result<ChildConfig, ()> {
-        quire::parser::parse(
-                Rc::new("<command-line>".to_string()),
-                body,
-                |doc| { quire::ast::process(Default::default(), doc) })
-        .map_err(|_| ())
-        .and_then(|(ast, _)| {
-            let (tx, rx) = channel();
-            let mut dec = quire::decode::YamlDecoder::new(ast, tx);
-            let res = Decodable::decode(&mut dec);
-            assert!(rx.try_recv().unwrap_err() == Empty);
-            res.map_err(|_| ())
-        })
+        parse_string("<command-line>", body,
+            &ChildConfig::validator(), &Options::default())
+            .map_err(|_| ())
     }
 }

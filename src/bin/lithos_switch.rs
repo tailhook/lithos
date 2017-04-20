@@ -16,11 +16,10 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::fs::{File};
 use std::fs::{copy, rename};
-use std::default::Default;
 use std::process::{Command, Stdio};
 
 use argparse::{ArgumentParser, Parse, StoreTrue, Print};
-use quire::parse_config;
+use quire::{parse_config, Options};
 use nix::sys::signal::{SIGQUIT, kill};
 
 use lithos::master_config::MasterConfig;
@@ -56,7 +55,7 @@ fn switch_config(master_cfg: &Path, sandbox_name: String, config_file: &Path)
     info!("Checked. Proceeding");
 
     let master: MasterConfig = match parse_config(&master_cfg,
-        &MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), &Options::default())
     {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -67,7 +66,7 @@ fn switch_config(master_cfg: &Path, sandbox_name: String, config_file: &Path)
         .join(&master.sandboxes_dir)
         .join(&(sandbox_name.clone() + ".yaml"));
     let sandbox: SandboxConfig = match parse_config(&sandbox_fn,
-        &SandboxConfig::validator(), Default::default())
+        &SandboxConfig::validator(), &Options::default())
     {
         Ok(cfg) => cfg,
         Err(e) => {

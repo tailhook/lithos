@@ -176,9 +176,9 @@ fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
         .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid)));
     fullname_re.captures(&opt.name)
         .map(|c| KnotInfo(
-            c.at(1).unwrap().to_string(),
-            c.at(2).unwrap().to_string(),
-            FromStr::from_str(c.at(3).unwrap()).unwrap()
+            c.get(1).unwrap().as_str().to_string(),
+            c.get(2).unwrap().as_str().to_string(),
+            FromStr::from_str(c.get(3).unwrap().as_str()).unwrap()
         ))
         .ok_or(())
 }
@@ -243,15 +243,15 @@ fn read_process(pid: pid_t) -> Result<Process, IoError> {
         // it here, the executable in /status is escaped!
     match stat_re.captures(&line) {
         Some(c) => {
-            FromStr::from_str(c.name("start_time").unwrap())
+            FromStr::from_str(c.name("start_time").unwrap().as_str())
                 .map(|v| result.start_time = v).ok();
-            FromStr::from_str(c.name("utime").unwrap())
+            FromStr::from_str(c.name("utime").unwrap().as_str())
                 .map(|v| result.user_time = v).ok();
-            FromStr::from_str(c.name("stime").unwrap())
+            FromStr::from_str(c.name("stime").unwrap().as_str())
                 .map(|v| result.system_time = v).ok();
-            FromStr::from_str(c.name("cutime").unwrap())
+            FromStr::from_str(c.name("cutime").unwrap().as_str())
                 .map(|v| result.child_user_time = v).ok();
-            FromStr::from_str(c.name("cstime").unwrap())
+            FromStr::from_str(c.name("cstime").unwrap().as_str())
                 .map(|v| result.child_system_time = v).ok();
         }
         None => {

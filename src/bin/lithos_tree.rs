@@ -24,7 +24,6 @@ use std::fs::{remove_dir};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, Duration};
-use std::default::Default;
 use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
@@ -39,7 +38,7 @@ use libc::{pid_t};
 use libc::funcs::posix88::unistd::{getpid};
 use libc::{close};
 use regex::Regex;
-use quire::parse_config;
+use quire::{parse_config, Options as COptions};
 use rustc_serialize::json;
 use unshare::{Command, reap_zombies, Namespace};
 use signal::exec_handler;
@@ -191,7 +190,7 @@ fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
         return false;
     }
     return Some(ppid) == ppid_regex.captures(&buf)
-                     .and_then(|c| FromStr::from_str(c.at(1).unwrap()).ok());
+         .and_then(|c| FromStr::from_str(c.get(1).unwrap().as_str()).ok());
 }
 
 
@@ -334,7 +333,7 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
                     } else if proc_name.starts_with("cmd.") {
                         debug!("Checking command dir: {}", name);
                         let pid = pid_regex.captures(&proc_name).and_then(
-                            |c| FromStr::from_str(c.at(1).unwrap()).ok());
+                            |c| FromStr::from_str(c.get(1).unwrap().as_str()).ok());
                         if let Some(pid) = pid {
                             if kill(pid, 0).is_ok() {
                                 valid_dirs += 1;
@@ -411,13 +410,15 @@ fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
             for (entry, filename) in iter {
                 if let Some(capt) = child_group_regex.captures(&filename) {
                     let name = format!("{}/{}",
-                        capt.at(1).unwrap(), capt.at(2).unwrap());
+                        capt.get(1).unwrap().as_str(),
+                        capt.get(2).unwrap().as_str());
                     if !names.contains(&name) {
                         _rm_cgroup(&entry.path());
                     }
                 } else if let Some(capt) = cmd_group_regex.captures(&filename)
                 {
-                    let pid = FromStr::from_str(capt.at(2).unwrap()).ok();
+                    let pid = FromStr::from_str(
+                        capt.get(2).unwrap().as_str()).ok();
                     if pid.is_none() || !kill(pid.unwrap(), 0).is_ok() {
                         _rm_cgroup(&entry.path());
                     }
@@ -435,7 +436,7 @@ fn run(config_file: &Path, options: &Options)
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&config_file,
-        &MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), &COptions::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
     try!(check_master_config(&master));
     try!(global_init(&master, &options));
@@ -729,7 +730,7 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
             let sandbox_config = entry.path();
             let sandbox_name = name[..name.len()-5].to_string();
             debug!("Reading config: {:?}", sandbox_config);
-            parse_config(&sandbox_config, &sandbox_validator, Default::default())
+            parse_config(&sandbox_config, &sandbox_validator, &COptions::default())
                 .map_err(|e| error!("Can't read config {:?}: {}",
                                     sandbox_config, e))
                 .map(|cfg: SandboxConfig| (sandbox_name, cfg))
@@ -755,7 +756,7 @@ fn read_subtree<'x>(master: &MasterConfig,
         .join(sandbox.config_file.as_ref().map(Path::new)
             .unwrap_or(Path::new(&(sandbox_name.clone() + ".yaml"))));
     debug!("Reading child config {:?}", cfg);
-    parse_config(&cfg, &ChildConfig::mapping_validator(), Default::default())
+    parse_config(&cfg, &ChildConfig::mapping_validator(), &COptions::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
             OpenOptions::new().create(true).write(true).append(true)
             .open(master.config_log_dir.join(sandbox_name.clone() + ".log"))
@@ -783,7 +784,7 @@ fn read_subtree<'x>(master: &MasterConfig,
             let image_dir = sandbox.image_dir.join(&child.image);
             let cfg_res = temporary_change_root(&image_dir, || {
                 parse_config(&child.config,
-                    &ContainerConfig::validator(), Default::default())
+                    &ContainerConfig::validator(), &COptions::default())
                 .map_err(|e| format!("Error reading {:?} \
                     of sandbox {:?} of image {:?}: {}",
                     &child.config, sandbox_name, child.image,  e))

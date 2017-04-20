@@ -3,14 +3,13 @@ use std::io::{Write, stderr};
 use std::fs::{File};
 use std::fs::{create_dir_all, copy, metadata};
 use std::path::{Path, PathBuf};
-use std::default::Default;
 use std::collections::BTreeMap;
 
 use log;
 use fern;
 use syslog;
 use time;
-use quire::parse_config;
+use quire::{parse_config, Options};
 use libmount::{self, BindMount};
 
 use super::mount::{mount_ro_recursive};
@@ -199,7 +198,8 @@ pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
 {
     return temporary_change_root(root, || {
         parse_config(&Path::new(&child_cfg.config),
-            &ContainerConfig::validator(), Default::default())
+            &ContainerConfig::validator(), &Options::default())
+        .map_err(|e| e.to_string())
     });
 }
 

@@ -12,12 +12,11 @@ use std::env;
 use std::fs::{metadata};
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::default::Default;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print, Collect};
-use quire::parse_config;
+use quire::{parse_config, Options};
 
 use lithos::utils::{in_range, in_mapping, check_mapping, relative};
 use lithos::master_config::MasterConfig;
@@ -82,7 +81,7 @@ fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
 {
     // Only checks things that can be checked without other configs
     let config: ContainerConfig = match parse_config(config_file,
-        &ContainerConfig::validator(), Default::default())
+        &ContainerConfig::validator(), &Options::default())
     {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -110,7 +109,7 @@ fn check(config_file: &Path, verbose: bool,
 {
     let mut alter_config = alter_config;
     let master: MasterConfig = match parse_config(&config_file,
-        &MasterConfig::validator(), Default::default()) {
+        &MasterConfig::validator(), &Options::default()) {
         Ok(cfg) => cfg,
         Err(e) => {
             err!("Can't parse config: {}", e);
@@ -127,7 +126,7 @@ fn check(config_file: &Path, verbose: bool,
             // strip yaml suffix
             let current_name = &current_fn[..current_fn.len()-5];
             let sandbox: SandboxConfig = match parse_config(&entry.path(),
-                &SandboxConfig::validator(), Default::default()) {
+                &SandboxConfig::validator(), &Options::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
                     err!("Can't parse config: {}", e);
@@ -150,7 +149,7 @@ fn check(config_file: &Path, verbose: bool,
             debug!("Checking {:?}", config_file);
             let all_children: BTreeMap<String, ChildConfig>;
             all_children = match parse_config(&config_file,
-                &ChildConfig::mapping_validator(), Default::default()) {
+                &ChildConfig::mapping_validator(), &Options::default()) {
                 Ok(cfg) => cfg,
                 Err(e) => {
                     warn!("Can't read child config {:?}: {}", config_file, e);

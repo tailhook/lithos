@@ -14,11 +14,10 @@ use std::str::FromStr;
 use std::process::exit;
 use std::path::{Path, PathBuf};
 use std::io::{stderr, Write};
-use std::default::Default;
 use std::collections::BTreeMap;
 
 use regex::Regex;
-use quire::parse_config;
+use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption, Print};
 use rustc_serialize::json;
 use libc::funcs::posix88::unistd::getpid;
@@ -37,7 +36,7 @@ fn run(master_cfg: &Path, sandbox_name: String,
     -> Result<(), String>
 {
     let master: MasterConfig = try!(parse_config(&master_cfg,
-        &MasterConfig::validator(), Default::default())
+        &MasterConfig::validator(), &Options::default())
         .map_err(|e| format!("Error reading master config: {}", e)));
     try!(create_master_dirs(&master));
 
@@ -51,7 +50,7 @@ fn run(master_cfg: &Path, sandbox_name: String,
     let sandbox: SandboxConfig = try!(parse_config(
         &master_cfg.parent().unwrap()
          .join(&master.sandboxes_dir).join(sandbox_name.clone() + ".yaml"),
-        &SandboxConfig::validator(), Default::default())
+        &SandboxConfig::validator(), &Options::default())
         .map_err(|e| format!("Error reading sandbox config: {}", e)));
 
     let log_file;
@@ -76,7 +75,7 @@ fn run(master_cfg: &Path, sandbox_name: String,
     debug!("Children config {:?}", cfg);
     let sandbox_children: BTreeMap<String, ChildConfig>;
     sandbox_children = try!(parse_config(&cfg,
-            &ChildConfig::mapping_validator(), Default::default())
+            &ChildConfig::mapping_validator(), &Options::default())
         .map_err(|e| format!("Error reading children config: {}", e)));
     let child_cfg = try!(sandbox_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));

@@ -40,10 +40,12 @@ impl Decodable for Range {
                 match regex.captures(&val[..]) {
                     Some(caps) => {
                         return Ok(Range::new(
-                            caps.at(1).and_then(
-                                |x| FromStr::from_str(x).ok()).unwrap(),
-                            caps.at(2).and_then(
-                                |x| FromStr::from_str(x).ok()).unwrap()));
+                            caps.get(1).and_then(
+                                |x| FromStr::from_str(x.as_str()).ok()
+                            ).ok_or(d.error("invalid range"))?,
+                            caps.get(2).and_then(
+                                |x| FromStr::from_str(x.as_str()).ok()
+                            ).ok_or(d.error("invalid range"))?));
                     }
                     None => unimplemented!(),
                 }
