@@ -20,11 +20,11 @@ use std::time::{Instant, Duration};
 use std::thread::sleep;
 use std::process::exit;
 
-use quire::{parse_config, Options as COptions};
-use unshare::{Command, Stdio, reap_zombies};
-use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SigNum};
-use signal::trap::Trap;
+use libc::{SIGINT, SIGTERM, SIGCHLD};
 use libmount::BindMount;
+use quire::{parse_config, Options as COptions};
+use signal::trap::Trap;
+use unshare::{Command, Stdio, reap_zombies};
 
 use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
@@ -39,6 +39,8 @@ use lithos::limits::{set_fileno_limit};
 use lithos_knot_options::Options;
 
 mod lithos_knot_options;
+
+type SigNum = i32;
 
 struct SignalIter<'a> {
     trap: &'a mut Trap,

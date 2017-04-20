@@ -93,7 +93,7 @@ fn switch_config(master_cfg: &Path, sandbox_name: String, config_file: &Path)
             .and_then(|mut f| f.read_to_string(&mut buf))
             .ok();
     match read.and_then(|_| FromStr::from_str(buf[..].trim()).ok()) {
-        Some(pid) if kill(pid, 0).is_ok() => {
+        Some(pid) if kill(pid, None).is_ok() => {
             kill(pid, SIGQUIT)
             .map_err(|e| error!("Error sending QUIT to master: {:?}", e)).ok();
         }

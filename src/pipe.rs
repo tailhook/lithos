@@ -4,9 +4,7 @@ use nix::unistd::{pipe};
 use nix::Error::{Sys, InvalidPath};
 use nix::errno::Errno::EPIPE;
 
-use libc::{c_int, c_void};
-use libc::funcs::posix88::unistd::{close, write};
-use libc::consts::os::posix88::{EINTR, EAGAIN};
+use libc::{c_int, c_void, close, write, EINTR, EAGAIN};
 
 
 pub struct CPipe {

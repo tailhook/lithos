@@ -23,9 +23,7 @@ use std::default::Default;
 use std::process::exit;
 use std::collections::{BTreeMap, BTreeSet};
 
-use libc::pid_t;
-use libc::consts::os::sysconf::_SC_CLK_TCK;
-use libc::funcs::posix88::unistd::sysconf;
+use libc::{pid_t, _SC_CLK_TCK, sysconf};
 use lithos::utils::get_time;
 use rustc_serialize::json::Json;
 use rustc_serialize::json;

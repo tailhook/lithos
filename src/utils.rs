@@ -9,7 +9,6 @@ use std::io::ErrorKind::{AlreadyExists, NotFound};
 use std::ffi::CString;
 use std::env::current_dir;
 
-use nix::sys::signal::SigNum;
 use nix::sys::signal::{SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT};
 use nix::sys::signal::{SIGFPE, SIGUSR1, SIGUSR2};
 use libc::{c_int, c_char, timeval, c_void, mode_t, uid_t, gid_t};
@@ -21,9 +20,12 @@ use super::sandbox_config::Range;
 use super::id_map::IdMap;
 
 pub type Time = f64;
+pub type SigNum = i32;
+// TODO(tailhook) signal::Trap might use nix signals instead of i32
 pub const ABNORMAL_TERM_SIGNALS: &'static [SigNum] = &[
-    SIGQUIT, SIGSEGV, SIGBUS, SIGHUP, SIGILL, SIGABRT, SIGFPE,
-    SIGUSR1, SIGUSR2,
+    SIGQUIT as SigNum, SIGSEGV as SigNum, SIGBUS as SigNum, SIGHUP as SigNum,
+    SIGILL as SigNum, SIGABRT as SigNum, SIGFPE as SigNum, SIGUSR1 as SigNum,
+    SIGUSR2 as SigNum,
 ];
 
 pub struct FsUidGuard(bool);

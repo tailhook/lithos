@@ -1,12 +1,11 @@
-extern crate rustc_serialize;
-extern crate libc;
-#[macro_use] extern crate log;
-extern crate regex;
-
 extern crate argparse;
+extern crate libc;
+extern crate lithos;
 extern crate quire;
+extern crate regex;
+extern crate rustc_serialize;
 extern crate unshare;
-#[macro_use] extern crate lithos;
+#[macro_use] extern crate log;
 
 
 use std::env;
@@ -20,7 +19,7 @@ use regex::Regex;
 use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, List, StoreTrue, StoreOption, Print};
 use rustc_serialize::json;
-use libc::funcs::posix88::unistd::getpid;
+use libc::getpid;
 use unshare::{Command, Namespace};
 
 use lithos::setup::{clean_child, init_logging};

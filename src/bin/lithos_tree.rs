@@ -28,21 +28,19 @@ use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
 
-use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD, SIGKILL};
-use nix::sys::signal::kill;
+use libc::{pid_t, getpid, close};
+use libc::{SIGINT, SIGTERM, SIGCHLD};
+use nix::sys::signal::{kill, Signal};
 use nix::sys::socket::{getsockname, SockAddr};
 use nix::sys::socket::{setsockopt, bind, listen};
-use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
-use libc::{pid_t};
-use libc::funcs::posix88::unistd::{getpid};
-use libc::{close};
-use regex::Regex;
+use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use quire::{parse_config, Options as COptions};
+use regex::Regex;
 use rustc_serialize::json;
-use unshare::{Command, reap_zombies, Namespace};
 use signal::exec_handler;
 use signal::trap::Trap;
+use unshare::{Command, reap_zombies, Namespace};
 
 use lithos::setup::{clean_child, init_logging};
 use lithos::master_config::{MasterConfig, create_master_dirs};
@@ -209,7 +207,7 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
                 return Ok(());
             }
             Ok(pid) => {
-                if kill(pid, 0).is_ok() {
+                if kill(pid, None).is_ok() {
                     return Err(format!(concat!("Master pid is {}. ",
                         "And there is alive process with ",
                         "that pid."), pid));
@@ -278,7 +276,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                         if &child.config[..] != &cfg_text[..] {
                             warn!("Config mismatch: {}, pid: {}. Upgrading...",
                                   name, pid);
-                            kill(pid, SIGTERM)
+                            kill(pid, Signal::SIGTERM)
                             .map_err(|e|
                                 error!("Error sending TERM to {}: {:?}",
                                     pid, e)).ok();
@@ -292,7 +290,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                         warn!("Undefined child name: {}, pid: {}. \
                             Sending SIGTERM...", name, pid);
                         children.insert(pid, Child::Unidentified(name));
-                        kill(pid, SIGTERM)
+                        kill(pid, Signal::SIGTERM)
                         .map_err(|e| error!("Error sending TERM to {}: {:?}",
                             pid, e)).ok();
                         queue.add(
@@ -302,7 +300,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                 };
             } else {
                 warn!("Undefined child, pid: {}. Sending SIGTERM...", pid);
-                kill(pid, SIGTERM)
+                kill(pid, Signal::SIGTERM)
                     .map_err(|e| error!("Error sending TERM to {}: {:?}",
                         pid, e)).ok();
                 queue.add(
@@ -335,7 +333,7 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
                         let pid = pid_regex.captures(&proc_name).and_then(
                             |c| FromStr::from_str(c.get(1).unwrap().as_str()).ok());
                         if let Some(pid) = pid {
-                            if kill(pid, 0).is_ok() {
+                            if kill(pid, None).is_ok() {
                                 valid_dirs += 1;
                                 continue;
                             }
@@ -419,7 +417,7 @@ fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
                 {
                     let pid = FromStr::from_str(
                         capt.get(2).unwrap().as_str()).ok();
-                    if pid.is_none() || !kill(pid.unwrap(), 0).is_ok() {
+                    if pid.is_none() || !kill(pid.unwrap(), None).is_ok() {
                         _rm_cgroup(&entry.path());
                     }
                 } else {
@@ -615,7 +613,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                         error!("Process {:?} looks like hanging. \
                             Sending kill...",
                             pid);
-                        kill(pid, SIGKILL).ok();
+                        kill(pid, Signal::SIGKILL).ok();
                     }
                 }
             }
@@ -644,7 +642,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                 // forward it to children
                 debug!("Received SIGTERM signal, propagating");
                 for (&pid, _) in children {
-                    kill(pid, SIGTERM).ok();
+                    kill(pid, Signal::SIGTERM).ok();
                 }
                 return;
             }
@@ -688,7 +686,7 @@ fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
                 // forward it to children
                 debug!("Received SIGTERM signal, propagating");
                 for &pid in children.keys() {
-                    kill(pid, SIGTERM).ok();
+                    kill(pid, Signal::SIGTERM).ok();
                 }
                 continue;
             }
