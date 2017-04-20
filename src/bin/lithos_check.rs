@@ -1,11 +1,11 @@
-extern crate rustc_serialize;
-extern crate libc;
-extern crate scan_dir;
 extern crate argparse;
-extern crate quire;
 extern crate env_logger;
+extern crate libc;
+extern crate lithos;
+extern crate quire;
+extern crate rustc_serialize;
+extern crate scan_dir;
 #[macro_use] extern crate log;
-#[macro_use] extern crate lithos;
 
 
 use std::env;

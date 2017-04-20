@@ -1,11 +1,11 @@
-extern crate rustc_serialize;
-extern crate libc;
-extern crate regex;
-extern crate quire;
-extern crate scan_dir;
 extern crate argparse;
+extern crate libc;
+extern crate lithos;
+extern crate quire;
+extern crate regex;
+extern crate rustc_serialize;
+extern crate scan_dir;
 #[macro_use] extern crate log;
-#[macro_use] extern crate lithos;
 
 
 use regex::Regex;
@@ -40,8 +40,8 @@ use self::Action::*;
 
 #[path = "../ascii.rs"] mod ascii;
 
-static mut boot_time: u64 = 0;
-static mut clock_ticks: u64 = 100;
+static mut BOOT_TIME: u64 = 0;
+static mut CLOCK_TICKS: u64 = 100;
 
 struct Options {
     printer_factory: ascii::PrinterFactory,
@@ -293,7 +293,7 @@ impl GroupTotals {
 }
 
 fn start_time_sec(start_ticks: u64) -> u64 {
-    return unsafe { boot_time  + (start_ticks / clock_ticks) };
+    return unsafe { BOOT_TIME  + (start_ticks / CLOCK_TICKS) };
 }
 
 fn format_uptime(prn: ascii::Printer, start_ticks: u64) -> ascii::Printer {
@@ -613,7 +613,7 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
             .map(|(_, inst)| (inst.name.to_string(), inst))
             .collect();
         let new_time = get_time();
-        let delta_ticks = (new_time - old_time) * unsafe {clock_ticks} as f64;
+        let delta_ticks = (new_time - old_time) * unsafe {CLOCK_TICKS} as f64;
 
         let mut pids = vec!();
         let mut names = vec!();
@@ -655,8 +655,8 @@ fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
 
 fn read_global_consts() {
     unsafe {
-        clock_ticks = sysconf(_SC_CLK_TCK) as u64;
-        boot_time =
+        CLOCK_TICKS = sysconf(_SC_CLK_TCK) as u64;
+        BOOT_TIME =
             BufReader::new(
                 File::open(&Path::new("/proc/stat"))
                 .ok().expect("Can't read /proc/stat"))

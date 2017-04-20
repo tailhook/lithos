@@ -1,15 +1,15 @@
-extern crate nix;
-extern crate libc;
-extern crate time;
-extern crate quire;
-extern crate signal;
-extern crate unshare;
 extern crate argparse;
-extern crate syslog;
+extern crate libc;
 extern crate libmount;
+extern crate lithos;
+extern crate nix;
+extern crate quire;
 extern crate rustc_serialize;
+extern crate signal;
+extern crate syslog;
+extern crate time;
+extern crate unshare;
 #[macro_use] extern crate log;
-#[macro_use] extern crate lithos;
 
 use std::env;
 use std::str::FromStr;
