@@ -179,12 +179,11 @@ pub fn render_table(columns: &[(&'static str, Column)]) {
 #[cfg(test)]
 mod test {
     use super::TreeNode;
-    use std::io::MemWriter;
 
     fn write_tree(node: &TreeNode) -> String {
-        let mut buf = MemWriter::new();
+        let mut buf = Vec::with_capacity(100);
         node.print(&mut buf).unwrap();
-        return String::from_utf8(buf.into_inner()).unwrap();
+        return String::from_utf8(buf).unwrap();
     }
 
     #[test]
@@ -192,9 +191,9 @@ mod test {
         assert_eq!(write_tree(&TreeNode {
             head: "parent".to_string(),
             children: vec!()
-        }).as_slice(), "\
+        }), String::from("\
 parent\n\
-        ");
+        "));
     }
 
     #[test]
@@ -214,12 +213,12 @@ parent\n\
                     children: vec!(),
                 }),
             })
-        }).as_slice(), "\
+        }), String::from("\
 parent
   ├─child1
   │   └─subchild
   └─child2
       └─subchild\n\
-        ");
+        "));
     }
 }
