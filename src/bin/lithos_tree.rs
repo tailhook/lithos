@@ -47,6 +47,7 @@ use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, TcpPort, DEFAULT_KILL_TIMEOUT};
+use lithos::container_config::{InstantiatedConfig};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
@@ -65,7 +66,7 @@ struct Process {
     cmd: Command,
     name: String,
     config: Rc<String>,
-    inner_config: Rc<ContainerConfig>,
+    inner_config: Rc<InstantiatedConfig>,
     addresses: Vec<InetAddr>,
     socket_cred: (u32, u32),
 }
@@ -786,8 +787,17 @@ fn read_subtree<'x>(master: &MasterConfig,
                 .map_err(|e| format!("Error reading {:?} \
                     of sandbox {:?} of image {:?}: {}",
                     &child.config, sandbox_name, child.image,  e))
+                .and_then(|cfg: ContainerConfig| {
+                    cfg.instantiate(|key| {
+                        return Err(());
+                    })
+                    .map_err(|e| format!("Error reading {:?} \
+                        of sandbox {:?} of image {:?}: {}",
+                        &child.config, sandbox_name, child.image,
+                        e.join("; ")))
+                })
             });
-            let cfg: Rc<ContainerConfig> = match cfg_res {
+            let cfg: Rc<InstantiatedConfig> = match cfg_res {
                 Ok(cfg) => Rc::new(cfg),
                 Err(e) => {
                     error!("{}", e);

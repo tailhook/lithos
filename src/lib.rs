@@ -1,6 +1,7 @@
 #![crate_name="lithos"]
 #![crate_type="lib"]
 
+#[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
 extern crate fern;
 extern crate syslog;

@@ -1,16 +1,20 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
 
+use regex::{Regex, Captures};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
-use quire::validate::{Mapping};
+use quire::validate::{Mapping, Nothing};
 use id_map::{IdMap, IdMapExt, mapping_validator};
 
 
 pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
+
+lazy_static! {
+    static ref VARIABLE_REGEX: Regex = Regex::new(r#"@\{[^}]*\}"#).unwrap();
+}
 
 
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
@@ -73,8 +77,39 @@ pub struct TcpPort {
     pub listen_backlog: usize,
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
+pub enum Variable {
+    TcpPort,
+}
+
+#[derive(RustcDecodable)]
 pub struct ContainerConfig {
+    pub kind: ContainerKind,
+    pub variables: BTreeMap<String, Variable>,
+    pub volumes: BTreeMap<String, Volume>,
+    pub user_id: u32,
+    pub group_id: u32,
+    pub restart_timeout: f32,
+    pub kill_timeout: f32,
+    pub memory_limit: u64,
+    pub fileno_limit: u64,
+    pub cpu_shares: usize,
+    pub executable: String,
+    pub arguments: Vec<String>,
+    pub environ: BTreeMap<String, String>,
+    pub workdir: PathBuf,
+    pub resolv_conf: ResolvConf,
+    pub hosts_file: HostsFile,
+    pub uid_map: Vec<IdMap>,
+    pub gid_map: Vec<IdMap>,
+    pub stdout_stderr_file: Option<PathBuf>,
+    pub interactive: bool,
+    pub restart_process_only: bool,
+    pub tcp_ports: HashMap<String, TcpPort>,
+}
+
+#[derive(RustcDecodable, RustcEncodable)]
+pub struct InstantiatedConfig {
     pub kind: ContainerKind,
     pub volumes: BTreeMap<String, Volume>,
     pub user_id: u32,
@@ -109,6 +144,9 @@ impl ContainerConfig {
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
         .member("kind", Scalar::new().default("Daemon"))
+        .member("variables", Enum::new()
+            .option("TcpPort", Nothing)
+        )
         .member("volumes", Mapping::new(
                 Scalar::new(),
                 volume_validator()))
@@ -147,6 +185,73 @@ impl ContainerConfig {
                 .member("reuse_port", Scalar::new().default(false))
                 .member("listen_backlog", Scalar::new().default(128))
             ))
+    }
+    pub fn instantiate<F>(self, mut resolve: F)
+        -> Result<InstantiatedConfig, Vec<String>>
+        where F: FnMut(&str) -> Result<String, ()>
+    {
+        let mut errors1 = HashSet::new();
+        let mut errors2 = HashSet::new();
+        let result = {
+            let mut replacer = |capt: &Captures| {
+                let varname = capt.get(0).unwrap().as_str();
+                match resolve(varname) {
+                    Ok(x) => x,
+                    Err(()) => {
+                        errors1.insert(format!("unknown variable {:?}", varname));
+                        return format!("<<no var {:?}>>", varname);
+                    }
+                }
+            };
+            InstantiatedConfig {
+                kind: self.kind,
+                volumes: self.volumes,
+                user_id: self.user_id,
+                group_id: self.group_id,
+                restart_timeout: self.restart_timeout,
+                kill_timeout: self.kill_timeout,
+                memory_limit: self.memory_limit,
+                fileno_limit: self.fileno_limit,
+                cpu_shares: self.cpu_shares,
+                executable: self.executable,
+                arguments: self.arguments.into_iter()
+                    .map(|x| VARIABLE_REGEX.replace(&x, &mut replacer).into())
+                    .collect(),
+                environ: self.environ.into_iter()
+                    .map(|(key, val)| {
+                        (key, VARIABLE_REGEX.replace(&val, &mut replacer).into())
+                    })
+                    .collect(),
+                workdir: self.workdir,
+                resolv_conf: self.resolv_conf,
+                hosts_file: self.hosts_file,
+                uid_map: self.uid_map,
+                gid_map: self.gid_map,
+                stdout_stderr_file: self.stdout_stderr_file,
+                interactive: self.interactive,
+                restart_process_only: self.restart_process_only,
+                tcp_ports: self.tcp_ports.into_iter()
+                    .map(|(key, val)| {
+                        let s = VARIABLE_REGEX.replace(&key, &mut replacer);
+                        let port = match s.parse::<u16>() {
+                            Ok(x) => x,
+                            Err(e) => {
+                                errors2.insert(format!("Bad port {:?}: {}",
+                                    key, e));
+                                return (0, val);
+                            }
+                        };
+                        (port, val)
+                    })
+                    .collect(),
+            }
+        };
+        if errors1.len() > 0 || errors2.len() > 0 {
+            return Err(errors1.into_iter().chain(errors2.into_iter())
+                       .collect());
+        } else {
+            return Ok(result);
+        }
     }
 }
 
