@@ -24,6 +24,58 @@ The somewhat minimal configuration is looks like following:
     executable: /bin/sleep
     arguments: [60]
 
+.. _container_variables:
+
+Variables
+=========
+
+Container can declare some things, that can be changed in specific
+instantiation of the service, for example:
+
+.. code-block:: yaml
+
+    variables:
+      tcp_port: !TcpPort
+    kind: Daemon
+    user-id: 1
+    volumes:
+      /tmp: !Tmpfs { size: 100m }
+    executable: /bin/some_program
+    arguments:
+    - "--listen=localhost:@{tcp_port}"
+
+The ``variables`` key declares variable names and types. Value for these
+variables can be provided in ``variables`` in :ref:`process_config`.
+
+There are the following types of variables:
+
+TcpPort
+    Allows a number between 1-65535 and ensures that the number matches
+    port range allowed in sandbox (see :opt:`allow-tcp-ports`)
+
+All entries of ``@{variable_name}`` are substituted in the following fields:
+
+1. :opt:`arguments`
+2. The values of :opt:`environ` (not in the keys yet)
+3. The key in the :opt:`tcp-ports` (i.e. port number)
+
+The expansion in any other place does not work yet, but may be implemented
+in the future. Only **declared** variables can be substituted. Trying to
+substitute undeclared variables or non-existing built-in variable results
+into configuration syntax error.
+
+There are the number of builtin variables that start with ``lithos:``:
+
+lithos:name
+    Name of the process, same as inserted in ``LITHOS_NAME`` environment
+    variable
+
+lithos:config_filename
+    Full path of this configuration file as visible from within container
+
+More built-in variables may be added in the future. Built-in variables
+doesn't have to be declared.
+
 
 Reference
 =========

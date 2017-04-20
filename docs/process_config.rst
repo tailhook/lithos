@@ -55,5 +55,26 @@ a command you need root privileges on host system, so it's only useful for
 SysOp tasks or **may be** for cron tasks but not for normal operation of
 application.
 
+.. _process_variables:
+
+Variables
+=========
+
+You can also add variables for specific config:
+
+For example::
+
+    django:
+        image: django.v3.5.7
+        config: /config/worker_process.yaml
+        variables:
+          tcp_port: 10001
+        instances: 3
+
+Only variables that are **declared** in :ref:`container config
+<container_variables>` can be substituted. Extra variables are ignored. If
+there is a declared variable but it's not present in process config, it doesn't
+pass configuration check.
+
 .. _ansible: http://www.ansible.com/
 .. _confd: https://github.com/kelseyhightower/confd
