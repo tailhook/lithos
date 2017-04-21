@@ -30,7 +30,7 @@ use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
-use lithos::container_config::{ContainerConfig};
+use lithos::container_config::{ContainerConfig, Variables};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 use lithos::setup::{init_logging};
@@ -111,12 +111,18 @@ fn run(options: Options) -> Result<(), String>
         .map_err(|e| e.to_string()));
     try!(mount_ro_recursive(&mount_dir));
 
-    let local: ContainerConfig;
-    local = try!(read_local_config(&mount_dir, &options.config));
-    if local.kind != options.config.kind {
+    let container: ContainerConfig;
+    container = try!(read_local_config(&mount_dir, &options.config));
+    if container.kind != options.config.kind {
         return Err(format!("Container type mismatch {:?} != {:?}",
-              local.kind, options.config.kind));
+              container.kind, options.config.kind));
     }
+    let local = container.instantiate(&Variables {
+        user_vars: &options.config.variables,
+        lithos_name: &options.name,
+        lithos_config_filename: &options.config.config,
+    }).map_err(|e| format!("Variable substitution error: {}", e.join("; ")))?;
+
     if local.uid_map.len() > 0 {
         if !in_mapping(&local.uid_map, local.user_id) {
             return Err(format!("User is not in mapped range (uid: {})",

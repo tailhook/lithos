@@ -17,7 +17,7 @@ use super::mount::{mount_pseudo};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
 use super::sandbox_config::SandboxConfig;
-use super::container_config::{ContainerConfig, Volume};
+use super::container_config::{InstantiatedConfig, Volume, ContainerConfig};
 use super::container_config::Volume::{Statedir, Readonly, Persistent, Tmpfs};
 use super::child_config::ChildConfig;
 use super::utils::{temporary_change_root, clean_dir};
@@ -37,7 +37,7 @@ fn map_dir(dir: &Path, dirs: &BTreeMap<PathBuf, PathBuf>) -> Option<PathBuf> {
 }
 
 pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
-    local: &ContainerConfig, state_dir: &Path)
+    local: &InstantiatedConfig, state_dir: &Path)
     -> Result<(), String>
 {
     let root = PathBuf::from("/");
@@ -141,7 +141,7 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
     return Ok(());
 }
 
-pub fn prepare_state_dir(dir: &Path, local: &ContainerConfig,
+pub fn prepare_state_dir(dir: &Path, local: &InstantiatedConfig,
     tree: &SandboxConfig)
     -> Result<(), String>
 {

@@ -145,20 +145,24 @@ pub struct Variables<'a> {
     pub lithos_config_filename: &'a str,
 }
 
-
-impl ContainerConfig {
+impl InstantiatedConfig {
     pub fn map_uid(&self, internal_uid: u32) -> Option<u32> {
         self.uid_map.map_id(internal_uid)
     }
     pub fn map_gid(&self, internal_gid: u32) -> Option<u32> {
         self.gid_map.map_id(internal_gid)
     }
+}
+
+impl ContainerConfig {
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
         .member("kind", Scalar::new().default("Daemon"))
-        .member("variables", Enum::new()
-            .option("TcpPort", Nothing)
-        )
+        .member("variables", Mapping::new(
+            Scalar::new(),
+            Enum::new()
+                .option("TcpPort", Nothing)
+        ))
         .member("volumes", Mapping::new(
                 Scalar::new(),
                 volume_validator()))

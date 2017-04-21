@@ -105,7 +105,7 @@ fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
 }
 
 fn check(config_file: &Path, verbose: bool,
-    sandbox_name: Option<String>, alter_config: Option<PathBuf>)
+    altered_sandbox: Option<String>, alter_config: Option<PathBuf>)
 {
     let mut alter_config = alter_config;
     let master: MasterConfig = match parse_config(&config_file,
@@ -139,7 +139,7 @@ fn check(config_file: &Path, verbose: bool,
                 .join(&master.processes_dir)
                 .join(sandbox.config_file.as_ref().unwrap_or(
                     &PathBuf::from(&current_fn)));
-            let config_file = match (current_name, &sandbox_name)
+            let config_file = match (current_name, &altered_sandbox)
             {
                 (name, &Some(ref t)) if name == t
                 => alter_config.take().unwrap_or(default_config),
@@ -225,9 +225,7 @@ fn check(config_file: &Path, verbose: bool,
                 }
                 for i in 0..child_cfg.instances {
                     let name = format!("{}/{}.{}",
-                        sandbox_name.as_ref().map(|x| &x[..])
-                            .unwrap_or("unknown-sandbox"),
-                        child_name, i);
+                        current_name, child_name, i);
                     let icfg = match config.instantiate(&Variables {
                             user_vars: &child_cfg.variables,
                             lithos_name: &name,
@@ -237,7 +235,7 @@ fn check(config_file: &Path, verbose: bool,
                         Err(e) => {
                             err!("Variable substitution error {:?} \
                                 of sandbox {:?} of image {:?}: {}",
-                                &child_cfg.config, sandbox_name,
+                                &child_cfg.config, current_name,
                                 child_cfg.image,
                                 e.join("; "));
                             continue;
@@ -248,7 +246,7 @@ fn check(config_file: &Path, verbose: bool,
                         if !in_range(&sandbox.allow_tcp_ports, port as u32) {
                             err!("Port {} is not allowed for {:?} \
                                 of sandbox {:?} of image {:?}",
-                                port, &child_cfg.config, sandbox_name,
+                                port, &child_cfg.config, current_name,
                                 child_cfg.image);
                         }
                     }
@@ -259,7 +257,7 @@ fn check(config_file: &Path, verbose: bool,
         err!("Can't read config directory {:?}: {}", config_dir, e);
     }).ok();
     if alter_config.is_some() {
-        err!("Tree {:?} is not used", sandbox_name);
+        err!("Tree {:?} is not used", altered_sandbox);
     }
 }
 
