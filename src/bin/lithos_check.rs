@@ -21,7 +21,7 @@ use quire::{parse_config, Options};
 use lithos::utils::{in_range, in_mapping, check_mapping, relative};
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
-use lithos::container_config::ContainerConfig;
+use lithos::container_config::{ContainerConfig, Variables};
 use lithos::child_config::ChildConfig;
 use lithos::network::{get_host_name, get_host_ip};
 use lithos::id_map::{IdMapExt};
@@ -170,6 +170,7 @@ fn check(config_file: &Path, verbose: bool,
                     Ok(config) => config,
                     Err(()) => continue,
                 };
+                // Uidmaps aren't substituted
                 if config.uid_map.len() > 0 {
                     if sandbox.uid_map.len() > 0 {
                         err!("Can't have uid_maps in both the sandbox and a \
@@ -211,6 +212,46 @@ fn check(config_file: &Path, verbose: bool,
                 }
                 if !check_mapping(&sandbox.allow_groups, &config.gid_map) {
                     err!("Bad gid mapping (probably doesn't match allow_groups)");
+                }
+                // Per-instance validation
+                for (key, typ) in &config.variables {
+                    if let Some(value) = child_cfg.variables.get(key) {
+                        if let Err(e) = typ.validate(value, &sandbox) {
+                            err!("Variable {:?} is invalid: {}", key, e);
+                        }
+                    } else {
+                        err!("Variable {:?} is undefined", key);
+                    }
+                }
+                for i in 0..child_cfg.instances {
+                    let name = format!("{}/{}.{}",
+                        sandbox_name.as_ref().map(|x| &x[..])
+                            .unwrap_or("unknown-sandbox"),
+                        child_name, i);
+                    let icfg = match config.instantiate(&Variables {
+                            user_vars: &child_cfg.variables,
+                            lithos_name: &name,
+                            lithos_config_filename: &child_cfg.config,
+                        }) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            err!("Variable substitution error {:?} \
+                                of sandbox {:?} of image {:?}: {}",
+                                &child_cfg.config, sandbox_name,
+                                child_cfg.image,
+                                e.join("; "));
+                            continue;
+                        }
+                    };
+                    // TODO(tailhook) check tcp ports
+                    for (port, _) in icfg.tcp_ports {
+                        if !in_range(&sandbox.allow_tcp_ports, port as u32) {
+                            err!("Port {} is not allowed for {:?} \
+                                of sandbox {:?} of image {:?}",
+                                port, &child_cfg.config, sandbox_name,
+                                child_cfg.image);
+                        }
+                    }
                 }
             }
         }

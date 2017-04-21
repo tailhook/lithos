@@ -9,6 +9,9 @@ use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping, Nothing};
 use id_map::{IdMap, IdMapExt, mapping_validator};
 
+use sandbox_config::SandboxConfig;
+use utils::{in_range};
+
 
 pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
 
@@ -49,26 +52,28 @@ pub enum Volume {
 }
 
 #[derive(RustcDecodable, RustcEncodable, Serialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub enum ContainerKind {
     Daemon,
     Command,
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(RustcDecodable, RustcEncodable, Clone)]
 pub struct ResolvConf {
     pub copy_from_host: bool,
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(RustcDecodable, RustcEncodable, Clone)]
 pub struct HostsFile {
     pub copy_from_host: bool,
     pub localhost: Option<bool>,
     pub public_hostname: Option<bool>,
 }
 
+#[derive(Clone, Debug)]
 pub struct Host(pub IpAddr);
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(RustcDecodable, RustcEncodable, Clone)]
 pub struct TcpPort {
     pub host: Host,
     pub fd: RawFd,
@@ -134,6 +139,13 @@ pub struct InstantiatedConfig {
 }
 
 
+pub struct Variables<'a> {
+    pub user_vars: &'a HashMap<String, String>,
+    pub lithos_name: &'a str,
+    pub lithos_config_filename: &'a str,
+}
+
+
 impl ContainerConfig {
     pub fn map_uid(&self, internal_uid: u32) -> Option<u32> {
         self.uid_map.map_id(internal_uid)
@@ -186,51 +198,59 @@ impl ContainerConfig {
                 .member("listen_backlog", Scalar::new().default(128))
             ))
     }
-    pub fn instantiate<F>(self, mut resolve: F)
+    pub fn instantiate(&self, variables: &Variables)
         -> Result<InstantiatedConfig, Vec<String>>
-        where F: FnMut(&str) -> Result<String, ()>
     {
         let mut errors1 = HashSet::new();
         let mut errors2 = HashSet::new();
         let result = {
             let mut replacer = |capt: &Captures| {
                 let varname = capt.get(0).unwrap().as_str();
-                match resolve(varname) {
-                    Ok(x) => x,
-                    Err(()) => {
+                let val = variables.user_vars.get(varname).map(|x| x.clone())
+                    .or_else(|| match varname {
+                        "lithos:name"
+                        => Some(variables.lithos_name.to_string()),
+                        "lithos:config_filename"
+                        => Some(variables.lithos_config_filename.to_string()),
+                        _ => None,
+                    });
+                match val {
+                    Some(x) => x,
+                    None => {
                         errors1.insert(format!("unknown variable {:?}", varname));
                         return format!("<<no var {:?}>>", varname);
                     }
                 }
             };
             InstantiatedConfig {
-                kind: self.kind,
-                volumes: self.volumes,
-                user_id: self.user_id,
-                group_id: self.group_id,
-                restart_timeout: self.restart_timeout,
-                kill_timeout: self.kill_timeout,
-                memory_limit: self.memory_limit,
-                fileno_limit: self.fileno_limit,
-                cpu_shares: self.cpu_shares,
-                executable: self.executable,
-                arguments: self.arguments.into_iter()
+                kind: self.kind.clone(),
+                volumes: self.volumes.clone(),
+                user_id: self.user_id.clone(),
+                group_id: self.group_id.clone(),
+                restart_timeout: self.restart_timeout.clone(),
+                kill_timeout: self.kill_timeout.clone(),
+                memory_limit: self.memory_limit.clone(),
+                fileno_limit: self.fileno_limit.clone(),
+                cpu_shares: self.cpu_shares.clone(),
+                executable: self.executable.clone(),
+                arguments: self.arguments.iter()
                     .map(|x| VARIABLE_REGEX.replace(&x, &mut replacer).into())
                     .collect(),
-                environ: self.environ.into_iter()
+                environ: self.environ.iter()
                     .map(|(key, val)| {
-                        (key, VARIABLE_REGEX.replace(&val, &mut replacer).into())
+                        (key.clone(),
+                         VARIABLE_REGEX.replace(&val, &mut replacer).into())
                     })
                     .collect(),
-                workdir: self.workdir,
-                resolv_conf: self.resolv_conf,
-                hosts_file: self.hosts_file,
-                uid_map: self.uid_map,
-                gid_map: self.gid_map,
-                stdout_stderr_file: self.stdout_stderr_file,
-                interactive: self.interactive,
-                restart_process_only: self.restart_process_only,
-                tcp_ports: self.tcp_ports.into_iter()
+                workdir: self.workdir.clone(),
+                resolv_conf: self.resolv_conf.clone(),
+                hosts_file: self.hosts_file.clone(),
+                uid_map: self.uid_map.clone(),
+                gid_map: self.gid_map.clone(),
+                stdout_stderr_file: self.stdout_stderr_file.clone(),
+                interactive: self.interactive.clone(),
+                restart_process_only: self.restart_process_only.clone(),
+                tcp_ports: self.tcp_ports.iter()
                     .map(|(key, val)| {
                         let s = VARIABLE_REGEX.replace(&key, &mut replacer);
                         let port = match s.parse::<u16>() {
@@ -238,10 +258,10 @@ impl ContainerConfig {
                             Err(e) => {
                                 errors2.insert(format!("Bad port {:?}: {}",
                                     key, e));
-                                return (0, val);
+                                return (0, val.clone());
                             }
                         };
-                        (port, val)
+                        (port, val.clone())
                     })
                     .collect(),
             }
@@ -284,5 +304,18 @@ impl Decodable for Host {
 impl Encodable for Host {
     fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
         format!("{}", self.0).encode(s)
+    }
+}
+
+impl Variable {
+    pub fn validate(&self, value: &str, sandbox: &SandboxConfig)
+        -> Result<(), String>
+    {
+        let port = value.parse::<u16>()
+            .map_err(|e| format!("invalid TcpPort {:?}: {}", value, e))?;
+        if !in_range(&sandbox.allow_tcp_ports, port as u32) {
+            return Err(format!("TcpPort {:?} is not in allowed range", port));
+        }
+        Ok(())
     }
 }

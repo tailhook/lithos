@@ -48,7 +48,7 @@ use lithos::master_config::{MasterConfig, create_master_dirs};
 use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, TcpPort, DEFAULT_KILL_TIMEOUT};
-use lithos::container_config::{InstantiatedConfig};
+use lithos::container_config::{InstantiatedConfig, Variables};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
@@ -67,7 +67,7 @@ struct Process {
     cmd: Command,
     name: String,
     config: Rc<String>,
-    inner_config: Rc<InstantiatedConfig>,
+    inner_config: InstantiatedConfig,
     addresses: Vec<InetAddr>,
     socket_cred: (u32, u32),
 }
@@ -788,18 +788,9 @@ fn read_subtree<'x>(master: &MasterConfig,
                 .map_err(|e| format!("Error reading {:?} \
                     of sandbox {:?} of image {:?}: {}",
                     &child.config, sandbox_name, child.image,  e))
-                .and_then(|cfg: ContainerConfig| {
-                    cfg.instantiate(|key| {
-                        return Err(());
-                    })
-                    .map_err(|e| format!("Error reading {:?} \
-                        of sandbox {:?} of image {:?}: {}",
-                        &child.config, sandbox_name, child.image,
-                        e.join("; ")))
-                })
             });
-            let cfg: Rc<InstantiatedConfig> = match cfg_res {
-                Ok(cfg) => Rc::new(cfg),
+            let cfg: ContainerConfig = match cfg_res {
+                Ok(cfg) => cfg,
                 Err(e) => {
                     error!("{}", e);
                     return Vec::new().into_iter();
@@ -816,27 +807,40 @@ fn read_subtree<'x>(master: &MasterConfig,
                 sock_gid = cfg.gid_map.map_id(sock_gid).unwrap_or(0);
             }
 
-            let items: Vec<(String, Process)> = (0..instances)
-                .map(|i| {
-                    let name = format!("{}/{}.{}", sandbox_name, child_name, i);
-                    let cmd = new_child(bin, &name, master_file,
-                        &child_string, options);
-                    let restart_min = now + duration(cfg.restart_timeout);
-                    let process = Process {
-                        cmd: cmd,
-                        name: name.clone(),
-                        restart_min: restart_min,
-                        config: child_string.clone(), // should avoid cloning?
-                        inner_config: cfg.clone(),
-                        addresses: cfg.tcp_ports.iter().map(|(&port, item)| {
+            let mut items = Vec::<(String, Process)>::new();
+            for i in 0..instances {
+                let name = format!("{}/{}.{}", sandbox_name, child_name, i);
+                let cfg = match cfg.instantiate(&Variables {
+                        user_vars: &child.variables,
+                        lithos_name: &name,
+                        lithos_config_filename: &child.config,
+                    }) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!("Variable substitution error {:?} \
+                            of sandbox {:?} of image {:?}: {}",
+                            &child.config, sandbox_name, child.image,
+                            e.join("; "));
+                        continue;
+                    }
+                };
+                let cmd = new_child(bin, &name, master_file,
+                    &child_string, options);
+                let restart_min = now + duration(cfg.restart_timeout);
+                let process = Process {
+                    cmd: cmd,
+                    name: name.clone(),
+                    restart_min: restart_min,
+                    config: child_string.clone(), // should avoid cloning?
+                    addresses: cfg.tcp_ports.iter().map(|(&port, item)| {
                             InetAddr::from_std(
                                 &SocketAddr::new(item.host.0, port))
                         }).collect(),
-                        socket_cred: (sock_uid, sock_gid),
-                    };
-                    (name, process)
-                })
-                .collect();
+                    inner_config: cfg,
+                    socket_cred: (sock_uid, sock_gid),
+                };
+                items.push((name, process));
+            }
             items.into_iter()
         }).collect()
 }
