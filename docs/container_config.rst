@@ -374,4 +374,13 @@ Reference
       This should be set to ``true`` only on very high performant servers that
       experience assymetric workload in default case.
 
+.. opt:: metadata
+
+   (optional) Allows to add arbitrary metadata to lithos configuration file.
+   Lithos does not use and does not validate this data in any way (except that
+   it must be a valid YAML). The metadata can be used by other tools that
+   inspect lithos configs and extract data from it. In particular, we use
+   metadata for our deployment tools (to keep configuration files
+   more consolidated instead of keeping then in small fragments).
+
 .. _integer-units: http://rust-quire.readthedocs.io/en/latest/user.html#units

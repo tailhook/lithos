@@ -6,7 +6,7 @@ use std::os::unix::io::RawFd;
 use regex::{Regex, Captures};
 use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
-use quire::validate::{Mapping, Nothing};
+use quire::validate::{Mapping, Nothing, Anything};
 use id_map::{IdMap, IdMapExt, mapping_validator};
 
 use sandbox_config::SandboxConfig;
@@ -163,6 +163,7 @@ impl ContainerConfig {
             Enum::new()
                 .option("TcpPort", Nothing)
         ))
+        .member("metadata", Anything)
         .member("volumes", Mapping::new(
                 Scalar::new(),
                 volume_validator()))
