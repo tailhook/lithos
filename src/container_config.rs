@@ -16,7 +16,7 @@ use utils::{in_range};
 pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
 
 lazy_static! {
-    static ref VARIABLE_REGEX: Regex = Regex::new(r#"@\{[^}]*\}"#).unwrap();
+    static ref VARIABLE_REGEX: Regex = Regex::new(r#"@\{([^}]*)\}"#).unwrap();
 }
 
 
@@ -193,7 +193,7 @@ impl ContainerConfig {
         .member("interactive", Scalar::new().default(false))
         .member("restart_process_only", Scalar::new().default(false))
         .member("tcp_ports", Mapping::new(
-            Numeric::new().min(1).max(65535),
+            Scalar::new(),
             Structure::new()
                 .member("host", Scalar::new().default("0.0.0.0"))
                 .member("fd", Numeric::new().min(0).optional())
@@ -209,7 +209,7 @@ impl ContainerConfig {
         let mut errors2 = HashSet::new();
         let result = {
             let mut replacer = |capt: &Captures| {
-                let varname = capt.get(0).unwrap().as_str();
+                let varname = capt.get(1).unwrap().as_str();
                 let val = variables.user_vars.get(varname).map(|x| x.clone())
                     .or_else(|| match varname {
                         "lithos:name"
