@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+CONFIGS="${1:-py}"
+
 sudo -k
 echo Copying examples/py into the system
 echo WARNING: This Command will remove /etc/lithos from the system
@@ -9,13 +11,15 @@ echo ... but let you think for 10 seconds
 for i in $(seq 10 -1 0); do echo -n "$i \r"; sleep 1; done;
 echo Okay proceeding...
 
-sudo rsync -av --delete-after examples/py/configs/ /etc/lithos
+sudo rsync -av --delete-after examples/${CONFIGS}/configs/ /etc/lithos
 
-vagga _build py-example
+vagga _build "${CONFIGS}-example"
 
 [ -d /var/lib/lithos/images ] || sudo mkdir -p /var/lib/lithos/images
 
-sudo rsync -a --delete-after .vagga/py-example/ /var/lib/lithos/images/py-example
+sudo rsync -a --delete-after \
+    ".vagga/${CONFIGS}-example/" \
+    /var/lib/lithos/images/${CONFIGS}-example
 
 echo Done.
 echo Ensure that you have run '`vagga make`' before.

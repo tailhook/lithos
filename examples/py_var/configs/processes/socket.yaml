@@ -1,0 +1,11 @@
+socket:
+  instances: 2
+  image: py_var-example
+  variables:
+    input_port: 77
+  config: /config/socket.yaml
+
+py:
+  kind: Command
+  image: py_var-example
+  config: /config/py.yaml
