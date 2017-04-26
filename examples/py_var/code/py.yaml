@@ -1,4 +1,7 @@
 kind: Command
+variables:
+  hello: !TcpPort
+  shit: !Choice [ru, ua]
 user_id: 1
 volumes:
   /tmp: !Tmpfs { size: 100Mi }
