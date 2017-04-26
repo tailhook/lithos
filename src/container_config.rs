@@ -163,6 +163,7 @@ impl ContainerConfig {
             Scalar::new(),
             Enum::new()
                 .option("TcpPort", Nothing)
+                .option("Choice", Sequence::new(Scalar::new()))
         ))
         .member("metadata", Anything)
         .member("volumes", Mapping::new(
