@@ -52,6 +52,9 @@ There are the following types of variables:
 TcpPort
     Allows a number between 1-65535 and ensures that the number matches
     port range allowed in sandbox (see :opt:`allow-tcp-ports`)
+Choice
+    Allows a value from a fixed set of choices
+    (example: ``!Choice ["high-priority", "low-priority"]``)
 
 All entries of ``@{variable_name}`` are substituted in the following fields:
 

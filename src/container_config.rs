@@ -85,6 +85,7 @@ pub struct TcpPort {
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub enum Variable {
     TcpPort,
+    Choice(Vec<String>),
 }
 
 #[derive(RustcDecodable)]
@@ -316,10 +317,22 @@ impl Variable {
     pub fn validate(&self, value: &str, sandbox: &SandboxConfig)
         -> Result<(), String>
     {
-        let port = value.parse::<u16>()
-            .map_err(|e| format!("invalid TcpPort {:?}: {}", value, e))?;
-        if !in_range(&sandbox.allow_tcp_ports, port as u32) {
-            return Err(format!("TcpPort {:?} is not in allowed range", port));
+        match *self {
+            Variable::TcpPort => {
+                let port = value.parse::<u16>()
+                    .map_err(|e| format!(
+                        "invalid TcpPort {:?}: {}", value, e))?;
+                if !in_range(&sandbox.allow_tcp_ports, port as u32) {
+                    return Err(format!(
+                        "TcpPort {:?} is not in allowed range", port));
+                }
+            }
+            Variable::Choice(ref choices) => {
+                if !choices.iter().any(|x| x == value) {
+                    return Err(format!("variable value {:?} \
+                        is not one of {:?}", value, choices));
+                }
+            }
         }
         Ok(())
     }
