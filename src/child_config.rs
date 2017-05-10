@@ -6,12 +6,12 @@ use quire::{Options, parse_string};
 
 use super::container_config::ContainerKind;
 
-#[derive(RustcDecodable, Serialize, PartialEq, Debug)]
+#[derive(RustcDecodable, Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChildConfig {
     pub instances: usize,
     pub image: String,
     pub config: String,
-    #[serde(skip_serializing_if="HashMap::is_empty")]
+    #[serde(skip_serializing_if="HashMap::is_empty", default)]
     pub variables: HashMap<String, String>,
     pub kind: ContainerKind,
 }
@@ -47,7 +47,7 @@ mod test {
     use std::str::FromStr;
     use super::ChildConfig;
     use container_config::ContainerKind::Daemon;
-    use serde_json::to_string;
+    use serde_json::{to_string, from_str};
 
     #[test]
     fn deserialize_compat() {
@@ -63,7 +63,16 @@ mod test {
             config: String::from("/config/staging/myproj.yaml"),
             variables: HashMap::new(),
             kind: Daemon,
-        })
+        });
+
+        let cc: ChildConfig = from_str(&data).unwrap();
+        assert_eq!(cc, ChildConfig {
+            instances: 1,
+            image: String::from("myproj.4a20772b"),
+            config: String::from("/config/staging/myproj.yaml"),
+            variables: HashMap::new(),
+            kind: Daemon,
+        });
     }
 
     #[test]

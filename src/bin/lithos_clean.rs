@@ -5,7 +5,7 @@ extern crate quire;
 extern crate lithos;
 extern crate time;
 extern crate scan_dir;
-extern crate rustc_serialize;
+extern crate serde_json;
 
 use std::env;
 use std::rc::Rc;
@@ -21,7 +21,6 @@ use time::{Tm, Duration, now_utc};
 use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
 use argparse::{Print};
-use rustc_serialize::json;
 
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
@@ -184,7 +183,7 @@ fn parse_line(line: &str) -> Result<(Tm, BTreeMap<String, ChildConfig>), ()> {
     let config = iter.next().ok_or(())?;
     Ok((
         time::strptime(date, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?,
-        json::decode(config).map_err(|_| ())?,
+        serde_json::from_str(config).map_err(|_| ())?,
     ))
 }
 
