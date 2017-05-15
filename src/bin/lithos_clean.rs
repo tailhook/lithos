@@ -324,7 +324,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                         continue;
                     }
                     configs.push_back(cand);
-                    if configs.len() as u32 >= ver_max {
+                    if configs.len() as u32 > ver_max {
                         configs.pop_front();
                     }
                 }
