@@ -753,42 +753,42 @@ fn open_config_log(base: &Path, name: &str) -> Result<File, io::Error> {
         .open(&target_name)?;
     let logmeta = file.metadata()?;
     if logmeta.len() > CONFIG_LOG_SIZE {
-        let fname = base.join(format!("{}.{}", name, MAX_CONFIG_LOGS));
-        match remove_file(&fname) {
+        let lastname = base.join(format!("{}.{}", name, MAX_CONFIG_LOGS));
+        match remove_file(&lastname) {
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => {
-                error!("Can't remove log file {:?}: {}", fname, e);
+                error!("Can't remove log file {:?}: {}", lastname, e);
             }
             Ok(()) => {
-                debug!("Removed {:?}", fname);
+                debug!("Removed {:?}", lastname);
             }
         };
-        let mut prevname = fname.clone();
-        for i in (MAX_CONFIG_LOGS-1)..0 {
-            let fname = base.join(format!("{}.{}", name, i));
-            match rename(&fname, &prevname) {
+        let mut prevname = lastname;
+        for i in (1..MAX_CONFIG_LOGS).rev() {
+            let curname = base.join(format!("{}.{}", name, i));
+            match rename(&curname, &prevname) {
                 Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
                 Err(e) => {
-                    error!("Can't rename log file {:?}: {}", fname, e);
+                    error!("Can't rename log file {:?}: {}", curname, e);
                 }
                 Ok(()) => {
-                    debug!("Renamed {:?}", fname);
+                    debug!("Renamed {:?}", curname);
                 }
             };
-            prevname = fname;
+            prevname = curname;
         }
-        match rename(&fname, &prevname) {
+        match rename(&target_name, &prevname) {
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => {
-                error!("Can't rename log file {:?}: {}", fname, e);
+                error!("Can't rename log file {:?}: {}", target_name, e);
             }
             Ok(()) => {
-                debug!("Renamed {:?}", fname);
+                debug!("Renamed {:?}", target_name);
             }
         };
         // reopen same path
         OpenOptions::new().create(true).write(true).append(true)
-           .open(base.join(name))
+           .open(target_name)
     } else {
         Ok(file)
     }
