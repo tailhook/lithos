@@ -10,8 +10,8 @@ extern crate serde_json;
 
 use std::env;
 use std::rc::Rc;
-use std::io::{BufReader, BufRead};
-use std::fs::{File, remove_dir_all};
+use std::io::{self, BufReader, BufRead};
+use std::fs::{File, remove_dir_all, remove_file};
 use std::path::{PathBuf, Path};
 use std::process::exit;
 use std::collections::HashSet;
@@ -47,6 +47,12 @@ struct LogFiles<'a> {
     idx: u32,
 }
 
+struct ScanResult {
+    images: HashSet<PathBuf>,
+    image_dirs: HashSet<PathBuf>,
+    unused_logs: Vec<PathBuf>,
+}
+
 
 fn main() {
 
@@ -59,6 +65,7 @@ fn main() {
     let mut ver_min = 0;
     let mut ver_max = 1000;
     let mut action = Action::Used;
+    let mut clean_logs = false;
     let mut days = None::<u32>;
     {
         let mut ap = ArgumentParser::new();
@@ -95,6 +102,10 @@ fn main() {
             "Show unused images")
           .add_option(&["--delete-unused"], StoreConst(Action::DeleteUnused),
             "Delete unused images");
+        ap.refer(&mut clean_logs)
+          .add_option(&["--clean-logs"], StoreConst(true),
+            "In combination with `--unused` shows unused logs, \
+             in combination with `--delete-unused` deletes them.");
         ap.add_option(&["--version"],
             Print(env!("CARGO_PKG_VERSION").to_string()),
             "Show version of the lithos");
@@ -109,10 +120,10 @@ fn main() {
         }
     };
     let tm = days.map(|days| now_utc() - Duration::days(days as i64));
-    let (used, dirs) = match find_used_images(&master, &config_file,
+    let scan_result = match find_used_images(&master, &config_file,
         tm, ver_min, ver_max)
     {
-        Ok((used, dirs)) => (used, dirs),
+        Ok(scan_result) => scan_result,
         Err(e) => {
             error!("Error finding out used images: {}", e);
             exit(1);
@@ -120,12 +131,13 @@ fn main() {
     };
     match action {
         Action::Used => {
-            for i in used {
+            for i in &scan_result.images {
                 println!("{:?}", i);
             }
         }
         Action::Unused => {
-            let unused = find_unused(&used, &dirs)
+            let unused = find_unused(&scan_result.images,
+                                     &scan_result.image_dirs)
                 .map_err(|e| {
                     error!("Error finding unused images: {:?}", e);
                     exit(2);
@@ -134,9 +146,17 @@ fn main() {
             for i in unused {
                 println!("{:?}", i);
             }
+            if clean_logs {
+                for log in scan_result.unused_logs {
+                    if log.exists() {
+                        println!("{:?}", log);
+                    }
+                }
+            }
         }
         Action::DeleteUnused => {
-            let unused = find_unused(&used, &dirs)
+            let unused = find_unused(&scan_result.images,
+                                     &scan_result.image_dirs)
                 .map_err(|e| {
                     error!("Error finding unused images: {:?}", e);
                     exit(2);
@@ -148,6 +168,20 @@ fn main() {
                 }
                 remove_dir_all(&i)
                     .map_err(|e| error!("Error removing {:?}: {}", i, e)).ok();
+            }
+            if clean_logs {
+                for log in scan_result.unused_logs {
+                    if verbose {
+                        println!("Deleting log {:?}", log);
+                    }
+                    match remove_file(&log) {
+                        Ok(()) => {}
+                        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
+                        Err(ref e) => {
+                            error!("Can't remove log {:?}: {}", log, e);
+                        }
+                    }
+                }
             }
         }
     }
@@ -230,12 +264,13 @@ fn parse_line(line: &str) -> Result<(Tm, BTreeMap<String, ChildConfig>), ()> {
 
 fn find_used_images(master: &MasterConfig, master_file: &Path,
     min_time: Option<Tm>, ver_min: u32, ver_max: u32)
-    -> Result<(HashSet<PathBuf>, HashSet<PathBuf>), String>
+    -> Result<ScanResult, String>
 {
     let config_dir = master_file.parent().unwrap().join(&master.sandboxes_dir);
     let mut bad_dirs = HashSet::new();
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
+    let mut unused_logs = Vec::new();
     let childval = ChildConfig::mapping_validator();
     scan_dir::ScanDir::files().read(&config_dir, |iter| -> Result<(), String> {
         let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
@@ -265,7 +300,9 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             }
 
             let mut configs = VecDeque::<Candidate>::new();
-            for logname in LogFiles::new(&master.config_log_dir, &sandbox_name) {
+            let mut log_iter = LogFiles::new(
+                &master.config_log_dir, &sandbox_name);
+            for logname in log_iter.by_ref() {
                 let logname = Rc::new(logname);
                 let log = try!(File::open(&*logname)
                     .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
@@ -291,7 +328,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                         configs.pop_front();
                     }
                 }
-                if configs.len() as u32 > ver_max ||
+                if configs.len() as u32 >= ver_max ||
                     matches!((configs.front(), min_time),
                         (Some(&Candidate::Config(tm, _)), Some(min_time))
                                               if tm > min_time)
@@ -315,7 +352,6 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 match *cand {
                     Candidate::Config(_, ref cfg) => {
                         for child in cfg.values() {
-                            // Current are always added
                             images.insert(
                                 sandbox_config.image_dir
                                 .join(&child.image));
@@ -326,6 +362,9 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                     }
                 }
             }
+            for logname in log_iter {
+                unused_logs.push(logname);
+            }
         }
         Ok(())
     }).map_err(|e| format!("Read dir error: {}", e))??;
@@ -335,5 +374,5 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             dir);
         image_dirs.remove(dir);
     }
-    Ok((images, image_dirs))
+    Ok(ScanResult { images, image_dirs, unused_logs })
 }
