@@ -18,8 +18,8 @@ extern crate scan_dir;
 use std::env;
 use std::rc::Rc;
 use std::mem::replace;
-use std::fs::{File, OpenOptions, metadata};
-use std::io::{stderr, Read, Write};
+use std::fs::{File, OpenOptions, metadata, remove_file, rename};
+use std::io::{self, stderr, Read, Write};
 use std::str::{FromStr};
 use std::fs::{remove_dir};
 use std::net::SocketAddr;
@@ -43,24 +43,27 @@ use signal::exec_handler;
 use signal::trap::Trap;
 use unshare::{Command, reap_zombies, Namespace};
 
-use lithos::setup::{clean_child, init_logging};
-use lithos::master_config::{MasterConfig, create_master_dirs};
-use lithos::sandbox_config::SandboxConfig;
+use lithos::cgroup;
 use lithos::child_config::ChildConfig;
 use lithos::container_config::{ContainerConfig, TcpPort, DEFAULT_KILL_TIMEOUT};
-use lithos::container_config::{InstantiatedConfig, Variables};
 use lithos::container_config::ContainerKind::Daemon;
+use lithos::container_config::{InstantiatedConfig, Variables};
+use lithos::id_map::IdMapExt;
+use lithos::master_config::{MasterConfig, create_master_dirs};
+use lithos::MAX_CONFIG_LOGS;
+use lithos::sandbox_config::SandboxConfig;
+use lithos::setup::{clean_child, init_logging};
+use lithos::timer_queue::Queue;
+use lithos_tree_options::Options;
+use lithos::utils;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
-use lithos::cgroup;
-use lithos::id_map::IdMapExt;
-use lithos_tree_options::Options;
-use lithos::timer_queue::Queue;
-use lithos::utils;
 
 use self::Timeout::*;
 
 mod lithos_tree_options;
+
+pub const CONFIG_LOG_SIZE: u64 = 10_485_760;
 
 struct Process {
     restart_min: Instant,
@@ -744,6 +747,53 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
     .unwrap_or(HashMap::new())
 }
 
+fn open_config_log(base: &Path, name: &str) -> Result<File, io::Error> {
+    let target_name = base.join(name);
+    let file = OpenOptions::new().create(true).write(true).append(true)
+        .open(&target_name)?;
+    let logmeta = file.metadata()?;
+    if logmeta.len() > CONFIG_LOG_SIZE {
+        let fname = base.join(format!("{}.{}", name, MAX_CONFIG_LOGS));
+        match remove_file(&fname) {
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                error!("Can't remove log file {:?}: {}", fname, e);
+            }
+            Ok(()) => {
+                debug!("Removed {:?}", fname);
+            }
+        };
+        let mut prevname = fname.clone();
+        for i in (MAX_CONFIG_LOGS-1)..0 {
+            let fname = base.join(format!("{}.{}", name, i));
+            match rename(&fname, &prevname) {
+                Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    error!("Can't rename log file {:?}: {}", fname, e);
+                }
+                Ok(()) => {
+                    debug!("Renamed {:?}", fname);
+                }
+            };
+            prevname = fname;
+        }
+        match rename(&fname, &prevname) {
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                error!("Can't rename log file {:?}: {}", fname, e);
+            }
+            Ok(()) => {
+                debug!("Renamed {:?}", fname);
+            }
+        };
+        // reopen same path
+        OpenOptions::new().create(true).write(true).append(true)
+           .open(base.join(name))
+    } else {
+        Ok(file)
+    }
+}
+
 fn read_subtree<'x>(master: &MasterConfig,
     bin: &Binaries, master_file: &Path,
     sandbox_name: &String, sandbox: &SandboxConfig,
@@ -758,9 +808,10 @@ fn read_subtree<'x>(master: &MasterConfig,
     debug!("Reading child config {:?}", cfg);
     parse_config(&cfg, &ChildConfig::mapping_validator(), &COptions::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
-            OpenOptions::new().create(true).write(true).append(true)
-            .open(master.config_log_dir.join(sandbox_name.clone() + ".log"))
-            .and_then(|mut f| {
+            open_config_log(
+                &master.config_log_dir,
+                &format!("{}.log", sandbox_name)
+            ).and_then(|mut f| {
                 // we want as atomic writes as possible, so format into a buf
                 let buf = format!("{} {}\n",
                     time::now_utc().rfc3339(),

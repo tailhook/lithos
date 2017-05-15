@@ -1,4 +1,5 @@
 #[macro_use] extern crate log;
+#[macro_use] extern crate matches;
 extern crate env_logger;
 extern crate argparse;
 extern crate quire;
@@ -22,9 +23,10 @@ use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
 use argparse::{Print};
 
-use lithos::master_config::MasterConfig;
-use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildConfig;
+use lithos::master_config::MasterConfig;
+use lithos::MAX_CONFIG_LOGS;
+use lithos::sandbox_config::SandboxConfig;
 
 
 #[derive(Clone, Copy, Debug)]
@@ -37,6 +39,12 @@ enum Action {
 enum Candidate {
     Config(Tm, BTreeMap<String, ChildConfig>),
     BrokenLine(Rc<PathBuf>, usize),
+}
+
+struct LogFiles<'a> {
+    base: &'a Path,
+    name: String,
+    idx: u32,
 }
 
 
@@ -145,6 +153,39 @@ fn main() {
     }
 }
 
+impl<'a> LogFiles<'a> {
+    fn new(path: &'a Path, name: &'a str) -> LogFiles<'a> {
+        LogFiles {
+            base: path,
+            name: format!("{}.log", name),
+            idx: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for LogFiles<'a> {
+    type Item = PathBuf;
+    fn next(&mut self) -> Option<PathBuf> {
+        if self.idx == 0 {
+            let result = self.base.join(&self.name);
+            self.idx += 1;
+            debug!("Trying {:?}: {}", result, result.exists());
+            if result.exists() {
+                return Some(result);
+            }
+        }
+        while self.idx < MAX_CONFIG_LOGS {
+            let result = self.base.join(format!("{}.{}", self.name, self.idx));
+            self.idx += 1;
+            debug!("Trying {:?}: {}", result, result.exists());
+            if result.exists() {
+                return Some(result);
+            }
+        }
+        return None;
+    }
+}
+
 fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
     -> Result<Vec<PathBuf>, scan_dir::Error>
 {
@@ -222,14 +263,11 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 info!("No current processes for {}", sandbox_name);
             }
 
-            let logname = Rc::new(master.config_log_dir
-                .join(format!("{}.log", sandbox_name)));
-            if logname.exists() {
-                // TODO(tailhook) look in log rotations
+            let mut configs = VecDeque::<Candidate>::new();
+            for logname in LogFiles::new(&master.config_log_dir, &sandbox_name) {
+                let logname = Rc::new(logname);
                 let log = try!(File::open(&*logname)
                     .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
-                let mut configs;
-                configs = VecDeque::<Candidate>::new();
                 for (line_no, line) in BufReader::new(log).lines().enumerate() {
                     let line = try!(line
                         .map_err(|e| format!("Readline error: {}", e)));
@@ -248,40 +286,45 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                         continue;
                     }
                     configs.push_back(cand);
-                    if configs.len() >= ver_max as usize {
+                    if configs.len() as u32 >= ver_max {
                         configs.pop_front();
                     }
                 }
-                min_time.map(|min_time| {
-                    while configs.len() > ver_min as usize {
-                        match configs.front() {
-                            Some(&Candidate::Config(tm, _)) if tm > min_time
-                            => {
-                                break;
-                            }
-                            _ => {}
+                if configs.len() as u32 > ver_max ||
+                    matches!((configs.front(), min_time),
+                        (Some(&Candidate::Config(tm, _)), Some(min_time))
+                                              if tm > min_time)
+                {
+                    break;
+                }
+            }
+            min_time.map(|min_time| {
+                while configs.len() > ver_min as usize {
+                    match configs.front() {
+                        Some(&Candidate::Config(tm, _)) if tm > min_time
+                        => {
+                            break;
                         }
-                        configs.pop_front();
+                        _ => {}
                     }
-                });
-                for cand in configs.iter() {
-                    match *cand {
-                        Candidate::Config(_, ref cfg) => {
-                            for child in cfg.values() {
-                                // Current are always added
-                                images.insert(
-                                    sandbox_config.image_dir
-                                    .join(&child.image));
-                            }
+                    configs.pop_front();
+                }
+            });
+            for cand in configs.iter() {
+                match *cand {
+                    Candidate::Config(_, ref cfg) => {
+                        for child in cfg.values() {
+                            // Current are always added
+                            images.insert(
+                                sandbox_config.image_dir
+                                .join(&child.image));
                         }
-                        Candidate::BrokenLine(..) => {
-                            return Err(format!("Can't reliably find out \
-                                used images for sandbox {}", sandbox_name));
-                        }
+                    }
+                    Candidate::BrokenLine(..) => {
+                        return Err(format!("Can't reliably find out \
+                            used images for sandbox {}", sandbox_name));
                     }
                 }
-            } else {
-                info!("No log for {} probably never used", sandbox_name);
             }
         }
         Ok(())
