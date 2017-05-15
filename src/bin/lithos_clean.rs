@@ -233,10 +233,11 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     -> Result<(HashSet<PathBuf>, HashSet<PathBuf>), String>
 {
     let config_dir = master_file.parent().unwrap().join(&master.sandboxes_dir);
+    let mut bad_dirs = HashSet::new();
     let mut images = HashSet::new();
     let mut image_dirs = HashSet::new();
     let childval = ChildConfig::mapping_validator();
-    scan_dir::ScanDir::files().read(&config_dir, |iter| {
+    scan_dir::ScanDir::files().read(&config_dir, |iter| -> Result<(), String> {
         let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
         for (entry, sandbox_fname) in yamls {
             let sandbox_name = &sandbox_fname[..sandbox_fname.len()-5];  // strip .yaml
@@ -321,13 +322,18 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                         }
                     }
                     Candidate::BrokenLine(..) => {
-                        return Err(format!("Can't reliably find out \
-                            used images for sandbox {}", sandbox_name));
+                        bad_dirs.insert(sandbox_config.image_dir.clone());
                     }
                 }
             }
         }
         Ok(())
     }).map_err(|e| format!("Read dir error: {}", e))??;
+
+    for dir in &bad_dirs {
+        error!("Can't reliably find out used images in the directory {:?}",
+            dir);
+        image_dirs.remove(dir);
+    }
     Ok((images, image_dirs))
 }
