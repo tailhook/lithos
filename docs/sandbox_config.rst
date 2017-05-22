@@ -116,4 +116,15 @@ Reference
     .. note:: Currently you may have uid-map either in a sandbox or in a
        container config, not both.
 
+.. opt:: used-images-list
+
+    (optional) A text file that is used by ``lithos_clean`` to keep images
+    alive. It's not used by any other means except ``lithos_clean`` utility.
+
+    Each line of the file should contain image name relative to the
+    ``image_dir``.
+
+    It's expected that the list is kept up by some orchestration system or
+    by deployment scripts or by any other tool meaningful for ops team.
+
 

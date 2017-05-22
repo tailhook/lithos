@@ -59,6 +59,7 @@ impl Decodable for Range {
 pub struct SandboxConfig {
     pub config_file: Option<PathBuf>,
     pub image_dir: PathBuf,
+    pub used_images_list: Option<PathBuf>,
     pub log_file: Option<PathBuf>,
     pub log_level: Option<String>,
     pub readonly_paths: BTreeMap<PathBuf, PathBuf>,
@@ -77,6 +78,7 @@ impl SandboxConfig {
         .member("config_file", Scalar::new().optional())
         .member("image_dir", Scalar::new().optional()
             .default("/var/lib/lithos/containers"))
+        .member("used_images_list", Scalar::new().optional())
         .member("log_file", Scalar::new().optional())
         .member("log_level", Scalar::new().optional())
         .member("readonly_paths", Mapping::new(

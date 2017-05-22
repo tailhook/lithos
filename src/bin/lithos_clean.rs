@@ -262,6 +262,122 @@ fn parse_line(line: &str) -> Result<(Tm, BTreeMap<String, ChildConfig>), ()> {
     ))
 }
 
+fn find_used_by_list(_master: &MasterConfig, _sandbox_name: &str,
+    sandbox_config: &SandboxConfig,
+    images: &mut HashSet<PathBuf>, bad_dirs: &mut HashSet<PathBuf>)
+{
+    let ref filename = sandbox_config.used_images_list.as_ref().unwrap();
+    let log = match File::open(filename) {
+        Ok(f) => BufReader::new(f),
+        Err(e) => {
+            error!("Can't read image list {:?}: {}", filename, e);
+            bad_dirs.insert(sandbox_config.image_dir.clone());
+            return;
+        }
+    };
+    for line in log.lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(e) => {
+                error!("Can't read image list {:?}: {}", filename, e);
+                bad_dirs.insert(sandbox_config.image_dir.clone());
+                return;
+            }
+        };
+        let image_name = line.trim();
+        if image_name.len() > 0 {
+            images.insert(Path::new(image_name).into());
+        }
+    }
+}
+
+fn find_used_by_log(master: &MasterConfig, sandbox_name: &str,
+    sandbox_config: &SandboxConfig,
+    min_time: Option<Tm>, ver_min: u32, ver_max: u32,
+    images: &mut HashSet<PathBuf>, unused_logs: &mut Vec<PathBuf>,
+    bad_dirs: &mut HashSet<PathBuf>)
+{
+    let mut configs = VecDeque::<Candidate>::new();
+    let mut log_iter = LogFiles::new(
+        &master.config_log_dir, &sandbox_name);
+    for logname in log_iter.by_ref() {
+        let logname = Rc::new(logname);
+        let log = match File::open(&*logname) {
+            Ok(f) => f,
+            Err(e) => {
+                error!("Can't read log file {:?}: {}", logname, e);
+                bad_dirs.insert(sandbox_config.image_dir.clone());
+                return;
+            }
+        };
+
+        for (line_no, line) in BufReader::new(log).lines().enumerate() {
+            let line = match line {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("Readline error {:?}: {}", logname, e);
+                    bad_dirs.insert(sandbox_config.image_dir.clone());
+                    return;
+                }
+            };
+            if line.trim() == "" {
+                continue; // Probably last line
+            }
+            let cand = match parse_line(&line) {
+                Ok((tm, cfg)) => Candidate::Config(tm, cfg),
+                Err(()) => {
+                    warn!("Broken line {}: {}",
+                        logname.display(), line_no);
+                    Candidate::BrokenLine(logname.clone(), line_no)
+                }
+            };
+            if configs.back() == Some(&cand) {
+                continue;
+            }
+            configs.push_back(cand);
+            if configs.len() as u32 > ver_max {
+                configs.pop_front();
+            }
+        }
+        if configs.len() as u32 >= ver_max ||
+            matches!((configs.front(), min_time),
+                (Some(&Candidate::Config(tm, _)), Some(min_time))
+                                      if tm > min_time)
+        {
+            break;
+        }
+    }
+    min_time.map(|min_time| {
+        while configs.len() > ver_min as usize {
+            match configs.front() {
+                Some(&Candidate::Config(tm, _)) if tm > min_time
+                => {
+                    break;
+                }
+                _ => {}
+            }
+            configs.pop_front();
+        }
+    });
+    for cand in configs.iter() {
+        match *cand {
+            Candidate::Config(_, ref cfg) => {
+                for child in cfg.values() {
+                    images.insert(
+                        sandbox_config.image_dir
+                        .join(&child.image));
+                }
+            }
+            Candidate::BrokenLine(..) => {
+                bad_dirs.insert(sandbox_config.image_dir.clone());
+            }
+        }
+    }
+    for logname in log_iter {
+        unused_logs.push(logname);
+    }
+}
+
 fn find_used_images(master: &MasterConfig, master_file: &Path,
     min_time: Option<Tm>, ver_min: u32, ver_max: u32)
     -> Result<ScanResult, String>
@@ -299,71 +415,13 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 info!("No current processes for {}", sandbox_name);
             }
 
-            let mut configs = VecDeque::<Candidate>::new();
-            let mut log_iter = LogFiles::new(
-                &master.config_log_dir, &sandbox_name);
-            for logname in log_iter.by_ref() {
-                let logname = Rc::new(logname);
-                let log = try!(File::open(&*logname)
-                    .map_err(|e| format!("Can't read log file {:?}: {}", logname, e)));
-                for (line_no, line) in BufReader::new(log).lines().enumerate() {
-                    let line = try!(line
-                        .map_err(|e| format!("Readline error: {}", e)));
-                    if line.trim() == "" {
-                        continue; // Probably last line
-                    }
-                    let cand = match parse_line(&line) {
-                        Ok((tm, cfg)) => Candidate::Config(tm, cfg),
-                        Err(()) => {
-                            warn!("Broken line {}: {}",
-                                logname.display(), line_no);
-                            Candidate::BrokenLine(logname.clone(), line_no)
-                        }
-                    };
-                    if configs.back() == Some(&cand) {
-                        continue;
-                    }
-                    configs.push_back(cand);
-                    if configs.len() as u32 > ver_max {
-                        configs.pop_front();
-                    }
-                }
-                if configs.len() as u32 >= ver_max ||
-                    matches!((configs.front(), min_time),
-                        (Some(&Candidate::Config(tm, _)), Some(min_time))
-                                              if tm > min_time)
-                {
-                    break;
-                }
-            }
-            min_time.map(|min_time| {
-                while configs.len() > ver_min as usize {
-                    match configs.front() {
-                        Some(&Candidate::Config(tm, _)) if tm > min_time
-                        => {
-                            break;
-                        }
-                        _ => {}
-                    }
-                    configs.pop_front();
-                }
-            });
-            for cand in configs.iter() {
-                match *cand {
-                    Candidate::Config(_, ref cfg) => {
-                        for child in cfg.values() {
-                            images.insert(
-                                sandbox_config.image_dir
-                                .join(&child.image));
-                        }
-                    }
-                    Candidate::BrokenLine(..) => {
-                        bad_dirs.insert(sandbox_config.image_dir.clone());
-                    }
-                }
-            }
-            for logname in log_iter {
-                unused_logs.push(logname);
+            if sandbox_config.used_images_list.is_some() {
+                find_used_by_list(master, sandbox_name, &sandbox_config,
+                    &mut images, &mut bad_dirs);
+            } else {
+                find_used_by_log(master, sandbox_name, &sandbox_config,
+                    min_time, ver_min, ver_max,
+                    &mut images, &mut unused_logs, &mut bad_dirs);
             }
         }
         Ok(())
