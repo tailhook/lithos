@@ -1,27 +1,28 @@
-#[macro_use] extern crate log;
-#[macro_use] extern crate matches;
-extern crate env_logger;
 extern crate argparse;
-extern crate quire;
+extern crate env_logger;
+extern crate humantime;
 extern crate lithos;
-extern crate time;
+extern crate quire;
 extern crate scan_dir;
 extern crate serde_json;
+extern crate time;
+#[macro_use] extern crate log;
+#[macro_use] extern crate matches;
 
+use std::collections::BTreeMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::env;
-use std::rc::Rc;
-use std::io::{self, BufReader, BufRead};
 use std::fs::{File, remove_dir_all, remove_file};
+use std::io::{self, BufReader, BufRead};
 use std::path::{PathBuf, Path};
 use std::process::exit;
-use std::collections::HashSet;
-use std::collections::BTreeMap;
-use std::collections::VecDeque;
+use std::rc::Rc;
+use std::time::{SystemTime, Duration, UNIX_EPOCH};
 
-use time::{Tm, Duration, now_utc};
 use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
-use argparse::{Print};
+use argparse::{Print, StoreOption};
 
 use lithos::child_config::ChildConfig;
 use lithos::master_config::MasterConfig;
@@ -37,7 +38,7 @@ enum Action {
 }
 
 enum Candidate {
-    Config(Tm, BTreeMap<String, ChildConfig>),
+    Config(SystemTime, BTreeMap<String, ChildConfig>),
     BrokenLine(Rc<PathBuf>, usize),
 }
 
@@ -67,6 +68,7 @@ fn main() {
     let mut action = Action::Used;
     let mut clean_logs = false;
     let mut days = None::<u32>;
+    let mut keep_recent = None::<humantime::Duration>;
     {
         let mut ap = ArgumentParser::new();
         ap.set_description("Show used/unused images and clean if needed");
@@ -75,6 +77,14 @@ fn main() {
             "Name of the global configuration file \
              (default /etc/lithos/master.yaml)")
           .metavar("FILE");
+        ap.refer(&mut keep_recent)
+          .add_option(&["--keep-recent"], StoreOption,
+            "Keep directories having recently changed ctime or mtime.
+             This option is useful to remove race condition between
+             uploading an image and deleting it. For example,
+             ``--keep-recent=1h`` would not delete directories created within
+             1 hour from now.")
+          .metavar("DELTA");
         ap.refer(&mut days)
           .add_option(&["-D", "--history-days"], ParseOption,
             r"Keep images that used no more than DAYS ago.
@@ -119,7 +129,9 @@ fn main() {
             exit(1);
         }
     };
-    let tm = days.map(|days| now_utc() - Duration::days(days as i64));
+    let tm = days.map(|days| {
+        SystemTime::now() - Duration::new((days*86400) as u64, 0)
+    });
     let scan_result = match find_used_images(&master, &config_file,
         tm, ver_min, ver_max)
     {
@@ -137,7 +149,8 @@ fn main() {
         }
         Action::Unused => {
             let unused = find_unused(&scan_result.images,
-                                     &scan_result.image_dirs)
+                                     &scan_result.image_dirs,
+                                     keep_recent.map(|x| *x))
                 .map_err(|e| {
                     error!("Error finding unused images: {:?}", e);
                     exit(2);
@@ -156,7 +169,8 @@ fn main() {
         }
         Action::DeleteUnused => {
             let unused = find_unused(&scan_result.images,
-                                     &scan_result.image_dirs)
+                                     &scan_result.image_dirs,
+                                     keep_recent.map(|x| *x))
                 .map_err(|e| {
                     error!("Error finding unused images: {:?}", e);
                     exit(2);
@@ -220,9 +234,11 @@ impl<'a> Iterator for LogFiles<'a> {
     }
 }
 
-fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
+fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>,
+               keep_recent: Option<Duration>)
     -> Result<Vec<PathBuf>, scan_dir::Error>
 {
+    let cut_off = keep_recent.map(|x| SystemTime::now() - x);
     let mut unused = Vec::new();
     for dir in dirs.iter() {
         if !dir.exists() {
@@ -233,6 +249,28 @@ fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>)
             for (entry, _) in iter {
                 let path = entry.path().to_path_buf();
                 if !used.contains(&path) {
+                    if let Some(cut) = cut_off {
+                        match path.metadata() {
+                            Ok(m) => {
+                                let skip = m.created().map(|x| x > cut)
+                                    // allow FSs with no `birthtime`
+                                    .unwrap_or(false) ||
+                                    m.modified().map(|x| x > cut)
+                                    .map_err(|e| error!(
+                                        "Can't read mtime {:?}: {}", path, e))
+                                    // no `mtime` is something wrong
+                                    // skip it for safety
+                                    .unwrap_or(true);
+                                if skip {
+                                    continue;
+                                }
+                            }
+                            Err(e) => {
+                                error!("Can't stat {:?}: {}", path, e);
+                                continue;
+                            }
+                        }
+                    }
                     unused.push(path);
                 }
             }
@@ -252,12 +290,15 @@ impl PartialEq for Candidate {
     }
 }
 
-fn parse_line(line: &str) -> Result<(Tm, BTreeMap<String, ChildConfig>), ()> {
+fn parse_line(line: &str)
+    -> Result<(SystemTime, BTreeMap<String, ChildConfig>), ()>
+{
     let mut iter = line.splitn(2, " ");
     let date = iter.next().ok_or(())?;
     let config = iter.next().ok_or(())?;
+    let time = time::strptime(date, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?;
     Ok((
-        time::strptime(date, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?,
+        UNIX_EPOCH + Duration::new(time.to_timespec().sec as u64, 0),
         serde_json::from_str(config).map_err(|_| ())?,
     ))
 }
@@ -293,7 +334,7 @@ fn find_used_by_list(_master: &MasterConfig, _sandbox_name: &str,
 
 fn find_used_by_log(master: &MasterConfig, sandbox_name: &str,
     sandbox_config: &SandboxConfig,
-    min_time: Option<Tm>, ver_min: u32, ver_max: u32,
+    min_time: Option<SystemTime>, ver_min: u32, ver_max: u32,
     images: &mut HashSet<PathBuf>, unused_logs: &mut Vec<PathBuf>,
     bad_dirs: &mut HashSet<PathBuf>)
 {
@@ -379,7 +420,7 @@ fn find_used_by_log(master: &MasterConfig, sandbox_name: &str,
 }
 
 fn find_used_images(master: &MasterConfig, master_file: &Path,
-    min_time: Option<Tm>, ver_min: u32, ver_max: u32)
+    min_time: Option<SystemTime>, ver_min: u32, ver_max: u32)
     -> Result<ScanResult, String>
 {
     let config_dir = master_file.parent().unwrap().join(&master.sandboxes_dir);
