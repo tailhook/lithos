@@ -808,18 +808,20 @@ fn read_subtree<'x>(master: &MasterConfig,
     debug!("Reading child config {:?}", cfg);
     parse_config(&cfg, &ChildConfig::mapping_validator(), &COptions::default())
         .map(|cfg: BTreeMap<String, ChildConfig>| {
-            open_config_log(
-                &master.config_log_dir,
-                &format!("{}.log", sandbox_name)
-            ).and_then(|mut f| {
-                // we want as atomic writes as possible, so format into a buf
-                let buf = format!("{} {}\n",
-                    time::now_utc().rfc3339(),
-                    to_string(&cfg).unwrap());
-                f.write_all(buf.as_bytes())
-            })
-            .map_err(|e| error!("Error writing config log: {}", e))
-            .ok();
+            if let Some(ref config_log_dir) = master.config_log_dir {
+                open_config_log(config_log_dir,
+                                &format!("{}.log", sandbox_name))
+                .and_then(|mut f| {
+                    // we want as atomic writes as possible,
+                    // so format into a buf
+                    let buf = format!("{} {}\n",
+                        time::now_utc().rfc3339(),
+                        to_string(&cfg).unwrap());
+                    f.write_all(buf.as_bytes())
+                })
+                .map_err(|e| error!("Error writing config log: {}", e))
+                .ok();
+            }
             cfg
         })
         .map_err(|e| warn!("Can't read config {:?}: {}", cfg, e))

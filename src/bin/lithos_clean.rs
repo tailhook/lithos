@@ -340,7 +340,7 @@ fn find_used_by_log(master: &MasterConfig, sandbox_name: &str,
 {
     let mut configs = VecDeque::<Candidate>::new();
     let mut log_iter = LogFiles::new(
-        &master.config_log_dir, &sandbox_name);
+        master.config_log_dir.as_ref().unwrap(), &sandbox_name);
     for logname in log_iter.by_ref() {
         let logname = Rc::new(logname);
         let log = match File::open(&*logname) {
@@ -459,10 +459,14 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             if sandbox_config.used_images_list.is_some() {
                 find_used_by_list(master, sandbox_name, &sandbox_config,
                     &mut images, &mut bad_dirs);
-            } else {
+            } else if master.config_log_dir.is_some() {
                 find_used_by_log(master, sandbox_name, &sandbox_config,
                     min_time, ver_min, ver_max,
                     &mut images, &mut unused_logs, &mut bad_dirs);
+            } else {
+                error!("Neither `config-log-dir` nor `used-images-list` is \
+                        set for sandbox {:?}. Can't clean images.",
+                        sandbox_name);
             }
         }
         Ok(())

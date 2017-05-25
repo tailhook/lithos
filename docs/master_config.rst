@@ -79,6 +79,22 @@ anyway. Here is the reference of the parameters along with the default values:
    when it's safe to clean directories. You may also reconstruct
    processes configuration at any point in time using this directory.
 
+   .. versionchanged:: 0.10.2
+
+      Parameter can be ``null``:
+
+      .. code-block:: yaml
+
+         config-log-dir: null
+
+      In this case no configuration logging is done. This is mainly useful if
+      you track configurations and versions by some other means.
+
+      .. note:: This is enabled by default for backwards-compatibility reasons.
+         We consider resetting this value to ``null`` by default
+         in ``lithos 1.0`` as this parameter is not as useful as were expected.
+
+
 .. opt:: stdio-log-dir
 
    (default ``/var/log/lithos/stderr``) The directory where stderr of the

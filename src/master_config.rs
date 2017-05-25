@@ -13,7 +13,7 @@ pub struct MasterConfig {
     pub mount_dir: PathBuf,
     pub devfs_dir: PathBuf,
     pub default_log_dir: PathBuf,
-    pub config_log_dir: PathBuf,
+    pub config_log_dir: Option<PathBuf>,
     pub stdio_log_dir: PathBuf,
     pub log_file: PathBuf,
     pub syslog_facility: Option<String>,
@@ -38,7 +38,7 @@ impl MasterConfig {
         .member("syslog_app_name", Scalar::new().default("lithos"))
         .member("log_file", Scalar::new().default("master.log"))
         .member("log_level", Scalar::new().default("warn"))
-        .member("config_log_dir", Scalar::new()
+        .member("config_log_dir", Scalar::new().optional()
             .default("/var/log/lithos/config"))
         .member("stdio_log_dir", Scalar::new()
             .default("/var/log/lithos/stderr"))
@@ -57,8 +57,10 @@ pub fn create_master_dirs(cfg: &MasterConfig) -> Result<(), String> {
         .map_err(|e| format!("Cant create mount-dir: {}", e)));
     try!(ensure_dir(&cfg.default_log_dir)
         .map_err(|e| format!("Cant create log dir: {}", e)));
-    try!(ensure_dir(&cfg.config_log_dir)
-        .map_err(|e| format!("Cant create configuration log dir: {}", e)));
+    if let Some(ref config_log_dir) = cfg.config_log_dir {
+        ensure_dir(config_log_dir)
+            .map_err(|e| format!("Cant create configuration log dir: {}", e))?;
+    }
     try!(ensure_dir(&cfg.stdio_log_dir)
         .map_err(|e| format!("Cant create stdio log dir: {}", e)));
     return Ok(());
