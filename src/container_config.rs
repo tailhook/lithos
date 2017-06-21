@@ -17,6 +17,7 @@ pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
 
 lazy_static! {
     static ref VARIABLE_REGEX: Regex = Regex::new(r#"@\{([^}]*)\}"#).unwrap();
+    static ref NAME_REGEX: Regex = Regex::new(r#"^[0-9a-zA-Z_-]+$"#).unwrap();
 }
 
 
@@ -85,6 +86,7 @@ pub struct TcpPort {
 #[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
 pub enum Variable {
     TcpPort,
+    Name,
     Choice(Vec<String>),
 }
 
@@ -163,6 +165,7 @@ impl ContainerConfig {
             Scalar::new(),
             Enum::new()
                 .option("TcpPort", Nothing)
+                .option("Name", Nothing)
                 .option("Choice", Sequence::new(Scalar::new()))
         ))
         .member("metadata", Anything)
@@ -326,6 +329,13 @@ impl Variable {
                 if !in_range(&sandbox.allow_tcp_ports, port as u32) {
                     return Err(format!(
                         "TcpPort {:?} is not in allowed range", port));
+                }
+            }
+            Variable::Name => {
+                if !NAME_REGEX.is_match(value) {
+                    return Err(format!("Value {:?} contains characters that \
+                        are invalid for names (alphanumeric, `-` and `_`)",
+                        value));
                 }
             }
             Variable::Choice(ref choices) => {

@@ -55,6 +55,10 @@ TcpPort
 Choice
     Allows a value from a fixed set of choices
     (example: ``!Choice ["high-priority", "low-priority"]``)
+Name
+    Allows a value that matches regex ``^[0-9a-zA-Z_-]+$``. Useful for passing
+    names of things into a script without having a chance to keep value
+    unescaped when passing somewhere within a script or using it as a filename.
 
 All entries of ``@{variable_name}`` are substituted in the following fields:
 
