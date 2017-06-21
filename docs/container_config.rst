@@ -60,6 +60,8 @@ Name
     names of things into a script without having a chance to keep value
     unescaped when passing somewhere within a script or using it as a filename.
 
+    .. versionadded:: 0.10.3
+
 All entries of ``@{variable_name}`` are substituted in the following fields:
 
 1. :opt:`arguments`
@@ -102,6 +104,9 @@ Reference
     itself you can distinguish how it is run by ``/cmd.`` in ``LITHOS_NAME``
     or cgroup name or better you can pass
     :ref:`variable <container_variables>` to a specific command and/or daemon.
+
+    .. versionadded:: 0.10.3
+       ``ContainerOrDaemon`` mode
 
 .. opt:: user-id
 
