@@ -11,6 +11,7 @@ use id_map::{IdMap, IdMapExt, mapping_validator};
 
 use sandbox_config::SandboxConfig;
 use utils::{in_range};
+use child_config::ChildKind;
 
 
 pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
@@ -57,6 +58,22 @@ pub enum Volume {
 pub enum ContainerKind {
     Daemon,
     Command,
+    CommandOrDaemon,
+}
+
+impl ContainerKind {
+    pub fn matches(self, child_kind: ChildKind) -> bool {
+        use container_config::ContainerKind as L;
+        use child_config::ChildKind as R;
+        match (self, child_kind) {
+            (L::Command, R::Command) => true,
+            (L::Daemon, R::Daemon) => true,
+            (L::CommandOrDaemon, R::Command) => true,
+            (L::CommandOrDaemon, R::Daemon) => true,
+            (L::Command, R::Daemon) => false,
+            (L::Daemon, R::Command) => false,
+        }
+    }
 }
 
 #[derive(RustcDecodable, RustcEncodable, Clone)]

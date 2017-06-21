@@ -4,7 +4,12 @@ use std::collections::HashMap;
 use quire::validate::{Structure, Scalar, Numeric, Mapping};
 use quire::{Options, parse_string};
 
-use super::container_config::ContainerKind;
+#[derive(RustcDecodable, RustcEncodable, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ChildKind {
+    Daemon,
+    Command,
+}
 
 #[derive(RustcDecodable, Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChildConfig {
@@ -13,7 +18,7 @@ pub struct ChildConfig {
     pub config: String,
     #[serde(skip_serializing_if="HashMap::is_empty", default)]
     pub variables: HashMap<String, String>,
-    pub kind: ContainerKind,
+    pub kind: ChildKind,
 }
 
 impl ChildConfig {

@@ -45,8 +45,8 @@ use unshare::{Command, reap_zombies, Namespace};
 
 use lithos::cgroup;
 use lithos::child_config::ChildConfig;
+use lithos::child_config::ChildKind::Daemon;
 use lithos::container_config::{ContainerConfig, TcpPort, DEFAULT_KILL_TIMEOUT};
-use lithos::container_config::ContainerKind::Daemon;
 use lithos::container_config::{InstantiatedConfig, Variables};
 use lithos::id_map::IdMapExt;
 use lithos::master_config::{MasterConfig, create_master_dirs};

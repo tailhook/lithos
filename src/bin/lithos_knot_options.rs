@@ -9,7 +9,7 @@ use argparse::{ArgumentParser, StoreOption, Store, Parse, List, StoreTrue};
 use argparse::{Print};
 
 use lithos::child_config::ChildConfig;
-use lithos::container_config::ContainerKind::Daemon;
+use lithos::child_config::ChildKind::Daemon;
 
 
 pub struct Options {

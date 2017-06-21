@@ -89,13 +89,19 @@ Reference
 
 .. opt:: kind
 
-    One of ``Daemon`` (default) and ``Command``.
+    One of ``Daemon`` (default), ``Command`` or ``CommandOrDaemon``.
 
     The ``Daemon`` is long-running process that is monitored by supervisor.
 
     The ``Command`` things are just one-off tasks, for example to initialize
     local file system data, or to check health of daemon process. The
     ``Command`` things are run by ``lithos_cmd`` utility
+
+    The ``CommandOrDaemon`` may be used in both ways, based on how it was
+    declared in :ref:`Process Config <process_config>`. In the command
+    itself you can distinguish how it is run by ``/cmd.`` in ``LITHOS_NAME``
+    or cgroup name or better you can pass
+    :ref:`variable <container_variables>` to a specific command and/or daemon.
 
 .. opt:: user-id
 
