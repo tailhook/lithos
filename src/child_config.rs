@@ -51,7 +51,7 @@ mod test {
     use std::collections::HashMap;
     use std::str::FromStr;
     use super::ChildConfig;
-    use container_config::ContainerKind::Daemon;
+    use super::ChildKind::Daemon;
     use serde_json::{to_string, from_str};
 
     #[test]
