@@ -327,7 +327,7 @@ fn find_used_by_list(_master: &MasterConfig, _sandbox_name: &str,
         };
         let image_name = line.trim();
         if image_name.len() > 0 {
-            images.insert(Path::new(image_name).into());
+            images.insert(sandbox_config.image_dir.join(image_name));
         }
     }
 }
