@@ -113,7 +113,7 @@ fn run(options: Options) -> Result<(), String>
 
     let container: ContainerConfig;
     container = try!(read_local_config(&mount_dir, &options.config));
-    if container.kind.matches(options.config.kind) {
+    if !container.kind.matches(options.config.kind) {
         return Err(format!("Container type mismatch {:?} != {:?}",
               container.kind, options.config.kind));
     }
