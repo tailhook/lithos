@@ -120,7 +120,8 @@ pub fn ensure_in_group(name: &String, controllers: &Vec<String>)
         if metadata(&fullpath).is_err() {
             debug!("Creating cgroup {:?}", fullpath);
             try!(create_dir(&fullpath)
-                 .map_err(|e| format!("Error creating cgroup dir: {}", e)));
+                 .map_err(|e| format!("Error creating cgroup dir {:?}: {}",
+                                      fullpath, e)));
         } else {
             debug!("CGroup {} already exists", fullpath.display());
         }
