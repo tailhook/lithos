@@ -103,14 +103,14 @@ containers:
   xenial:
     setup:
     - !Ubuntu xenial
-    - &pkgs !Install [make, gcc, libc-dev, ca-certificates, git, lsb-release]
+    - &pkgs !Install [make, gcc, libc-dev, ca-certificates, git, lsb-release, vim]
     - &rust !TarInstall
-      url: https://static.rust-lang.org/dist/rust-1.17.0-x86_64-unknown-linux-gnu.tar.gz
+      url: https://static.rust-lang.org/dist/rust-1.19.0-x86_64-unknown-linux-gnu.tar.gz
       script: "./install.sh --prefix=/usr --components=rustc,cargo \
                --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - &bulk !Tar
-      url: "http://files.zerogw.com/bulk/bulk-0.4.5.tar.gz"
-      sha256: 8ee5a5f6386c1b408543a82bf22f184ddbc8add8e5eb6cb6b7e8492e5d4036e3
+      url: "https://github.com/tailhook/bulk/releases/download/v0.4.9/bulk-v0.4.9.tar.gz"
+      sha256: 23471a9986274bb4b7098c03e2eb7e1204171869b72c45385fcee1c64db2d111
       path: /
 
     - !Sh cargo install --root=/usr cargo-outdated
@@ -145,7 +145,7 @@ containers:
     - *pkgs
     - *rust
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-std-1.17.0-x86_64-unknown-linux-musl.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-std-1.19.0-x86_64-unknown-linux-musl.tar.gz"
       script: "./install.sh --prefix=/musl \
                --components=rust-std-x86_64-unknown-linux-musl"
     - !Sh 'ln -s /musl/lib/rustlib/x86_64-unknown-linux-musl /usr/lib/rustlib/x86_64-unknown-linux-musl'
