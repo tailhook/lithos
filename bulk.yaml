@@ -75,9 +75,6 @@ versions:
   block-end: ^\[.*\]
   regex: ^version\s*=\s*"(\S+)"
 
-- file: web/webpack.config.js
-  regex: VERSION:\s*JSON\.stringify\("([^"]+)"\)
-
 - file: docs/conf.py
   regex: ^version\s*=\s*'(\S+)'
   partial-version: ^\d+\.\d+
