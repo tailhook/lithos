@@ -1,0 +1,54 @@
+language: rust
+rust: stable
+os: linux
+dist: trusty
+sudo: false
+addons:
+  apt:
+    packages:
+    - fakeroot
+    - musl-tools
+
+cache:
+- apt
+- cargo
+
+before_cache:
+- rm -r $TRAVIS_BUILD_DIR/target/debug
+
+script:
+- cargo build $CARGO_ARGS
+- cargo test $CARGO_ARGS
+
+jobs:
+  include:
+  - rust: stable
+  - rust: beta
+  - rust: nightly
+  # deploy
+  - stage: publish
+    env:
+    # CARGO_TOKEN
+    - secure: "s1jFwyOLzZELLLOQ6INKx05B6NiNHTvuh6k8Vrgz57Vcsf8021rdWnBAQxf84vMcxjmkpWasDPYCLmUVVYZW3AVCPEtKpxMrUbIUk1I/4F5mdfJvtVZSkfg9BL5cXigoq7ye9C75rTqjGgh+z1SnAf6DIslYYOu1yeFpA9W+Eek="
+    # GH_TOKEN
+    secure: "lugFTYZMCHe0sORskcN9Qx+2yFydDsedOrwW/HE7rO8fqJFNMk6fV0X//4w3VWQ8t/ZJjYG7kJmMtImP/rvD4WtFGl+ncOq7de56dTNTbryQBnYaFdm5SiOTSBYxTKqf+T46F19KonZbMaeAQZ3d9WAWd34ViMEMVZACacpZShQ="
+    install: true
+    before_deploy: |
+      mkdir -p dist
+
+      cargo publish --token=$CARGO_TOKEN
+
+      rustup target add x86_64-unknown-linux-musl
+      cargo build --target=x86_64-unknown-linux-musl --release
+      fakeroot sh -ecx '
+        install -D target/x86_64-unknown-linux-musl/release/lithos_check pkg/usr/bin/lithos_check
+        tar -C pkg -czf dist/lithos_check-static-$TRAVIS_TAG.tar.gz usr
+      '
+    deploy:
+      provider: releases
+      api_key:
+        secure: "si7BVNFjW3gny3nQoIt/yMLjS848BeWbBNy6dVgKUhKxqzq7lgvXsLMIMtO6isc7Zwqzg6QR83usrSnUw+qL8X6fKvicce5gxroF17aBXOQhXU4PEBCX8hB8cCQGhWsogPEdJr0Xl/zIrbBKE3Xg8LxSvaLjIzOubSkwGhNKiZg="
+      file: "dist/lithos_check-static-$TRAVIS_TAG.tar.gz"
+      skip_cleanup: true
+      on:
+        tags: true
