@@ -317,7 +317,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
     }).map_err(|e| error!("Error reading /proc: {}", e)).ok();
 }
 
-fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
+fn remove_dangling_state_dirs(names: &HashSet<&str>, master: &MasterConfig)
 {
     let pid_regex = Regex::new(r"\.(\d+)$").unwrap();
     let master = master.runtime_dir.join(&master.state_dir);
@@ -330,7 +330,7 @@ fn remove_dangling_state_dirs(names: &HashSet<String>, master: &MasterConfig)
                 for (entry, proc_name) in iter {
                     let name = format!("{}/{}", sandbox_name, proc_name);
                     debug!("Checking process dir: {}", name);
-                    if names.contains(&name) {
+                    if names.contains(&name[..]) {
                         valid_dirs += 1;
                         continue;
                     } else if proc_name.starts_with("cmd.") {
@@ -377,7 +377,7 @@ fn _rm_cgroup(dir: &Path) {
     }
 }
 
-fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
+fn remove_dangling_cgroups(names: &HashSet<&str>, master: &MasterConfig)
 {
     if master.cgroup_name.is_none() {
         return;
@@ -415,7 +415,7 @@ fn remove_dangling_cgroups(names: &HashSet<String>, master: &MasterConfig)
                     let name = format!("{}/{}",
                         capt.get(1).unwrap().as_str(),
                         capt.get(2).unwrap().as_str());
-                    if !names.contains(&name) {
+                    if !names.contains(&name[..]) {
                         _rm_cgroup(&entry.path());
                     }
                 } else if let Some(capt) = cmd_group_regex.captures(&filename)
@@ -465,14 +465,30 @@ fn run(config_file: &Path, options: &Options)
     recover_processes(&mut children, &mut configs, &mut queue, &config_file);
     close_unused_sockets(&mut sockets, &mut children);
 
-    let recovered = children.values()
-        .map(|c| c.get_name().to_string()).collect();
+    {
+        let recovered = children.values()
+            .map(|c| c.get_name()).collect();
 
-    info!("Removing Dangling State Dirs");
-    remove_dangling_state_dirs(&recovered, &master);
+        info!("Removing Dangling State Dirs");
+        remove_dangling_state_dirs(&recovered, &master);
+    }
 
-    info!("Removing Dangling CGroups");
-    remove_dangling_cgroups(&recovered, &master);
+    {
+        // Due to an old bug in linux kernel pre 4.4.18 we need
+        // to keep all cgroups that can be reused shortly alive.
+        //
+        // Here is the link to a bug report:
+        //
+        //    https://lkml.org/lkml/2016/6/15/1135
+        //
+        let keep_cgroups =
+            children.values().map(|c| c.get_name())
+            .chain(configs.values().map(|c| &c.name[..]))
+            .collect();
+
+        info!("Removing Dangling CGroups");
+        remove_dangling_cgroups(&keep_cgroups, &master);
+    }
 
     info!("Starting Processes");
     schedule_new_workers(configs, &mut queue);
