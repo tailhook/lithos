@@ -70,7 +70,7 @@ impl<'a> Iterator for SignalIter<'a> {
     }
 }
 
-fn run(options: Options) -> Result<(), String>
+fn run(options: Options) -> Result<i32, String>
 {
     let master: MasterConfig = try!(parse_config(&options.master_config,
         &MasterConfig::validator(), &COptions::default())
@@ -229,6 +229,8 @@ fn run(options: Options) -> Result<(), String>
 
     let mut trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let mut should_exit = local.kind != Daemon || !local.restart_process_only;
+    // only successful code on SIGTERM
+    let mut exit_code = 2;
     loop {
         let start = Instant::now();
 
@@ -271,11 +273,15 @@ fn run(options: Options) -> Result<(), String>
                     // forward it to children
                     debug!("Received SIGTERM signal, propagating");
                     should_exit = true;
+                    exit_code = 0;
                     child.signal(SIGTERM).ok();
                 }
                 SIGCHLD => {
                     for (pid, status) in reap_zombies() {
                         if pid == child.pid() {
+                            if status.signal() == Some(SIGTERM) {
+                                exit_code = 0;
+                            }
                             error!("Process {:?} {}", options.name, status);
                             iter.interrupt();
                         }
@@ -294,7 +300,7 @@ fn run(options: Options) -> Result<(), String>
         }
     }
 
-    return Ok(());
+    Ok(exit_code)
 }
 
 
@@ -308,8 +314,8 @@ fn main() {
     };
     match run(options)
     {
-        Ok(()) => {
-            exit(0);
+        Ok(code) => {
+            exit(code);
         }
         Err(e) => {
             write!(&mut stderr(), "Fatal error: {}\n", e).ok();

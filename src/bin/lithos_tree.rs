@@ -1,17 +1,18 @@
-extern crate nix;
-extern crate rustc_serialize;
-extern crate libc;
-extern crate regex;
 extern crate argparse;
-extern crate quire;
-extern crate lithos;
-extern crate time;
 extern crate fern;
-extern crate serde_json;
-extern crate syslog;
-extern crate signal;
-extern crate unshare;
+extern crate libc;
+extern crate libcantal;
+extern crate lithos;
+extern crate nix;
+extern crate quire;
+extern crate regex;
+extern crate rustc_serialize;
 extern crate scan_dir;
+extern crate serde_json;
+extern crate signal;
+extern crate syslog;
+extern crate time;
+extern crate unshare;
 #[macro_use] extern crate log;
 
 
@@ -43,6 +44,7 @@ use signal::exec_handler;
 use signal::trap::Trap;
 use unshare::{Command, reap_zombies, Namespace};
 
+use lithos::MAX_CONFIG_LOGS;
 use lithos::cgroup;
 use lithos::child_config::ChildConfig;
 use lithos::child_config::ChildKind::Daemon;
@@ -50,14 +52,14 @@ use lithos::container_config::{ContainerConfig, TcpPort, DEFAULT_KILL_TIMEOUT};
 use lithos::container_config::{InstantiatedConfig, Variables};
 use lithos::id_map::IdMapExt;
 use lithos::master_config::{MasterConfig, create_master_dirs};
-use lithos::MAX_CONFIG_LOGS;
+use lithos::metrics;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::setup::{clean_child, init_logging};
 use lithos::timer_queue::Queue;
-use lithos_tree_options::Options;
-use lithos::utils;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
+use lithos::utils;
+use lithos_tree_options::Options;
 
 use self::Timeout::*;
 
@@ -69,6 +71,7 @@ struct Process {
     restart_min: Instant,
     cmd: Command,
     name: String,
+    base_name: (String, String),
     config: Rc<String>,
     inner_config: InstantiatedConfig,
     addresses: Vec<InetAddr>,
@@ -263,7 +266,7 @@ fn recover_sockets(sockets: &mut HashMap<InetAddr, Socket>) {
 
 fn recover_processes(children: &mut HashMap<pid_t, Child>,
     configs: &mut HashMap<String, Process>,
-    queue: &mut Queue<Timeout>, config_file: &Path)
+    queue: &mut Queue<Timeout>, metrics: &metrics::Metrics, config_file: &Path)
 {
     let mypid = unsafe { getpid() };
     let now = Instant::now();
@@ -289,6 +292,8 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                                     duration(child.inner_config.kill_timeout),
                                 Kill(pid));
                         }
+                        metrics.processes[&child.base_name].running.incr(1);
+                        metrics.running.incr(1);
                         children.insert(pid, Child::Process(child));
                     }
                     None => {
@@ -301,6 +306,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                         queue.add(
                             now + duration(DEFAULT_KILL_TIMEOUT),
                             Kill(pid));
+                        metrics.unknown.incr(1);
                     }
                 };
             } else {
@@ -311,6 +317,7 @@ fn recover_processes(children: &mut HashMap<pid_t, Child>,
                 queue.add(
                     now + duration(DEFAULT_KILL_TIMEOUT),
                     Kill(pid));
+                metrics.unknown.incr(1);
                 continue;
             }
         }
@@ -454,7 +461,27 @@ fn run(config_file: &Path, options: &Options)
     let mut trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let config_file = config_file.to_owned();
 
-    let mut configs = read_sandboxes(&master, &bin, &config_file, options);
+    let mut metrics = metrics::Metrics::new();
+    let (mut configs, sandboxes) = read_sandboxes(&master, &bin, &config_file,
+        options);
+
+    for (_, pro) in &configs {
+        metrics.processes.insert(
+            pro.base_name.clone(),
+            metrics::Process::new());
+    }
+
+    // read counters so that we don't miss events in case lithos restarts
+    // too often
+    let _metrics = libcantal::start_with_reading(&metrics);
+    // then overwrite things that are possibly out of date
+    metrics.restarts.incr(1);
+    metrics.containers.set(configs.len() as i64);
+    metrics.sandboxes.set(sandboxes as i64);
+    metrics.running.set(0);
+    for (_, pro) in &metrics.processes {
+        pro.running.set(0);
+    }
 
     info!("Recovering Sockets");
     let mut queue = Queue::new();
@@ -462,7 +489,8 @@ fn run(config_file: &Path, options: &Options)
     recover_sockets(&mut sockets);
     info!("Recovering Processes");
     let mut children = HashMap::new();
-    recover_processes(&mut children, &mut configs, &mut queue, &config_file);
+    recover_processes(&mut children, &mut configs, &mut queue,
+        &metrics, &config_file);
     close_unused_sockets(&mut sockets, &mut children);
 
     {
@@ -493,9 +521,12 @@ fn run(config_file: &Path, options: &Options)
     info!("Starting Processes");
     schedule_new_workers(configs, &mut queue);
 
-    normal_loop(&mut queue, &mut children, &mut sockets, &mut trap, &master);
+    metrics.queue.set(queue.len() as i64);
+    normal_loop(&mut queue, &mut children, &mut sockets, &mut trap,
+        &metrics, &master);
     if children.len() > 0 {
-        shutdown_loop(&mut children, &mut sockets, &mut trap, &master);
+        shutdown_loop(&mut children, &mut sockets, &mut trap,
+            &metrics, &master);
     }
 
     global_cleanup(&master);
@@ -593,7 +624,9 @@ fn duration(inp: f32) -> Duration {
 fn normal_loop(queue: &mut Queue<Timeout>,
     children: &mut HashMap<pid_t, Child>,
     sockets: &mut HashMap<InetAddr, Socket>,
-    trap: &mut Trap, master: &MasterConfig)
+    trap: &mut Trap,
+    metrics: &metrics::Metrics,
+    master: &MasterConfig)
 {
     loop {
         let now = Instant::now();
@@ -618,12 +651,23 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                             continue;
                         }
                     }
+                    metrics.processes[&child.base_name].started.incr(1);
+                    metrics.started.incr(1);
                     match child.cmd.spawn() {
                         Ok(c) => {
+                            metrics.processes[&child.base_name]
+                                .running.incr(1);
+                            metrics.running.incr(1);
                             child.restart_min = restart_min;
                             children.insert(c.pid(), Child::Process(child));
                         }
                         Err(e) => {
+                            metrics.processes[&child.base_name]
+                                .failures.incr(1);
+                            metrics.failures.incr(1);
+                            metrics.processes[&child.base_name]
+                                .deaths.incr(1);
+                            metrics.deaths.incr(1);
                             error!("Error starting {:?}: {}", child.name, e);
                             buf.push((restart_min, child));
                         }
@@ -642,6 +686,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
         for (restart_min, v) in buf.into_iter() {
             queue.add(restart_min, Start(v));
         }
+        metrics.queue.set(queue.len() as i64);
 
         close_unused_sockets(sockets, children);
         let next_signal = match queue.peek_time() {
@@ -672,11 +717,25 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                     match children.remove(&pid) {
                         Some(Child::Process(child)) => {
                             error!("Process {:?} {}", child.name, status);
+                            metrics.processes
+                                [&child.base_name].deaths.incr(1);
+                            metrics.deaths.incr(1);
+                            // lithos_knot transforms valid exits to exit 0
+                            if status.code() != Some(0) {
+                                metrics.processes[&child.base_name]
+                                    .failures.incr(1);
+                                metrics.failures.incr(1);
+                            }
+                            metrics.processes[&child.base_name]
+                                .running.decr(1);
+                            metrics.running.decr(1);
                             clean_child(&child.name, &master, true);
                             queue.add(child.restart_min, Start(child));
+                            metrics.queue.set(queue.len() as i64);
                         }
                         Some(Child::Unidentified(name)) => {
                             clean_child(&name, &master, false);
+                            metrics.unknown.decr(1);
                         }
                         None => {
                             info!("Unknown process {:?} {}", pid, status);
@@ -692,6 +751,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
 fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
     sockets: &mut HashMap<InetAddr, Socket>,
     trap: &mut Trap,
+    metrics: &metrics::Metrics,
     master: &MasterConfig)
 {
     for sig in trap {
@@ -714,9 +774,24 @@ fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
             SIGCHLD => {
                 for (pid, status) in reap_zombies() {
                     match children.remove(&pid) {
-                        Some(child) => {
-                            info!("Process {:?} {}", child.get_name(), status);
-                            clean_child(child.get_name(), &master, false);
+                        Some(Child::Process(child)) => {
+                            info!("Process {:?} {}", child.name, status);
+                            metrics.processes[&child.base_name]
+                                .deaths.incr(1);
+                            metrics.deaths.incr(1);
+                            if status.signal() == Some(SIGTERM) {
+                                metrics.processes[&child.base_name]
+                                    .failures.incr(1);
+                                metrics.failures.incr(1);
+                            }
+                            metrics.processes[&child.base_name]
+                                .running.decr(1);
+                            metrics.running.decr(1);
+                            clean_child(&child.name, &master, false);
+                        }
+                        Some(Child::Unidentified(name)) => {
+                            clean_child(&name, &master, false);
+                            metrics.unknown.decr(1);
                         }
                         None => {
                             info!("Unknown process {:?} {}", pid, status);
@@ -738,12 +813,13 @@ fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
 
 fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
     master_file: &Path, options: &Options)
-    -> HashMap<String, Process>
+    -> (HashMap<String, Process>, usize)
 {
+    let mut sandboxes = 0;
     let dirpath = master_file.parent().unwrap().join(&master.sandboxes_dir);
     info!("Reading sandboxes from {:?}", dirpath);
     let sandbox_validator = SandboxConfig::validator();
-    scan_dir::ScanDir::files().read(&dirpath, |iter| {
+    let result = scan_dir::ScanDir::files().read(&dirpath, |iter| {
         let yamls = iter.filter(|&(_, ref name)| name.ends_with(".yaml"));
         yamls.filter_map(|(entry, name)| {
             let sandbox_config = entry.path();
@@ -755,12 +831,14 @@ fn read_sandboxes(master: &MasterConfig, bin: &Binaries,
                 .map(|cfg: SandboxConfig| (sandbox_name, cfg))
                 .ok()
         }).flat_map(|(name, sandbox)| {
+            sandboxes += 1;
             read_subtree(master, bin, master_file, &name, &sandbox, options)
             .into_iter()
         }).collect()
     })
     .map_err(|e| error!("Error reading sandboxes directory: {}", e))
-    .unwrap_or(HashMap::new())
+    .unwrap_or(HashMap::new());
+    (result, sandboxes)
 }
 
 fn open_config_log(base: &Path, name: &str) -> Result<File, io::Error> {
@@ -899,6 +977,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                 let process = Process {
                     cmd: cmd,
                     name: name.clone(),
+                    base_name: (child_name.clone(), sandbox_name.clone()),
                     restart_min: restart_min,
                     config: child_string.clone(), // should avoid cloning?
                     addresses: cfg.tcp_ports.iter().map(|(&port, item)| {

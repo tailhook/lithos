@@ -13,6 +13,7 @@ extern crate serde_json;
 extern crate signal;
 extern crate syslog;
 extern crate time;
+extern crate libcantal;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
 #[macro_use] extern crate serde_derive;
@@ -31,6 +32,7 @@ pub mod cgroup;
 pub mod itertools;
 pub mod timer_queue;
 pub mod id_map;
+pub mod metrics;
 #[cfg(test)] pub mod ascii;  // actually a lithos_ps module
 
 pub const MAX_CONFIG_LOGS: u32 = 100;

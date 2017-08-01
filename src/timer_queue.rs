@@ -62,4 +62,7 @@ impl<T> Queue<T> {
     {
         QueueIter { queue: self, max_time: max_time }
     }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 }
