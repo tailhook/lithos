@@ -141,3 +141,12 @@ anyway. Here is the reference of the parameters along with the default values:
    (default ``lithos``) Application name for master process in syslog. The
    child processes are prefixed by this value. For example ``lithos-django``
    (where ``django`` is a sandbox name).
+
+.. opt:: cantal-appname
+
+   (default ``lithos``) If no ``CANTAL_PATH`` and ``CANTAL_APPNAME`` are in
+   the environment this name is used as ``CANTAL_APPNAME``
+   and ``${runtime_dir}/metrics`` as ``CANTAL_PATH``.
+   Use ``force-cantal-appname: null`` to disable this functionality.
+
+   .. versionadded: 0.11.0

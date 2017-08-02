@@ -458,6 +458,8 @@ fn run(config_file: &Path, options: &Options)
         }
     };
 
+    force_cantal(&bin, &master);
+
     let mut trap = Trap::trap(&[SIGINT, SIGTERM, SIGCHLD]);
     let config_file = config_file.to_owned();
 
@@ -1026,6 +1028,32 @@ fn get_binaries() -> Option<Binaries> {
         return None;
     }
     return Some(bin);
+}
+
+fn force_cantal(bin: &Binaries, conf: &MasterConfig) {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStringExt;
+    // Migration between v0.10.6 and v0.11.0 should enable metrics without
+    // stop/start cycle, which is usually needed to add environment variables
+    // to the config.
+    if let Some(ref appname) = conf.cantal_appname {
+        if env::var_os("CANTAL_PATH").is_none() {
+            env::set_var("CANTAL_PATH", conf.runtime_dir.join("metrics"));
+            if env::var_os("CANTAL_APPNAME").is_none() {
+                env::set_var("CANTAL_APPNAME", appname);
+            }
+            nix::unistd::execve(
+                &CString::new(bin.lithos_tree.clone()
+                    .into_os_string().into_vec())
+                    .expect("binary is ok"),
+                &env::args().map(|v| CString::new(v).expect("args are ok"))
+                    .collect::<Vec<_>>(),
+                &env::vars().map(|(k, v)| {
+                    CString::new(format!("{}={}", k, v)).expect("env is ok")
+                }).collect::<Vec<_>>(),
+            ).expect("should be able to exec myself");
+        }
+    }
 }
 
 fn main() {

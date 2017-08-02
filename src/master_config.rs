@@ -21,6 +21,7 @@ pub struct MasterConfig {
     pub log_level: String,
     pub cgroup_name: Option<String>,
     pub cgroup_controllers: Vec<String>,
+    pub cantal_appname: Option<String>,
 }
 
 impl MasterConfig {
@@ -45,6 +46,8 @@ impl MasterConfig {
         .member("cgroup_name",
             Scalar::new().optional().default("lithos.slice"))
         .member("cgroup_controllers", Sequence::new(Scalar::new()))
+        .member("cantal_appname",
+            Scalar::new().optional().default("lithos"))
     }
 }
 
