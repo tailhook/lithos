@@ -19,6 +19,7 @@ Contents:
    volumes
    tips/index
    faq
+   changelog
 
 
 
