@@ -197,6 +197,7 @@ fn run(options: Options) -> Result<i32, String>
         cmd.env(k, v);
     }
     cmd.env("LITHOS_NAME", &options.name);
+    cmd.env("LITHOS_CONFIG", &options.config.config);
 
     cmd.args(&local.arguments);
     cmd.args(&options.args);
