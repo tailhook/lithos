@@ -207,7 +207,7 @@ impl ContainerConfig {
         .member("resolv_conf", Structure::new()
             .member("copy_from_host", Scalar::new().default(true)))
         .member("hosts_file", Structure::new()
-            .member("copy_from_host", Scalar::new().default(false))
+            .member("copy_from_host", Scalar::new().default(true))
             .member("localhost", Scalar::new().optional())
             .member("public_hostname", Scalar::new().optional()))
         .member("uid_map", mapping_validator())

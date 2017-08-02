@@ -221,19 +221,20 @@ Reference
    Parameters:
 
    copy-from-host
-        (default ``false``) Copy hosts file from host machine. It's false
-        by default for two reasons:
-
-        1. We want to isolate system as much as possible
-        2. Some systems (like Ubuntu) like to put an address ``127.0.1.1`` on
-           the public hostname, which doesn't play well with discovery
-           subsystems based on hostnames (e.g. for akka_)
+        (default ``true``) Copy hosts file from host machine.
 
         Note: even if ``copy-from-host`` is ``true``, :opt:`additional-hosts`
         from sandbox config work, which may lead to duplicate or conflicting
         entries if some names are specified in both places.
 
-   .. _akka: http://akka.io/
+        .. versionchanged:: v0.11.0
+
+           The parameter used to be ``false`` by default, because we were
+           thinking about better (perceived) isolation. And also because
+           hostname in Ubuntu doesn't resolve to real IP of the host. But we
+           find those occassions where it matters to be quite rare in practice
+           and using ``hosts-file`` as well as ``resolv.conf`` from the host
+           system as the most expected and intuitive behavior.
 
    localhost
         (default is true when ``copy-from-host`` is false)
