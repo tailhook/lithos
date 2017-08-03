@@ -16,6 +16,7 @@ Contents:
    sandbox_config
    process_config
    container_config
+   metrics
    volumes
    tips/index
    faq
