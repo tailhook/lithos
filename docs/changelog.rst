@@ -2,6 +2,12 @@
 Lithos Changes By Release
 =========================
 
+.. _changelog 0.11.1:
+
+v0.11.1
+=======
+
+* Fixed order of ``sandbox-name.process-name`` in metrics
 
 .. _changelog 0.11.0:
 

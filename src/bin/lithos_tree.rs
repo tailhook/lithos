@@ -979,7 +979,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                 let process = Process {
                     cmd: cmd,
                     name: name.clone(),
-                    base_name: (child_name.clone(), sandbox_name.clone()),
+                    base_name: (sandbox_name.clone(), child_name.clone()),
                     restart_min: restart_min,
                     config: child_string.clone(), // should avoid cloning?
                     addresses: cfg.tcp_ports.iter().map(|(&port, item)| {
