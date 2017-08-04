@@ -2,12 +2,14 @@
 Lithos Changes By Release
 =========================
 
-.. _changelog 0.11.1:
+.. _changelog 0.12.0:
 
-v0.11.1
+v0.12.0
 =======
 
 * Fixed order of ``sandbox-name.process-name`` in metrics
+* Dropped setting ``cantal-appname`` (never were useful, because cantal
+  actually uses cgroup name, and lithos master process actually has one)
 
 .. _changelog 0.11.0:
 
