@@ -31,9 +31,9 @@ Per-process metrics:
 * ``processes.<sandbox_name>.<process_name>.failures`` -- (counter) number of
   times process have exited for failure reason, for whatever reason lithos
   thinks it was failure. Currently only processes that had been sent
-  ``SIGTERM`` signal (with any exit status) or ones dead on ``SIGTERM``
+  ``SIGTERM`` signal to (with any exit status) or ones dead on ``SIGTERM``
   signal are considered non-failed. (*Processes exited with code 0 are still
-  considered failed because daemons shoul not exit anyway*)
+  considered failed because daemons should not exit anyway*)
 * ``processes.<sandbox_name>.<process_name>.running`` -- (gauge) number of
   procesess that are currently running (was started but not yet found to be
   exited)
