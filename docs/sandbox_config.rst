@@ -32,6 +32,13 @@ Reference
    Directory where application images are. Every subdir of the ``image-dir``
    may be mounted as a root file system in the container. **Required**.
 
+.. opt:: image-dir-levels
+
+   (default ``1``) A number of directory components required for image name
+   in :opt:`image-dir`
+
+   .. versionadded: 0.12.1
+
 .. opt:: log-file
 
    The file name where to put **supervisor** log of the container. Default is

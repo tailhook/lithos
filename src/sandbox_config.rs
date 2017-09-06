@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path, Component};
 
 use rustc_serialize::{Decoder, Decodable};
 use regex::Regex;
 use quire::validate::{Structure};
-use quire::validate::{Sequence, Mapping, Scalar};
+use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 use id_map::{IdMap, mapping_validator};
 
 #[derive(Clone, Debug)]
@@ -59,6 +59,7 @@ impl Decodable for Range {
 pub struct SandboxConfig {
     pub config_file: Option<PathBuf>,
     pub image_dir: PathBuf,
+    pub image_dir_levels: u32,
     pub used_images_list: Option<PathBuf>,
     pub log_file: Option<PathBuf>,
     pub log_level: Option<String>,
@@ -73,11 +74,23 @@ pub struct SandboxConfig {
 }
 
 impl SandboxConfig {
+    pub fn check_path<P: AsRef<Path>>(&self, path: P) -> bool {
+        let mut num = 0;
+        for component in path.as_ref().components() {
+            match component {
+                Component::Normal(x) if x.to_str().is_some() => num += 1,
+                _ => return false,
+            }
+        }
+        return num == self.image_dir_levels;
+    }
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
         .member("config_file", Scalar::new().optional())
         .member("image_dir", Scalar::new().optional()
             .default("/var/lib/lithos/containers"))
+        .member("image_dir_levels",
+            Numeric::new().min(1).max(16).default(1))
         .member("used_images_list", Scalar::new().optional())
         .member("log_file", Scalar::new().optional())
         .member("log_level", Scalar::new().optional())

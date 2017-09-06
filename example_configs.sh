@@ -17,9 +17,19 @@ vagga _build "${CONFIGS}-example"
 
 [ -d /var/lib/lithos/images ] || sudo mkdir -p /var/lib/lithos/images
 
-sudo rsync -a --delete-after \
-    ".vagga/${CONFIGS}-example/" \
-    /var/lib/lithos/images/${CONFIGS}-example
+case $CONFIGS in
+    multi_level)
+        sudo mkdir -p /var/lib/lithos/images/${CONFIGS}
+        sudo rsync -a --delete-after \
+            ".vagga/${CONFIGS}-example/" \
+            /var/lib/lithos/images/${CONFIGS}/example
+        ;;
+    *)
+        sudo rsync -a --delete-after \
+            ".vagga/${CONFIGS}-example/" \
+            /var/lib/lithos/images/${CONFIGS}-example
+        ;;
+esac
 
 echo Done.
 echo Ensure that you have run '`vagga make`' before.

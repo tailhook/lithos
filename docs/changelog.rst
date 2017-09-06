@@ -2,6 +2,14 @@
 Lithos Changes By Release
 =========================
 
+.. _changelog 0.12.1:
+
+v0.12.1
+=======
+
+* Added ``image-dir-levels`` parameter which allows using images in
+  form of ``xx/yy/zz`` (for value of ``3``) instead of bare name
+
 .. _changelog 0.12.0:
 
 v0.12.0

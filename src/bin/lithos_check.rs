@@ -162,6 +162,11 @@ fn check(config_file: &Path, verbose: bool,
                     err!("Config path must be absolute");
                     continue;
                 }
+                if !sandbox.check_path(&child_cfg.image) {
+                    err!("Image {} in sandbox {}, proccess {} is invalid",
+                        child_cfg.image, current_name, child_name);
+                    continue;
+                }
                 debug!("Opening config for {:?}", child_name);
                 let config = match check_container(&sandbox.image_dir
                     .join(&child_cfg.image)

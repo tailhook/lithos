@@ -1,0 +1,9 @@
+socket:
+  instances: 2
+  image: multi_level/example
+  config: /config/socket.yaml
+
+py:
+  kind: Command
+  image: multi_level/example
+  config: /config/py.yaml

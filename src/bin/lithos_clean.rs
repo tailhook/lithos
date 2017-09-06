@@ -10,7 +10,7 @@ extern crate time;
 #[macro_use] extern crate matches;
 
 use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::{File, remove_dir_all, remove_file};
@@ -50,7 +50,7 @@ struct LogFiles<'a> {
 
 struct ScanResult {
     images: HashSet<PathBuf>,
-    image_dirs: HashSet<PathBuf>,
+    image_dirs: HashMap<PathBuf, u32>,
     unused_logs: Vec<PathBuf>,
 }
 
@@ -234,47 +234,70 @@ impl<'a> Iterator for LogFiles<'a> {
     }
 }
 
-fn find_unused(used: &HashSet<PathBuf>, dirs: &HashSet<PathBuf>,
+fn find_unused_dir(used: &HashSet<PathBuf>, dir: &Path,
+                   cut_off: Option<SystemTime>,
+                   unused: &mut Vec<PathBuf>)
+{
+    scan_dir::ScanDir::dirs().skip_symlinks(true).read(dir, |iter| {
+        for (entry, _) in iter {
+            let path = entry.path().to_path_buf();
+            if !used.contains(&path) {
+                if let Some(cut) = cut_off {
+                    match path.metadata() {
+                        Ok(m) => {
+                            let skip = m.created().map(|x| x > cut)
+                                // allow FSs with no `birthtime`
+                                .unwrap_or(false) ||
+                                m.modified().map(|x| x > cut)
+                                .map_err(|e| error!(
+                                    "Can't read mtime {:?}: {}", path, e))
+                                // no `mtime` is something wrong
+                                // skip it for safety
+                                .unwrap_or(true);
+                            if skip {
+                                continue;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Can't stat {:?}: {}", path, e);
+                            continue;
+                        }
+                    }
+                }
+                unused.push(path);
+            }
+        }
+    }).map_err(|e| error!("Error scanning {:?}: {}", dir, e)).ok();
+}
+fn find_unused_deep(level: u32, used: &HashSet<PathBuf>, dir: &Path,
+                   cut_off: Option<SystemTime>,
+                   unused: &mut Vec<PathBuf>)
+{
+    assert!(level > 0);
+    if level == 1 {
+        find_unused_dir(used, dir, cut_off, unused);
+    } else {
+        scan_dir::ScanDir::dirs().skip_symlinks(true).read(dir, |iter| {
+            for (entry, _) in iter {
+                find_unused_deep(level-1, used,
+                    &entry.path(), cut_off, unused);
+            }
+        }).map_err(|e| error!("Error scanning {:?}: {}", dir, e)).ok();
+    }
+}
+
+fn find_unused(used: &HashSet<PathBuf>, dirs: &HashMap<PathBuf, u32>,
                keep_recent: Option<Duration>)
     -> Result<Vec<PathBuf>, scan_dir::Error>
 {
     let cut_off = keep_recent.map(|x| SystemTime::now() - x);
     let mut unused = Vec::new();
-    for dir in dirs.iter() {
+    for (dir, levels) in dirs.iter() {
         if !dir.exists() {
             warn!("Directory {:?} does not exists", dir);
             continue;
         }
-        try!(scan_dir::ScanDir::dirs().skip_symlinks(true).read(dir, |iter| {
-            for (entry, _) in iter {
-                let path = entry.path().to_path_buf();
-                if !used.contains(&path) {
-                    if let Some(cut) = cut_off {
-                        match path.metadata() {
-                            Ok(m) => {
-                                let skip = m.created().map(|x| x > cut)
-                                    // allow FSs with no `birthtime`
-                                    .unwrap_or(false) ||
-                                    m.modified().map(|x| x > cut)
-                                    .map_err(|e| error!(
-                                        "Can't read mtime {:?}: {}", path, e))
-                                    // no `mtime` is something wrong
-                                    // skip it for safety
-                                    .unwrap_or(true);
-                                if skip {
-                                    continue;
-                                }
-                            }
-                            Err(e) => {
-                                error!("Can't stat {:?}: {}", path, e);
-                                continue;
-                            }
-                        }
-                    }
-                    unused.push(path);
-                }
-            }
-        }));
+        find_unused_deep(*levels, used, &dir, cut_off, &mut unused);
     }
     Ok(unused)
 }
@@ -327,7 +350,12 @@ fn find_used_by_list(_master: &MasterConfig, _sandbox_name: &str,
         };
         let image_name = line.trim();
         if image_name.len() > 0 {
-            images.insert(sandbox_config.image_dir.join(image_name));
+            if sandbox_config.check_path(&image_name) {
+                images.insert(sandbox_config.image_dir.join(image_name));
+            } else {
+                warn!("Image name {:?} from file {:?} is invalid",
+                    image_name, filename);
+            }
         }
     }
 }
@@ -426,7 +454,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     let config_dir = master_file.parent().unwrap().join(&master.sandboxes_dir);
     let mut bad_dirs = HashSet::new();
     let mut images = HashSet::new();
-    let mut image_dirs = HashSet::new();
+    let mut image_dirs = HashMap::new();
     let mut unused_logs = Vec::new();
     let childval = ChildConfig::mapping_validator();
     scan_dir::ScanDir::files().read(&config_dir, |iter| -> Result<(), String> {
@@ -436,7 +464,13 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             let sandbox_config: SandboxConfig = parse_config(&entry.path(),
                 &SandboxConfig::validator(), &Options::default())
                 .map_err(|e| e.to_string())?;
-            image_dirs.insert(sandbox_config.image_dir.clone());
+            let lev = image_dirs.entry(sandbox_config.image_dir.clone())
+                .or_insert(sandbox_config.image_dir_levels);
+            if *lev != sandbox_config.image_dir_levels {
+                error!("Conflicing image dir levels for {:?}",
+                    sandbox_config.image_dir);
+                bad_dirs.insert(sandbox_config.image_dir.clone());
+            }
 
             let cfg = master_file.parent().unwrap()
                 .join(&master.processes_dir)
@@ -450,7 +484,8 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                                          sandbox_config.config_file, e))?;
                 for child in all_children.values() {
                     // Current are always added
-                    images.insert(sandbox_config.image_dir.join(&child.image));
+                    images.insert(
+                        sandbox_config.image_dir.join(&child.image));
                 }
             } else {
                 info!("No current processes for {}", sandbox_name);
