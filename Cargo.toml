@@ -33,6 +33,8 @@ matches = "0.1.4"
 humantime = "1.0.0"
 libcantal = "0.3.0"
 
+[profile.release]
+debug = true
 
 [[bin]]
 name = "lithos_tree"
