@@ -52,7 +52,11 @@ pub fn temporary_change_root<T, F>(path: &Path, fun: F)
     //
     let _trap = Trap::trap(ABNORMAL_TERM_SIGNALS);
 
-    let cwd = current_dir().unwrap();
+    let cwd = current_dir().map_err(|e| {
+        format!("Can't determine current dir: {}. \
+            This usually happens if the directory \
+            your're in is already deleted", e)
+    })?;
     if unsafe { chdir(CString::new("/").unwrap().as_ptr()) } != 0 {
         return Err(format!("Error chdir to root: {}",
                            IoError::last_os_error()));
