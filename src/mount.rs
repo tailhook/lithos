@@ -185,6 +185,30 @@ pub fn mount_pseudo(target: &Path, name: &str, options: &str, readonly: bool)
     }
 }
 
+pub fn mount_pts(target: &Path)
+    -> Result<(), String>
+{
+    let c_name = CString::new("devpts").unwrap();
+    let c_target = cpath(target);
+    let opts = "newinstance,ptmxmode=0666";
+    let c_opts = CString::new(opts).unwrap();
+    let flags = MS_NOSUID | MS_NOEXEC | MS_NOATIME;
+    debug!("Pseudofs mount {} {} {}", target.display(), "devpts", opts);
+    let rc = unsafe { mount(
+        c_name.as_ptr(),
+        c_target.as_ptr(),
+        c_name.as_ptr(),
+        flags,
+        c_opts.as_ptr()) };
+    if rc == 0 {
+        return Ok(());
+    } else {
+        let err = IoError::last_os_error();
+        return Err(format!("Can't mount pseudofs {} ({}, options: {}): {}",
+            target.display(), opts, "devpts", err));
+    }
+}
+
 pub fn unmount(target: &Path) -> Result<(), String> {
     let c_target = cpath(target);
     let rc = unsafe { umount2(c_target.as_ptr(), MNT_DETACH) };

@@ -2,6 +2,16 @@
 Lithos Changes By Release
 =========================
 
+.. _changelog 0.13.0:
+
+v0.13.0
+=======
+
+* ``/dev/pts/ptmx`` is created with ``ptmxmode=0666``, which makes it suitable
+  for creating ptys by unprivileged users. We always used ``newinstance``
+  option, so it should be safe enough. And it also matches how ``ptmx`` is
+  configured on most systems by default
+
 .. _changelog 0.12.1:
 
 v0.12.1

@@ -13,7 +13,7 @@ use quire::{parse_config, Options};
 use libmount::{self, BindMount};
 
 use super::mount::{mount_ro_recursive};
-use super::mount::{mount_pseudo};
+use super::mount::{mount_pseudo, mount_pts};
 use super::network::{get_host_ip, get_host_name};
 use super::master_config::MasterConfig;
 use super::sandbox_config::SandboxConfig;
@@ -51,8 +51,8 @@ pub fn setup_filesystem(master: &MasterConfig, tree: &SandboxConfig,
     try!(BindMount::new(&master.devfs_dir, &devdir).mount()
         .map_err(|x| x.to_string()));
     try!(mount_ro_recursive(&devdir));
-    try!(mount_pseudo(&mntdir.join("dev/pts"),
-        "devpts", "newinstance", false));
+
+    mount_pts(&mntdir.join("dev/pts"))?;
     try!(mount_pseudo(&mntdir.join("sys"), "sysfs", "", true));
     try!(mount_pseudo(&mntdir.join("proc"), "proc", "", false));
 
