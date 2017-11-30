@@ -3,9 +3,9 @@ extern crate libc;
 extern crate lithos;
 extern crate quire;
 extern crate regex;
-extern crate rustc_serialize;
 extern crate scan_dir;
 #[macro_use] extern crate log;
+#[macro_use] extern crate serde_json;
 
 
 use regex::Regex;
@@ -25,8 +25,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use libc::{pid_t, _SC_CLK_TCK, sysconf};
 use lithos::utils::get_time;
-use rustc_serialize::json::Json;
-use rustc_serialize::json;
 use argparse::{ArgumentParser, StoreConst, Print};
 
 use ascii::Column;
@@ -547,49 +545,38 @@ fn print_json(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {
         {
             let mut processes = vec!();
             for grp in instance.heads.iter() {
-                processes.push(Json::Object(vec!(
-                    ("pid".to_string(), Json::U64(grp.head.pid as u64)),
-                    ("processes".to_string(),
-                        Json::U64(grp.totals.processes as u64)),
-                    ("threads".to_string(),
-                        Json::U64(grp.totals.threads as u64)),
-                    ("mem_rss".to_string(),
-                        Json::U64(grp.totals.mem_rss as u64)),
-                    ("mem_swap".to_string(),
-                        Json::U64(grp.totals.mem_swap as u64)),
-                    ("start_time".to_string(),
-                        Json::U64(start_time_sec(grp.head.start_time))),
-                    ("user_time".to_string(),
-                        Json::U64(grp.totals.user_time)),
-                    ("system_time".to_string(),
-                        Json::U64(grp.totals.system_time)),
-                    ("child_user_time".to_string(),
-                        Json::U64(grp.totals.child_user_time)),
-                    ("child_system_time".to_string(),
-                        Json::U64(grp.totals.child_system_time)),
-                    ).into_iter().collect()));
+                processes.push(json!({
+                    "pid": grp.head.pid,
+                    "processes": grp.totals.processes,
+                    "threads": grp.totals.threads,
+                    "mem_rss": grp.totals.mem_rss,
+                    "mem_swap": grp.totals.mem_swap,
+                    "start_time": start_time_sec(grp.head.start_time),
+                    "user_time": grp.totals.user_time,
+                    "system_time": grp.totals.system_time,
+                    "child_user_time": grp.totals.child_user_time,
+                    "child_system_time": grp.totals.child_system_time,
+                    }));
             }
-            knots.push(Json::Object(vec!(
-                ("name".to_string(), Json::String(instance.name.to_string())),
-                ("pid".to_string(), Json::U64(instance.knot_pid as u64)),
-                ("ok".to_string(), Json::Boolean(instance.heads.len() == 1)),
-                ("processes".to_string(), Json::Array(processes)),
-                ).into_iter().collect()));
+            knots.push(json!({
+                "name": instance.name.to_string(),
+                "pid": instance.knot_pid,
+                "ok": instance.heads.len() == 1,
+                "processes": processes,
+            }));
         }
-        trees.push(Json::Object(vec!(
-            ("pid".to_string(), Json::U64(master.pid as u64)),
-            ("config".to_string(),
-                Json::String(master.config.display().to_string())),
-            ("children".to_string(),
-                Json::Array(knots)),
-            ).into_iter().collect()));
+        trees.push(json!({
+            "pid": master.pid,
+            "config": master.config.display().to_string(),
+            "children": knots,
+        }));
     }
 
 
     let mut out = stdout();
-    return write!(out, "{}", json::as_json(&Json::Object(vec!(
-        ("trees".to_string(), Json::Array(trees)),
-        ).into_iter().collect())));
+    return write!(out, "{}", json!({
+        "trees": trees,
+    }));
 }
 
 fn monitor_changes(scan: ScanResult, _opt: &Options) -> Result<(), IoError> {

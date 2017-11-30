@@ -3,7 +3,6 @@ extern crate env_logger;
 extern crate libc;
 extern crate lithos;
 extern crate quire;
-extern crate rustc_serialize;
 extern crate scan_dir;
 #[macro_use] extern crate log;
 

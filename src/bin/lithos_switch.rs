@@ -1,4 +1,3 @@
-extern crate rustc_serialize;
 extern crate libc;
 extern crate nix;
 extern crate env_logger;
@@ -21,6 +20,7 @@ use std::process::{Command, Stdio};
 use argparse::{ArgumentParser, Parse, StoreTrue, Print};
 use quire::{parse_config, Options};
 use nix::sys::signal::{SIGQUIT, kill};
+use nix::unistd::Pid;
 
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
@@ -89,10 +89,12 @@ fn switch_config(master_cfg: &Path, sandbox_name: String, config_file: &Path)
     info!("Done. Sending SIGQUIT to lithos_tree");
     let pid_file = master.runtime_dir.join("master.pid");
     let mut buf = String::with_capacity(50);
-    let read = File::open(&pid_file)
+    let read_pid = File::open(&pid_file)
             .and_then(|mut f| f.read_to_string(&mut buf))
-            .ok();
-    match read.and_then(|_| FromStr::from_str(buf[..].trim()).ok()) {
+            .ok()
+            .and_then(|_| FromStr::from_str(buf[..].trim()).ok())
+            .map(Pid::from_raw);
+    match read_pid {
         Some(pid) if kill(pid, None).is_ok() => {
             kill(pid, SIGQUIT)
             .map_err(|e| error!("Error sending QUIT to master: {:?}", e)).ok();

@@ -2,11 +2,10 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::path::{PathBuf, Path, Component};
 
-use rustc_serialize::{Decoder, Decodable};
-use regex::Regex;
-use quire::validate::{Structure};
-use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 use id_map::{IdMap, mapping_validator};
+use quire::validate::{Sequence, Mapping, Scalar, Numeric};
+use quire::validate::{Structure};
+use serde::de::{Deserializer, Deserialize, Error};
 
 #[derive(Clone, Debug)]
 pub struct Range {
@@ -27,35 +26,24 @@ impl Range {
     }
 }
 
-impl Decodable for Range {
-    fn decode<D:Decoder>(d: &mut D) -> Result<Range, D::Error> {
-        match d.read_str() {
-            Ok(val) => {
-                let num:Result<u32, _> = FromStr::from_str(&val[..]);
-                match num {
-                    Ok(num) => return Ok(Range::new(num, num)),
-                    Err(_) => {}
-                }
-                let regex = Regex::new(r"^(\d+)-(\d+)$").unwrap();
-                match regex.captures(&val[..]) {
-                    Some(caps) => {
-                        return Ok(Range::new(
-                            caps.get(1).and_then(
-                                |x| FromStr::from_str(x.as_str()).ok()
-                            ).ok_or(d.error("invalid range"))?,
-                            caps.get(2).and_then(
-                                |x| FromStr::from_str(x.as_str()).ok()
-                            ).ok_or(d.error("invalid range"))?));
-                    }
-                    None => unimplemented!(),
-                }
-            }
-            Err(e) => Err(e),
-        }
+impl<'a> Deserialize<'a> for Range {
+    fn deserialize<D: Deserializer<'a>>(d: D) -> Result<Range, D::Error> {
+        let val = String::deserialize(d)?;
+        FromStr::from_str(&val[..])
+        .map(|num| Range::new(num, num))
+        .or_else(|_| {
+            let mut pair = val.splitn(2, '-');
+            Ok(Range::new(
+                pair.next().and_then(|x| FromStr::from_str(x).ok())
+                    .ok_or(D::Error::custom("Error parsing range"))?,
+                pair.next().and_then(|x| FromStr::from_str(x).ok())
+                    .ok_or(D::Error::custom("Error parsing range"))?,
+            ))
+        })
     }
 }
 
-#[derive(RustcDecodable)]
+#[derive(Deserialize)]
 pub struct SandboxConfig {
     pub config_file: Option<PathBuf>,
     pub image_dir: PathBuf,

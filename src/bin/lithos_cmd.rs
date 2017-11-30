@@ -3,7 +3,6 @@ extern crate libc;
 extern crate lithos;
 extern crate quire;
 extern crate regex;
-extern crate rustc_serialize;
 extern crate serde_json;
 extern crate unshare;
 #[macro_use] extern crate log;

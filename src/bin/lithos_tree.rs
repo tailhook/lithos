@@ -6,7 +6,6 @@ extern crate lithos;
 extern crate nix;
 extern crate quire;
 extern crate regex;
-extern crate rustc_serialize;
 extern crate scan_dir;
 extern crate serde_json;
 extern crate signal;
@@ -28,21 +27,22 @@ use std::path::{Path, PathBuf};
 use std::time::{Instant, Duration};
 use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{RawFd, AsRawFd};
 
-use libc::{pid_t, getpid, close};
-use libc::{SIGINT, SIGTERM, SIGCHLD};
+use libc::{close};
+use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::socket::{getsockname, SockAddr};
 use nix::sys::socket::{setsockopt, bind, listen};
 use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
 use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
+use nix::unistd::{Pid, getpid};
 use quire::{parse_config, Options as COptions};
 use regex::Regex;
 use serde_json::to_string;
 use signal::exec_handler;
 use signal::trap::Trap;
-use unshare::{Command, reap_zombies, Namespace};
+use unshare::{Command, reap_zombies, Namespace, Fd};
 
 use lithos::MAX_CONFIG_LOGS;
 use lithos::cgroup;
@@ -89,7 +89,7 @@ enum Child {
 
 enum Timeout {
     Start(Process),
-    Kill(pid_t),
+    Kill(Pid),
 }
 
 impl Child {
@@ -98,6 +98,12 @@ impl Child {
             &Child::Process(ref p) => &p.name,
             &Child::Unidentified(ref name) => name,
         }
+    }
+}
+
+impl AsRawFd for Socket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd
     }
 }
 
@@ -165,7 +171,7 @@ fn global_cleanup(master: &MasterConfig) {
 
 fn discard<E>(_: E) { }
 
-fn _read_args(pid: pid_t, global_config: &Path)
+fn _read_args(pid: Pid, global_config: &Path)
     -> Result<(String, String), ()>
 {
     let mut buf = String::with_capacity(4096);
@@ -187,7 +193,7 @@ fn _read_args(pid: pid_t, global_config: &Path)
     return Ok((args[2].to_string(), args[6].to_string()));
 }
 
-fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
+fn _is_child(pid: Pid, ppid: Pid) -> bool {
     let mut buf = String::with_capacity(256);
     let ppid_regex = Regex::new(r"^\d+\s+\([^)]*\)\s+\S+\s+(\d+)\s").unwrap();
     if File::open(&format!("/proc/{}/stat", pid))
@@ -196,12 +202,16 @@ fn _is_child(pid: pid_t, ppid: pid_t) -> bool {
         return false;
     }
     return Some(ppid) == ppid_regex.captures(&buf)
-         .and_then(|c| FromStr::from_str(c.get(1).unwrap().as_str()).ok());
+         .and_then(|c| {
+            FromStr::from_str(c.get(1).unwrap().as_str())
+            .map(Pid::from_raw)
+            .ok()
+        });
 }
 
 
 fn check_process(cfg: &MasterConfig) -> Result<(), String> {
-    let mypid = unsafe { getpid() };
+    let mypid = getpid();
     let pid_file = cfg.runtime_dir.join("master.pid");
     if metadata(&pid_file).is_ok() {
         let mut buf = String::with_capacity(50);
@@ -210,8 +220,9 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
             .map_err(|_| ())
             .and_then(|_| FromStr::from_str(&buf[..].trim())
                             .map_err(|_| ()))
+            .map(Pid::from_raw)
         {
-            Ok::<pid_t, ()>(pid) if pid == mypid => {
+            Ok(pid) if pid == mypid => {
                 return Ok(());
             }
             Ok(pid) => {
@@ -228,7 +239,7 @@ fn check_process(cfg: &MasterConfig) -> Result<(), String> {
         }
     }
     try!(File::create(&pid_file)
-        .and_then(|mut f| write!(f, "{}\n", unsafe { getpid() }))
+        .and_then(|mut f| write!(f, "{}\n", getpid()))
         .map_err(|e| format!("Can't write file {:?}: {}", pid_file, e)));
     return Ok(());
 }
@@ -264,16 +275,18 @@ fn recover_sockets(sockets: &mut HashMap<InetAddr, Socket>) {
     }).map_err(|e| error!("Error enumerating my fds: {}", e)).ok();
 }
 
-fn recover_processes(children: &mut HashMap<pid_t, Child>,
+fn recover_processes(children: &mut HashMap<Pid, Child>,
     configs: &mut HashMap<String, Process>,
     queue: &mut Queue<Timeout>, metrics: &metrics::Metrics, config_file: &Path)
 {
-    let mypid = unsafe { getpid() };
+    let mypid = getpid();
     let now = Instant::now();
 
     // Recover old workers
     scan_dir::ScanDir::all().read("/proc", |iter| {
-        let pids = iter.filter_map(|(_, pid)| FromStr::from_str(&pid).ok());
+        let pids = iter.filter_map(|(_, pid)| {
+            FromStr::from_str(&pid).map(Pid::from_raw).ok()
+        });
         for pid in pids {
             if !_is_child(pid, mypid) {
                 continue;
@@ -343,7 +356,11 @@ fn remove_dangling_state_dirs(names: &HashSet<&str>, master: &MasterConfig)
                     } else if proc_name.starts_with("cmd.") {
                         debug!("Checking command dir: {}", name);
                         let pid = pid_regex.captures(&proc_name).and_then(
-                            |c| FromStr::from_str(c.get(1).unwrap().as_str()).ok());
+                            |c| {
+                                FromStr::from_str(c.get(1).unwrap().as_str())
+                                .map(Pid::from_raw)
+                                .ok()
+                            });
                         if let Some(pid) = pid {
                             if kill(pid, None).is_ok() {
                                 valid_dirs += 1;
@@ -427,8 +444,8 @@ fn remove_dangling_cgroups(names: &HashSet<&str>, master: &MasterConfig)
                     }
                 } else if let Some(capt) = cmd_group_regex.captures(&filename)
                 {
-                    let pid = FromStr::from_str(
-                        capt.get(2).unwrap().as_str()).ok();
+                    let pid = FromStr::from_str(capt.get(2).unwrap().as_str())
+                        .map(Pid::from_raw).ok();
                     if pid.is_none() || !kill(pid.unwrap(), None).is_ok() {
                         _rm_cgroup(&entry.path());
                     }
@@ -537,7 +554,7 @@ fn run(config_file: &Path, options: &Options)
 }
 
 fn close_unused_sockets(sockets: &mut HashMap<InetAddr, Socket>,
-                        children: &HashMap<pid_t, Child>)
+                        children: &HashMap<Pid, Child>)
 {
     let empty = Vec::new();
     let used_addresses: HashSet<InetAddr> = children.values().flat_map(|ch| {
@@ -609,11 +626,9 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
                       ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
         for (&port, item) in ports {
             let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
-            unsafe {
-                cmd.file_descriptor_raw(
-                    item.fd,
-                    socks.get(&addr).unwrap().fd);
-            }
+            let fd = Fd::dup_file(socks.get(&addr).unwrap())
+                .map_err(|e| format!("Can't dup file descriptor: {}", e))?;
+            cmd.file_descriptor(item.fd, fd);
         }
     }
     Ok(())
@@ -624,7 +639,7 @@ fn duration(inp: f32) -> Duration {
 }
 
 fn normal_loop(queue: &mut Queue<Timeout>,
-    children: &mut HashMap<pid_t, Child>,
+    children: &mut HashMap<Pid, Child>,
     sockets: &mut HashMap<InetAddr, Socket>,
     trap: &mut Trap,
     metrics: &metrics::Metrics,
@@ -661,7 +676,8 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                                 .running.incr(1);
                             metrics.running.incr(1);
                             child.restart_min = restart_min;
-                            children.insert(c.pid(), Child::Process(child));
+                            children.insert(Pid::from_raw(c.pid()),
+                                            Child::Process(child));
                         }
                         Err(e) => {
                             metrics.processes[&child.base_name]
@@ -716,7 +732,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
             }
             Some(SIGCHLD) => {
                 for (pid, status) in reap_zombies() {
-                    match children.remove(&pid) {
+                    match children.remove(&Pid::from_raw(pid)) {
                         Some(Child::Process(child)) => {
                             error!("Process {:?} {}", child.name, status);
                             metrics.processes
@@ -750,7 +766,7 @@ fn normal_loop(queue: &mut Queue<Timeout>,
     }
 }
 
-fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
+fn shutdown_loop(children: &mut HashMap<Pid, Child>,
     sockets: &mut HashMap<InetAddr, Socket>,
     trap: &mut Trap,
     metrics: &metrics::Metrics,
@@ -775,13 +791,13 @@ fn shutdown_loop(children: &mut HashMap<pid_t, Child>,
             }
             SIGCHLD => {
                 for (pid, status) in reap_zombies() {
-                    match children.remove(&pid) {
+                    match children.remove(&Pid::from_raw(pid)) {
                         Some(Child::Process(child)) => {
                             info!("Process {:?} {}", child.name, status);
                             metrics.processes[&child.base_name]
                                 .deaths.incr(1);
                             metrics.deaths.incr(1);
-                            if status.signal() == Some(SIGTERM) {
+                            if status.signal() == Some(SIGTERM as i32) {
                                 metrics.processes[&child.base_name]
                                     .failures.incr(1);
                                 metrics.failures.incr(1);

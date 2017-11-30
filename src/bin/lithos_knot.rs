@@ -4,7 +4,6 @@ extern crate libmount;
 extern crate lithos;
 extern crate nix;
 extern crate quire;
-extern crate rustc_serialize;
 extern crate signal;
 extern crate syslog;
 extern crate time;
@@ -20,11 +19,12 @@ use std::time::{Instant, Duration};
 use std::thread::sleep;
 use std::process::exit;
 
-use libc::{SIGINT, SIGTERM, SIGCHLD};
 use libmount::BindMount;
 use quire::{parse_config, Options as COptions};
 use signal::trap::Trap;
 use unshare::{Command, Stdio, reap_zombies};
+use nix::sys::signal::Signal;
+use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 
 use lithos::cgroup;
 use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
@@ -40,7 +40,6 @@ use lithos_knot_options::Options;
 
 mod lithos_knot_options;
 
-type SigNum = i32;
 
 struct SignalIter<'a> {
     trap: &'a mut Trap,
@@ -60,8 +59,8 @@ impl<'a> SignalIter<'a> {
 }
 
 impl<'a> Iterator for SignalIter<'a> {
-    type Item = SigNum;
-    fn next(&mut self) -> Option<SigNum> {
+    type Item = Signal;
+    fn next(&mut self) -> Option<Signal> {
         if self.interrupt {
             return self.trap.wait(Instant::now());
         } else {
@@ -280,7 +279,7 @@ fn run(options: Options) -> Result<i32, String>
                 SIGCHLD => {
                     for (pid, status) in reap_zombies() {
                         if pid == child.pid() {
-                            if status.signal() == Some(SIGTERM) {
+                            if status.signal() == Some(SIGTERM as i32) {
                                 exit_code = 0;
                             }
                             error!("Process {:?} {}", options.name, status);

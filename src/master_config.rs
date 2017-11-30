@@ -4,7 +4,7 @@ use quire::validate::{Structure, Sequence};
 use quire::validate::{Scalar};
 use super::utils::ensure_dir;
 
-#[derive(RustcDecodable)]
+#[derive(Deserialize)]
 pub struct MasterConfig {
     pub runtime_dir: PathBuf,
     pub sandboxes_dir: PathBuf,

@@ -1,7 +1,6 @@
 use std::io::Error as IoError;
 use std::os::unix::io::RawFd;
 use nix::unistd::{pipe};
-use nix::Error::{Sys, InvalidPath};
 use nix::errno::Errno::EPIPE;
 
 use libc::{c_int, c_void, close, write, EINTR, EAGAIN};
@@ -14,12 +13,15 @@ pub struct CPipe {
 
 impl CPipe {
     pub fn new() -> Result<CPipe, IoError> {
+        use nix::Error::*;
         match pipe() {
             Ok((reader, writer)) => Ok(CPipe {
                 reader: reader, writer: writer
             }),
             Err(Sys(code)) => Err(IoError::from_raw_os_error(code as i32)),
             Err(InvalidPath) => unreachable!(),
+            Err(InvalidUtf8) => unreachable!(),
+            Err(UnsupportedOperation) => unreachable!(),
         }
     }
     pub fn reader_fd(&self) -> c_int {

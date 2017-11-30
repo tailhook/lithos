@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
 
 use regex::{Regex, Captures};
-use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
+use serde::de::{Deserializer, Deserialize, Error as DeError};
+use serde::ser::{Serializer, Serialize};
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping, Nothing, Anything};
 use id_map::{IdMap, IdMapExt, mapping_validator};
@@ -22,13 +23,13 @@ lazy_static! {
 }
 
 
-#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct TmpfsInfo {
     pub size: usize,
     pub mode: u32,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct PersistentInfo {
     pub path: PathBuf,
     pub mkdir: bool,
@@ -37,7 +38,7 @@ pub struct PersistentInfo {
     pub group: u32,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct StatedirInfo {
     pub path: PathBuf,
     pub mode: u32,
@@ -45,7 +46,7 @@ pub struct StatedirInfo {
     pub group: u32,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub enum Volume {
     Readonly(PathBuf),
     Persistent(PersistentInfo),
@@ -53,8 +54,7 @@ pub enum Volume {
     Statedir(StatedirInfo),
 }
 
-#[derive(RustcDecodable, RustcEncodable, Serialize, Deserialize)]
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ContainerKind {
     Daemon,
     Command,
@@ -76,12 +76,12 @@ impl ContainerKind {
     }
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct ResolvConf {
     pub copy_from_host: bool,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct HostsFile {
     pub copy_from_host: bool,
     pub localhost: Option<bool>,
@@ -91,7 +91,7 @@ pub struct HostsFile {
 #[derive(Clone, Debug)]
 pub struct Host(pub IpAddr);
 
-#[derive(RustcDecodable, RustcEncodable, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct TcpPort {
     pub host: Host,
     pub fd: RawFd,
@@ -100,14 +100,14 @@ pub struct TcpPort {
     pub listen_backlog: usize,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub enum Variable {
     TcpPort,
     Name,
     Choice(Vec<String>),
 }
 
-#[derive(RustcDecodable)]
+#[derive(Deserialize)]
 pub struct ContainerConfig {
     pub kind: ContainerKind,
     pub variables: BTreeMap<String, Variable>,
@@ -133,7 +133,7 @@ pub struct ContainerConfig {
     pub tcp_ports: HashMap<String, TcpPort>,
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(Deserialize, Serialize)]
 pub struct InstantiatedConfig {
     pub kind: ContainerKind,
     pub volumes: BTreeMap<String, Volume>,
@@ -321,16 +321,16 @@ pub fn volume_validator<'x>() -> Enum<'x> {
         .member("group", Numeric::new().default(0)))
 }
 
-impl Decodable for Host {
-    fn decode<D: Decoder>(d: &mut D) -> Result<Self, D::Error> {
-        try!(d.read_str()).parse().map(Host)
-            .map_err(|x| d.error(&format!("{}", x)))
+impl<'a> Deserialize<'a> for Host {
+    fn deserialize<D: Deserializer<'a>>(d: D) -> Result<Host, D::Error> {
+        String::deserialize(d)?.parse().map(Host)
+            .map_err(|x| D::Error::custom(format!("{}", x)))
     }
 }
 
-impl Encodable for Host {
-    fn encode<S: Encoder>(&self, s: &mut S) -> Result<(), S::Error> {
-        format!("{}", self.0).encode(s)
+impl Serialize for Host {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        format!("{}", self.0).serialize(s)
     }
 }
 

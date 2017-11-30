@@ -1,7 +1,7 @@
 use quire::validate::{Sequence, Numeric, Structure};
 
 
-#[derive(RustcDecodable, RustcEncodable, Clone, Copy, Debug)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug)]
 pub struct IdMap {
     pub inside: u32,
     pub outside: u32,

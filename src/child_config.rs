@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use quire::validate::{Structure, Scalar, Numeric, Mapping};
 use quire::{Options, parse_string};
 
-#[derive(RustcDecodable, RustcEncodable, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ChildKind {
     Daemon,
     Command,
 }
 
-#[derive(RustcDecodable, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChildConfig {
     pub instances: usize,
     pub image: String,

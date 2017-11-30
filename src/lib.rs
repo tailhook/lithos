@@ -7,7 +7,6 @@ extern crate libmount;
 extern crate nix;
 extern crate quire;
 extern crate regex;
-extern crate rustc_serialize;
 extern crate serde;
 extern crate serde_json;
 extern crate signal;
