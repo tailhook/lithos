@@ -16,6 +16,7 @@ commands:
   cargo: !Command
     description: Run any cargo command
     container: xenial
+    symlink-name: cargo
     run: [cargo]
 
   bulk: !Command
