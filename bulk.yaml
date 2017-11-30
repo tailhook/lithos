@@ -85,6 +85,6 @@ versions:
   # for more automation we also update the lockfile
 
 - file: Cargo.lock
-  block-start: ^\[root\]
+  block-start: ^name\s*=\s*"lithos"
   regex: ^version\s*=\s*"(\S+)"
   block-end: ^\[.*\]
