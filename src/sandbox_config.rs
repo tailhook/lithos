@@ -71,6 +71,7 @@ pub struct SandboxConfig {
     pub additional_hosts: BTreeMap<String, String>,
     pub uid_map: Vec<IdMap>,
     pub gid_map: Vec<IdMap>,
+    pub auto_clean: bool,
 }
 
 impl SandboxConfig {
@@ -108,5 +109,6 @@ impl SandboxConfig {
         .member("additional_hosts", Mapping::new(
             Scalar::new(),
             Scalar::new()))
+        .member("auto_clean", Scalar::new().default("true").optional())
     }
 }

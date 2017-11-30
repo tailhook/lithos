@@ -134,4 +134,16 @@ Reference
     It's expected that the list is kept up by some orchestration system or
     by deployment scripts or by any other tool meaningful for ops team.
 
+    This setting is only useful if ``auto-clean`` is ``true`` (default)
+
+.. opt:: auto-clean
+
+   (default ``true``) Clean images of this sandbox when running
+   ``lithos_clean``. This is a subject of the following caveats:
+
+   1. Lithos clean is not run by lithos automatically, you ought to run it
+      using cron tab
+   2. If same ``image-dir`` is used for multiple sandboxes it will be cleaned
+      if at least one of them has non-falsy ``auto-clean``.
+
 

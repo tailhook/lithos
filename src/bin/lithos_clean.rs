@@ -464,6 +464,11 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
             let sandbox_config: SandboxConfig = parse_config(&entry.path(),
                 &SandboxConfig::validator(), &Options::default())
                 .map_err(|e| e.to_string())?;
+
+            if sandbox_config.auto_clean == false {
+                continue;
+            }
+
             let lev = image_dirs.entry(sandbox_config.image_dir.clone())
                 .or_insert(sandbox_config.image_dir_levels);
             if *lev != sandbox_config.image_dir_levels {
