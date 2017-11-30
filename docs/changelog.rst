@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.13.2:
+
+v0.13.2
+=======
+
+* Upgrades many dependencies, no significant changes or bugfixes
+
+
 .. _changelog 0.13.1:
 
 v0.13.1
