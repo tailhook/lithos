@@ -246,30 +246,28 @@ pub fn init_logging(cfg: &MasterConfig, suffix: &Path, name: &str,
         .map_err(|e| format!("Can't initialize logging: {}", e))
     } else {
         let path = cfg.default_log_dir.join(suffix);
-        let mut output = vec![
-            fern::OutputConfig::file(&path)
-            ];
-        if log_stderr {
-            output.push(fern::OutputConfig::stderr());
-        }
-        let logger_config = fern::DispatchConfig {
-            format: Box::new(|msg: &str, level: &log::LogLevel,
-                              location: &log::LogLocation| {
-                if *level >= log::LogLevel::Debug {
-                    format!("[{}][{}]{}:{}: {}",
+        let file = fern::log_file(path)
+            .map_err(|e| format!("Can't initialize logging: {}", e))?;
+        let mut disp = fern::Dispatch::new()
+            .format(|out, message, record| {
+                if record.level() >= log::LogLevel::Debug {
+                    out.finish(format_args!("[{}][{}]{}:{}: {}",
                         time::now_utc().rfc3339(),
-                        level, location.file(), location.line(),
-                        msg)
+                        record.level(),
+                        record.location().file(), record.location().line(),
+                        message))
                 } else {
-                    format!("[{}][{}] {}",
+                    out.finish(format_args!("[{}][{}] {}",
                         time::now_utc().rfc3339(),
-                        level, msg)
+                        record.level(), message))
                 }
-            }),
-            output: output,
-            level: level.to_log_level_filter(),
-        };
-        fern::init_global_logger(logger_config, log::LogLevelFilter::Trace)
+            })
+            .level(level.to_log_level_filter())
+            .chain(file);
+        if log_stderr {
+            disp = disp.chain(io::stderr())
+        }
+        disp.apply()
             .map_err(|e| format!("Can't initialize logging: {}", e))
     }
 }
