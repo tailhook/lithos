@@ -107,7 +107,7 @@ pub enum Variable {
     Choice(Vec<String>),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ContainerConfig {
     pub kind: ContainerKind,
     pub variables: BTreeMap<String, Variable>,
