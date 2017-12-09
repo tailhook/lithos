@@ -1,12 +1,10 @@
 use std::collections::BTreeMap;
-use std::str::FromStr;
 use std::path::{PathBuf, Path, Component};
 
 use id_map::{IdMap, mapping_validator};
 use range::Range;
 use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 use quire::validate::{Structure};
-use serde::de::{Deserializer, Deserialize, Error};
 
 
 #[derive(Deserialize)]
