@@ -1,7 +1,7 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::os::unix::io::RawFd;
+#[cfg(not(target_arch="wasm32"))] use std::os::unix::io::RawFd;
 use std::ascii::AsciiExt;
 
 use serde::de::{Deserializer, Deserialize, Error as DeError};
@@ -17,6 +17,7 @@ use child_config::ChildKind;
 
 pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
 
+#[cfg(target_arch="wasm32")] type RawFd = i32;
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct TmpfsInfo {
