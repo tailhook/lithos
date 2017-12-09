@@ -30,6 +30,7 @@ pub mod itertools;
 pub mod timer_queue;
 pub mod id_map;
 pub mod metrics;
+pub mod range;
 #[cfg(test)] pub mod ascii;  // actually a lithos_ps module
 
 pub const MAX_CONFIG_LOGS: u32 = 100;

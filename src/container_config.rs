@@ -11,7 +11,7 @@ use quire::validate::{Mapping, Nothing, Anything};
 use id_map::{IdMap, IdMapExt, mapping_validator};
 
 use sandbox_config::SandboxConfig;
-use utils::{in_range};
+use range::{in_range};
 use child_config::ChildKind;
 
 

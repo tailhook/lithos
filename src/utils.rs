@@ -15,9 +15,9 @@ use nix::sys::signal::{SIGFPE, SIGUSR1, SIGUSR2};
 use libc::{c_int, c_char, timeval, c_void, mode_t, uid_t, gid_t};
 use libc::{chmod, chdir, chown};
 use signal::trap::Trap;
+use range::Range;
 
 
-use super::sandbox_config::Range;
 use super::id_map::IdMap;
 
 pub type Time = f64;
@@ -76,15 +76,6 @@ pub fn temporary_change_root<T, F>(path: &Path, fun: F)
                            IoError::last_os_error()));
     }
     return res;
-}
-
-pub fn in_range(ranges: &Vec<Range>, value: u32) -> bool {
-    for rng in ranges.iter() {
-        if rng.start <= value && rng.end >= value {
-            return true;
-        }
-    }
-    return false;
 }
 
 pub fn in_mapping(mapping: &Vec<IdMap>, value: u32) -> bool {

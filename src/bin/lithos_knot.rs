@@ -27,7 +27,8 @@ use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 
 use lithos::cgroup;
-use lithos::utils::{in_range, check_mapping, in_mapping, change_root};
+use lithos::utils::{check_mapping, in_mapping, change_root};
+use lithos::range::in_range;
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};

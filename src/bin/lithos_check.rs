@@ -17,7 +17,8 @@ use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print, Collect};
 use quire::{parse_config, Options};
 
-use lithos::utils::{in_range, in_mapping, check_mapping, relative};
+use lithos::utils::{in_mapping, check_mapping, relative};
+use lithos::range::in_range;
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};
