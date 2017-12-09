@@ -2,8 +2,8 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
+use std::ascii::AsciiExt;
 
-use regex::{Regex, Captures};
 use serde::de::{Deserializer, Deserialize, Error as DeError};
 use serde::ser::{Serializer, Serialize};
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
@@ -16,11 +16,6 @@ use child_config::ChildKind;
 
 
 pub const DEFAULT_KILL_TIMEOUT: f32 = 5.;
-
-lazy_static! {
-    static ref VARIABLE_REGEX: Regex = Regex::new(r#"@\{([^}]*)\}"#).unwrap();
-    static ref NAME_REGEX: Regex = Regex::new(r#"^[0-9a-zA-Z_-]+$"#).unwrap();
-}
 
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -231,8 +226,7 @@ impl ContainerConfig {
         let mut errors1 = HashSet::new();
         let mut errors2 = HashSet::new();
         let result = {
-            let mut replacer = |capt: &Captures| {
-                let varname = capt.get(1).unwrap().as_str();
+            let mut replacer = |varname: &str| {
                 let val = variables.user_vars.get(varname).map(|x| x.clone())
                     .or_else(|| match varname {
                         "lithos:name"
@@ -261,12 +255,12 @@ impl ContainerConfig {
                 cpu_shares: self.cpu_shares.clone(),
                 executable: self.executable.clone(),
                 arguments: self.arguments.iter()
-                    .map(|x| VARIABLE_REGEX.replace(&x, &mut replacer).into())
+                    .map(|x| replace_vars(&x, &mut replacer).into())
                     .collect(),
                 environ: self.environ.iter()
                     .map(|(key, val)| {
                         (key.clone(),
-                         VARIABLE_REGEX.replace(&val, &mut replacer).into())
+                         replace_vars(&val, &mut replacer).into())
                     })
                     .collect(),
                 workdir: self.workdir.clone(),
@@ -279,7 +273,7 @@ impl ContainerConfig {
                 restart_process_only: self.restart_process_only.clone(),
                 tcp_ports: self.tcp_ports.iter()
                     .map(|(key, val)| {
-                        let s = VARIABLE_REGEX.replace(&key, &mut replacer);
+                        let s = replace_vars(&key, &mut replacer);
                         let port = match s.parse::<u16>() {
                             Ok(x) => x,
                             Err(e) => {
@@ -349,7 +343,10 @@ impl Variable {
                 }
             }
             Variable::Name => {
-                if !NAME_REGEX.is_match(value) {
+                let chars_ok = value.chars().all(|x| {
+                    x.is_ascii() && x.is_alphanumeric() || x == '-' || x == '_'
+                });
+                if !chars_ok {
                     return Err(format!("Value {:?} contains characters that \
                         are invalid for names (alphanumeric, `-` and `_`)",
                         value));
@@ -363,5 +360,56 @@ impl Variable {
             }
         }
         Ok(())
+    }
+}
+
+fn replace_vars<F, S>(mut s: &str, mut f: F)
+    -> String
+    where F: FnMut(&str) -> S,
+          S: AsRef<str>,
+{
+    let mut result = String::with_capacity(s.len());
+    while let Some(vpos) = s.find("@{") {
+        result.push_str(&s[..vpos]);
+        s = &s[vpos..];
+        if let Some(vend) = s.find('}') {
+            let var = s[..vend].trim();
+            result.push_str(f(var).as_ref());
+            s = &s[vend+1..];
+        } else {
+            break;  // unclosed vars are just raw text
+        }
+    }
+    result.push_str(s);
+    return result;
+}
+
+#[cfg(test)]
+mod test {
+    use super::replace_vars;
+
+    #[test]
+    fn just_var() {
+        assert_eq!(replace_vars("@{x}", |_| "1"), "1");
+    }
+
+    #[test]
+    fn suffix() {
+        assert_eq!(replace_vars("xxx@{x}", |_| "1"), "xxx1");
+    }
+
+    #[test]
+    fn prefix() {
+        assert_eq!(replace_vars("@{yy}zzz", |_| "1"), "1zzz");
+    }
+
+    #[test]
+    fn middle() {
+        assert_eq!(replace_vars("aaa@{yy}zzz", |_| "1"), "aaa1zzz");
+    }
+    #[test]
+    fn two_vars() {
+        assert_eq!(replace_vars("one @{x} two @{ y } three", |_| "1"),
+            "one 1 two 1 three");
     }
 }

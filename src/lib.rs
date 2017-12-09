@@ -6,14 +6,12 @@ extern crate libc;
 extern crate libmount;
 extern crate nix;
 extern crate quire;
-extern crate regex;
 extern crate serde;
 extern crate serde_json;
 extern crate signal;
 extern crate syslog;
 extern crate time;
 extern crate libcantal;
-#[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
 #[macro_use] extern crate serde_derive;
 
