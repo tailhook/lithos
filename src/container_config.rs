@@ -6,6 +6,7 @@ use std::ascii::AsciiExt;
 
 use serde::de::{Deserializer, Deserialize, Error as DeError};
 use serde::ser::{Serializer, Serialize};
+use serde_json::Value as Json;
 use quire::validate::{Structure, Sequence, Scalar, Numeric, Enum};
 use quire::validate::{Mapping, Nothing, Anything};
 use id_map::{IdMap, IdMapExt, mapping_validator};
@@ -107,6 +108,7 @@ pub enum Variable {
 pub struct ContainerConfig {
     pub kind: ContainerKind,
     pub variables: BTreeMap<String, Variable>,
+    pub metadata: Json,
     pub volumes: BTreeMap<String, Volume>,
     pub user_id: u32,
     pub group_id: u32,
