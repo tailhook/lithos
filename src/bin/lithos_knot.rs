@@ -257,6 +257,7 @@ fn run(options: Options) -> Result<i32, String>
             };
         }
 
+        warn!("Starting {:?}: {:?}", options.name, cmd);
         let child = try!(cmd.spawn().map_err(|e|
             format!("Error running {:?}: {}", options.name, e)));
 
