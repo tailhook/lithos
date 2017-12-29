@@ -22,7 +22,7 @@ use std::process::exit;
 use libmount::BindMount;
 use quire::{parse_config, Options as COptions};
 use signal::trap::Trap;
-use unshare::{Command, Stdio, reap_zombies};
+use unshare::{Command, Stdio, Style, reap_zombies};
 use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 
@@ -99,7 +99,7 @@ fn run(options: Options) -> Result<i32, String>
 
     let stderr_path = master.stdio_log_dir
         .join(format!("{}.log", sandbox_name));
-    let stderr_file = try!(OpenOptions::new()
+    let mut stderr_file = try!(OpenOptions::new()
                 .create(true).append(true).write(true).open(&stderr_path)
                 .map_err(|e| format!(
                     "Error opening stderr file {:?}: {}", stderr_path, e)));
@@ -257,7 +257,14 @@ fn run(options: Options) -> Result<i32, String>
             };
         }
 
-        warn!("Starting {:?}: {:?}", options.name, cmd);
+        warn!("Starting {:?}: {}", options.name,
+            cmd.display(&Style::short().path(true)));
+        stderr_file.write_all(
+            format!("{}: ----- Starting {:?}: {} -----\n",
+                time::now_utc().rfc3339(), options.name,
+                cmd.display(&Style::short().path(true)))
+            .as_bytes()
+        ).ok();
         let child = try!(cmd.spawn().map_err(|e|
             format!("Error running {:?}: {}", options.name, e)));
 
@@ -287,6 +294,14 @@ fn run(options: Options) -> Result<i32, String>
                             let uptime = Instant::now() - start;
                             error!("Process {:?} {}, uptime {}s",
                                 options.name, status, uptime.as_secs());
+                            stderr_file.write_all(
+                                format!("{}: ----- \
+                                    Process {:?} {}, uptime {}s \
+                                    -----\n",
+                                    time::now_utc().rfc3339(),
+                                    options.name, status, uptime.as_secs(),
+                                ).as_bytes()
+                            ).ok();
                             iter.interrupt();
                         }
                     }
