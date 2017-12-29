@@ -283,7 +283,9 @@ fn run(options: Options) -> Result<i32, String>
                             if status.signal() == Some(SIGTERM as i32) {
                                 exit_code = 0;
                             }
-                            error!("Process {:?} {}", options.name, status);
+                            let uptime = Instant::now() - start;
+                            error!("Process {:?} {}, uptime {}s",
+                                options.name, status, uptime.as_secs());
                             iter.interrupt();
                         }
                     }
