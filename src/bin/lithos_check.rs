@@ -351,5 +351,9 @@ fn main() {
         check_binaries();
         check(&config_file, verbose, sandbox_name, alter_config);
     }
-    exit(EXIT_STATUS.load(Ordering::SeqCst) as i32);
+    let exit_status = EXIT_STATUS.load(Ordering::SeqCst) as i32;
+    if exit_status != 0 {
+        warn!("Lithos version v{}", cfg!(CARGO_PKG_VERSION));
+    }
+    exit(exit_status);
 }
