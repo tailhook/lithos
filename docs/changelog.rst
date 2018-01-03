@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.14.1:
+
+v0.14.1
+=======
+
+* Bugfix: variable substitution was broken in v0.14.0
+
+
 .. _changelog 0.14.0:
 
 v0.14.0

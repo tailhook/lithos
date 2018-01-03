@@ -376,7 +376,7 @@ fn replace_vars<F, S>(mut s: &str, mut f: F)
         result.push_str(&s[..vpos]);
         s = &s[vpos..];
         if let Some(vend) = s.find('}') {
-            let var = s[..vend].trim();
+            let var = s[2..vend].trim();
             result.push_str(f(var).as_ref());
             s = &s[vend+1..];
         } else {
@@ -414,5 +414,21 @@ mod test {
     fn two_vars() {
         assert_eq!(replace_vars("one @{x} two @{ y } three", |_| "1"),
             "one 1 two 1 three");
+    }
+
+    #[test]
+    fn correct_name() {
+        assert_eq!(replace_vars("@{x}", |name| {
+            assert_eq!(name, "x");
+            "1"
+        }), "1");
+        assert_eq!(replace_vars("@{xyz}", |name| {
+            assert_eq!(name, "xyz");
+            "1"
+        }), "1");
+        assert_eq!(replace_vars("a@{xyz}b@{xyz}c", |name| {
+            assert_eq!(name, "xyz");
+            "1"
+        }), "a1b1c");
     }
 }
