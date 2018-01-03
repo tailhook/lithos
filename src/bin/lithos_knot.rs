@@ -171,6 +171,10 @@ fn run(options: Options) -> Result<i32, String>
             "memory.limit_in_bytes",
             &format!("{}", local.memory_limit))
             .map_err(|e| error!("Error setting cgroup limit: {}", e)).ok();
+        cgroups.set_value_if_exists(cgroup::Controller::Memory,
+            "memory.memsw.limit_in_bytes",
+            &format!("{}", local.memory_limit))
+            .map_err(|e| error!("Error setting cgroup limit: {}", e)).ok();
         cgroups.set_value(cgroup::Controller::Cpu,
                 "cpu.shares",
                 &format!("{}", local.cpu_shares))

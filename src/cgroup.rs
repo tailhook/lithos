@@ -189,4 +189,20 @@ impl CGroups {
             .map_err(|e| format!("Can't write to cgroup path {:?}/{}: {}",
                 path, key, e))
     }
+    pub fn set_value_if_exists(&self, ctr: Controller, key: &str, value: &str)
+        -> Result<(), String>
+    {
+        let path = try!(self.full_paths.get(&ctr)
+            .ok_or(format!("Controller {:?} is not initialized", ctr)));
+        let full_path = path.join(key);
+        if full_path.exists() {
+            File::create(&full_path)
+                .and_then(|mut f| f.write_all(value.as_bytes()))
+                .map_err(|e| format!("Can't write to cgroup path {:?}/{}: {}",
+                    path, key, e))
+        } else {
+            debug!("No cgroup setting {:?}", full_path);
+            Ok(())
+        }
+    }
 }
