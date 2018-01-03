@@ -128,6 +128,13 @@ Reference
     You can use ``ki``, ``Mi`` and ``Gi`` units for memory accounting.
     See integer-units_.
 
+    .. versionchanged:: 0.14.0
+
+       Previously it only set ``memory.limit_in_bytes`` but now it also sets
+       ``memory.memsw.limit_in_bytes`` if the latter exists (otherwise skipping
+       silently). This helps to kill processes earlier instead of swapping out
+       to disk.
+
 .. opt:: cpu-shares
 
     The number of CPU shares for the process. Default is ``1024`` which means

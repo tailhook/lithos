@@ -3,6 +3,18 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.14.0:
+
+v0.14.0
+=======
+
+* Sets ``memory.memsw.limit_in_bytes`` if that exists (usually requires
+  ``swapaccount=1`` in kernel params).
+* Adds a warning-level message on process startup
+* Duplicates startup and death messages into stderr log, so you can corelate
+  them with application messages
+
+
 .. _changelog 0.13.2:
 
 v0.13.2
