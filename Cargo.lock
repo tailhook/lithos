@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "lithos"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "argparse 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
