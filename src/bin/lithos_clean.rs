@@ -178,7 +178,7 @@ fn main() {
                 .unwrap();
             for i in unused {
                 if verbose {
-                    println!("Deleting {:?}", i);
+                    println!("{}: Deleting {:?}", time::now_utc().rfc3339(), i);
                 }
                 remove_dir_all(&i)
                     .map_err(|e| error!("Error removing {:?}: {}", i, e)).ok();

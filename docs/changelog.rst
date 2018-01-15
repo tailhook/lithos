@@ -10,6 +10,7 @@ v0.14.2
 
 * Bugfix: if ``auto-clean`` is different in several sandboxes looking at the
   same image directory we skip cleaning the dir and print a warning
+* Add a timestamp to ``lithos_clean`` output (in ``--delete-unused`` mode)
 
 .. _changelog 0.14.1:
 
