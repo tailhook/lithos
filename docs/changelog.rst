@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.14.2:
+
+v0.14.2
+=======
+
+* Bugfix: if ``auto-clean`` is different in several sandboxes looking at the
+  same image directory we skip cleaning the dir and print a warning
+
 .. _changelog 0.14.1:
 
 v0.14.1

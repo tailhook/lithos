@@ -455,6 +455,7 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
     let mut bad_dirs = HashSet::new();
     let mut images = HashSet::new();
     let mut image_dirs = HashMap::new();
+    let mut no_clean_dirs = HashSet::new();
     let mut unused_logs = Vec::new();
     let childval = ChildConfig::mapping_validator();
     scan_dir::ScanDir::files().read(&config_dir, |iter| -> Result<(), String> {
@@ -466,7 +467,19 @@ fn find_used_images(master: &MasterConfig, master_file: &Path,
                 .map_err(|e| e.to_string())?;
 
             if sandbox_config.auto_clean == false {
+                no_clean_dirs.insert(sandbox_config.image_dir.clone());
+                if image_dirs.contains_key(&sandbox_config.image_dir) {
+                    error!("Conflicting `auto-clean` setting for {:?}",
+                        sandbox_config.image_dir);
+                    bad_dirs.insert(sandbox_config.image_dir.clone());
+                }
                 continue;
+            } else {
+                if no_clean_dirs.contains(&sandbox_config.image_dir) {
+                    error!("Conflicting `auto-clean` setting for {:?}",
+                        sandbox_config.image_dir);
+                    bad_dirs.insert(sandbox_config.image_dir.clone());
+                }
             }
 
             let lev = image_dirs.entry(sandbox_config.image_dir.clone())
