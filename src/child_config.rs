@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use quire::validate::{Structure, Scalar, Numeric, Mapping};
 use quire::{Options, parse_string};
@@ -11,13 +11,14 @@ pub enum ChildKind {
     Command,
 }
 
+// Note everything here should be stable-serializable
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct ChildConfig {
     pub instances: usize,
     pub image: String,
     pub config: String,
-    #[serde(skip_serializing_if="HashMap::is_empty", default)]
-    pub variables: HashMap<String, String>,
+    #[serde(skip_serializing_if="BTreeMap::is_empty", default)]
+    pub variables: BTreeMap<String, String>,
     pub kind: ChildKind,
 }
 
@@ -48,7 +49,7 @@ impl FromStr for ChildConfig {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use std::str::FromStr;
     use super::ChildConfig;
     use super::ChildKind::Daemon;
@@ -66,7 +67,7 @@ mod test {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
-            variables: HashMap::new(),
+            variables: BTreeMap::new(),
             kind: Daemon,
         });
 
@@ -75,7 +76,7 @@ mod test {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
-            variables: HashMap::new(),
+            variables: BTreeMap::new(),
             kind: Daemon,
         });
     }
@@ -106,7 +107,7 @@ mod test {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
-            variables: HashMap::new(),
+            variables: BTreeMap::new(),
             kind: Daemon,
         }).unwrap();
         assert_eq!(data, "{\
@@ -124,6 +125,7 @@ mod test {
             config: String::from("/config/staging/myproj.yaml"),
             variables: vec![
                 (String::from("a"), String::from("b")),
+                (String::from("c"), String::from("d")),
             ].into_iter().collect(),
             kind: Daemon,
         }).unwrap();
@@ -131,7 +133,7 @@ mod test {
             \"instances\":1,\
             \"image\":\"myproj.4a20772b\",\
             \"config\":\"/config/staging/myproj.yaml\",\
-            \"variables\":{\"a\":\"b\"},\
+            \"variables\":{\"a\":\"b\",\"c\":\"d\"},\
             \"kind\":\"Daemon\"}");
     }
 }

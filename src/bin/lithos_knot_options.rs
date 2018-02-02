@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::env;
 use std::io::{stdout, stderr};
 use std::io::{Write};
@@ -36,7 +36,7 @@ impl Options {
                 instances: 0,
                 image: "".to_string(),
                 config: "".to_string(),
-                variables: HashMap::new(),
+                variables: BTreeMap::new(),
                 kind: Daemon,
             },
             name: "".to_string(),

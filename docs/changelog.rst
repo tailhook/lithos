@@ -3,6 +3,15 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.14.3:
+
+v0.14.3
+=======
+
+* Bugfix: when more than one variable is used lithos were restarting process
+  every time (because of unstable serialization of hashmap)
+
+
 .. _changelog 0.14.2:
 
 v0.14.2

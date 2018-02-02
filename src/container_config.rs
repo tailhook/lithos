@@ -158,7 +158,7 @@ pub struct InstantiatedConfig {
 
 
 pub struct Variables<'a> {
-    pub user_vars: &'a HashMap<String, String>,
+    pub user_vars: &'a BTreeMap<String, String>,
     pub lithos_name: &'a str,
     pub lithos_config_filename: &'a str,
 }
