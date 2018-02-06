@@ -409,4 +409,23 @@ Reference
    metadata for our deployment tools (to keep configuration files
    more consolidated instead of keeping then in small fragments).
 
+.. opt:: normal-exit-codes
+
+   (optional) A list of exit codes which are considered normal for process
+   death. This currently only improves ``failures`` metric.
+   See :ref:`Determining Failure <failures>`.
+
+   Note: by default even `0` exit code is considered an error for daemons.
+
+   This setting is intended for daemons which may voluntarily exit for some
+   reason (soft memory limit, version upgrade, configuration reload).
+
+   It's not recommended to add `0` or `1` into the list, as some commands
+   threat them pretty arbitrarily. For example `0` is exit code of most
+   utilities running `--help` so this mistake will not be detected. And `1`
+   is used for arbitrary crashes in scripting languages. So the good idea
+   is to define some specific code in range of `8..120` to define successful
+   exit.
+
+
 .. _integer-units: http://rust-quire.readthedocs.io/en/latest/user.html#units

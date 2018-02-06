@@ -30,10 +30,7 @@ Per-process metrics:
   times process have exited for any reason
 * ``processes.<sandbox_name>.<process_name>.failures`` -- (counter) number of
   times process have exited for failure reason, for whatever reason lithos
-  thinks it was failure. Currently only processes that had been sent
-  ``SIGTERM`` signal to (with any exit status) or ones dead on ``SIGTERM``
-  signal are considered non-failed. (*Processes exited with code 0 are still
-  considered failed because daemons should not exit anyway*)
+  thinks it was failure. See `Determining Failure`_
 * ``processes.<sandbox_name>.<process_name>.running`` -- (gauge) number of
   procesess that are currently running (was started but not yet found to be
   exited)
@@ -51,3 +48,15 @@ Global metrics for all sandboxes and containers:
   to lithos (they are being killed, and they are probably from deleted configs)
 
 .. _cantal-compatible protocol: http://cantal.readthedocs.io/en/latest/mmap.html
+
+.. _failures:
+
+Determining Failure
+===================
+
+Currently there are two kinds of process death that are considered non-failures:
+
+1. Processes that had been sent ``SIGTERM`` signal to (with any exit status)
+   or ones dead on ``SIGTERM`` signal are considered non-failed.
+2. Processes exited with one of the exit codes specified in
+   :opt:`normal-exit-codes`

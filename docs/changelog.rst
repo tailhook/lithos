@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.14.5:
+
+v0.14.5
+=======
+
+* feature: Add :opt:`normal-exit-codes` setting
+
+
 .. _changelog 0.14.3:
 
 v0.14.3

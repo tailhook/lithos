@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 use std::path::PathBuf;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 #[cfg(not(target_arch="wasm32"))] use std::os::unix::io::RawFd;
 use std::ascii::AsciiExt;
 
@@ -128,6 +128,7 @@ pub struct ContainerConfig {
     pub stdout_stderr_file: Option<PathBuf>,
     pub interactive: bool,
     pub restart_process_only: bool,
+    pub normal_exit_codes: BTreeSet<i32>,
     pub tcp_ports: HashMap<String, TcpPort>,
 }
 
@@ -153,6 +154,7 @@ pub struct InstantiatedConfig {
     pub stdout_stderr_file: Option<PathBuf>,
     pub interactive: bool,
     pub restart_process_only: bool,
+    pub normal_exit_codes: BTreeSet<i32>,
     pub tcp_ports: HashMap<u16, TcpPort>,
 }
 
@@ -213,6 +215,7 @@ impl ContainerConfig {
         .member("stdout_stderr_file", Scalar::new().optional())
         .member("interactive", Scalar::new().default(false))
         .member("restart_process_only", Scalar::new().default(false))
+        .member("normal_exit_codes", Sequence::new(Numeric::new()))
         .member("tcp_ports", Mapping::new(
             Scalar::new(),
             Structure::new()
@@ -274,6 +277,7 @@ impl ContainerConfig {
                 stdout_stderr_file: self.stdout_stderr_file.clone(),
                 interactive: self.interactive.clone(),
                 restart_process_only: self.restart_process_only.clone(),
+                normal_exit_codes: self.normal_exit_codes.clone(),
                 tcp_ports: self.tcp_ports.iter()
                     .map(|(key, val)| {
                         let s = replace_vars(&key, &mut replacer);
