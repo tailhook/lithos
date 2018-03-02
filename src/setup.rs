@@ -4,13 +4,14 @@ use std::fs::{File};
 use std::fs::{create_dir_all, copy, metadata};
 use std::path::{Path, PathBuf};
 use std::collections::BTreeMap;
+use std::time::SystemTime;
 
 use log;
 use fern;
 use syslog;
-use time;
 use quire::{parse_config, Options};
 use libmount::{self, BindMount};
+use humantime::format_rfc3339_seconds;
 
 use super::mount::{mount_ro_recursive};
 use super::mount::{mount_pseudo, mount_pts};
@@ -252,13 +253,13 @@ pub fn init_logging(cfg: &MasterConfig, suffix: &Path, name: &str,
             .format(|out, message, record| {
                 if record.level() >= log::LogLevel::Debug {
                     out.finish(format_args!("[{}][{}]{}:{}: {}",
-                        time::now_utc().rfc3339(),
+                        format_rfc3339_seconds(SystemTime::now()),
                         record.level(),
                         record.location().file(), record.location().line(),
                         message))
                 } else {
                     out.finish(format_args!("[{}][{}] {}",
-                        time::now_utc().rfc3339(),
+                        format_rfc3339_seconds(SystemTime::now()),
                         record.level(), message))
                 }
             })

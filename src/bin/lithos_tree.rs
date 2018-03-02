@@ -1,4 +1,5 @@
 extern crate argparse;
+extern crate humantime;
 extern crate fern;
 extern crate libc;
 extern crate libcantal;
@@ -10,7 +11,6 @@ extern crate scan_dir;
 extern crate serde_json;
 extern crate signal;
 extern crate syslog;
-extern crate time;
 extern crate unshare;
 #[macro_use] extern crate log;
 
@@ -23,11 +23,12 @@ use std::str::{FromStr};
 use std::fs::{remove_dir};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, Duration};
+use std::time::{SystemTime, Instant, Duration};
 use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::{RawFd, AsRawFd};
 
+use humantime::format_rfc3339_seconds;
 use libc::{close};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::{kill, Signal};
@@ -926,7 +927,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                     // we want as atomic writes as possible,
                     // so format into a buf
                     let buf = format!("{} {}\n",
-                        time::now_utc().rfc3339(),
+                        format_rfc3339_seconds(SystemTime::now()),
                         to_string(&cfg).unwrap());
                     f.write_all(buf.as_bytes())
                 })

@@ -2,7 +2,6 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 #[cfg(not(target_arch="wasm32"))] use std::os::unix::io::RawFd;
-use std::ascii::AsciiExt;
 
 use serde::de::{Deserializer, Deserialize, Error as DeError};
 use serde::ser::{Serializer, Serialize};

@@ -116,7 +116,7 @@ fn main() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "warn");
     }
-    env_logger::init().unwrap();
+    env_logger::init();
 
     let mut master_config = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;

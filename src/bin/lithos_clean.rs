@@ -5,7 +5,6 @@ extern crate lithos;
 extern crate quire;
 extern crate scan_dir;
 extern crate serde_json;
-extern crate time;
 #[macro_use] extern crate log;
 #[macro_use] extern crate matches;
 
@@ -18,8 +17,9 @@ use std::io::{self, BufReader, BufRead};
 use std::path::{PathBuf, Path};
 use std::process::exit;
 use std::rc::Rc;
-use std::time::{SystemTime, Duration, UNIX_EPOCH};
+use std::time::{SystemTime, Duration};
 
+use humantime::{parse_rfc3339, format_rfc3339_seconds};
 use quire::{parse_config, Options};
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, StoreConst};
 use argparse::{Print, StoreOption};
@@ -60,7 +60,7 @@ fn main() {
     if env::var("RUST_LOG").is_err() {
         env::set_var("RUST_LOG", "warn");
     }
-    env_logger::init().unwrap();
+    env_logger::init();
     let mut config_file = PathBuf::from("/etc/lithos/master.yaml");
     let mut verbose = false;
     let mut ver_min = 0;
@@ -178,7 +178,8 @@ fn main() {
                 .unwrap();
             for i in unused {
                 if verbose {
-                    println!("{}: Deleting {:?}", time::now_utc().rfc3339(), i);
+                    println!("{}: Deleting {:?}",
+                        format_rfc3339_seconds(SystemTime::now()), i);
                 }
                 remove_dir_all(&i)
                     .map_err(|e| error!("Error removing {:?}: {}", i, e)).ok();
@@ -319,11 +320,8 @@ fn parse_line(line: &str)
     let mut iter = line.splitn(2, " ");
     let date = iter.next().ok_or(())?;
     let config = iter.next().ok_or(())?;
-    let time = time::strptime(date, "%Y-%m-%dT%H:%M:%SZ").map_err(|_| ())?;
-    Ok((
-        UNIX_EPOCH + Duration::new(time.to_timespec().sec as u64, 0),
-        serde_json::from_str(config).map_err(|_| ())?,
-    ))
+    let time = parse_rfc3339(date).map_err(|_| ())?;
+    Ok((time, serde_json::from_str(config).map_err(|_| ())?))
 }
 
 fn find_used_by_list(_master: &MasterConfig, _sandbox_name: &str,

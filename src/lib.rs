@@ -1,3 +1,4 @@
+extern crate humantime;
 extern crate fern;
 extern crate ipnetwork;
 extern crate libc;
@@ -10,7 +11,6 @@ extern crate serde_json;
 extern crate serde_str;
 extern crate signal;
 extern crate syslog;
-extern crate time;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate log;
 #[macro_use] extern crate serde_derive;

@@ -1,4 +1,5 @@
 extern crate argparse;
+extern crate humantime;
 extern crate libc;
 extern crate libmount;
 extern crate lithos;
@@ -6,7 +7,6 @@ extern crate nix;
 extern crate quire;
 extern crate signal;
 extern crate syslog;
-extern crate time;
 extern crate unshare;
 #[macro_use] extern crate log;
 
@@ -15,10 +15,11 @@ use std::str::FromStr;
 use std::io::{stderr, Write};
 use std::fs::OpenOptions;
 use std::path::{Path};
-use std::time::{Instant, Duration};
+use std::time::{SystemTime, Instant, Duration};
 use std::thread::sleep;
 use std::process::exit;
 
+use humantime::format_rfc3339_seconds;
 use libmount::BindMount;
 use quire::{parse_config, Options as COptions};
 use signal::trap::Trap;
@@ -265,7 +266,7 @@ fn run(options: Options) -> Result<i32, String>
             cmd.display(&Style::short().path(true)));
         stderr_file.write_all(
             format!("{}: ----- Starting {:?}: {} -----\n",
-                time::now_utc().rfc3339(), options.name,
+                format_rfc3339_seconds(SystemTime::now()), options.name,
                 cmd.display(&Style::short().path(true)))
             .as_bytes()
         ).ok();
@@ -306,7 +307,7 @@ fn run(options: Options) -> Result<i32, String>
                                 format!("{}: ----- \
                                     Process {:?} {}, uptime {}s \
                                     -----\n",
-                                    time::now_utc().rfc3339(),
+                                    format_rfc3339_seconds(SystemTime::now()),
                                     options.name, status, uptime.as_secs(),
                                 ).as_bytes()
                             ).ok();
