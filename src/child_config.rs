@@ -1,4 +1,6 @@
+use failure::Error;
 use std::str::FromStr;
+use std::net::IpAddr;
 use std::collections::BTreeMap;
 
 use quire::validate::{Structure, Scalar, Numeric, Mapping};
@@ -12,17 +14,32 @@ pub enum ChildKind {
 }
 
 // Note everything here should be stable-serializable
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ChildConfig {
     pub instances: usize,
     pub image: String,
     pub config: String,
     #[serde(skip_serializing_if="BTreeMap::is_empty", default)]
     pub variables: BTreeMap<String, String>,
+    #[serde(skip_serializing_if="Vec::is_empty", default)]
+    pub ip_addresses: Vec<IpAddr>,
     pub kind: ChildKind,
 }
 
 impl ChildConfig {
+    pub fn instantiate(&self, instance: usize) -> Result<ChildConfig, Error>
+    {
+        let mut cfg = self.clone();
+        if self.ip_addresses.len() > 0 {
+            if let Some(addr) = self.ip_addresses.get(instance) {
+                cfg.ip_addresses = vec![*addr];
+            } else {
+                bail!("Instance no {}, but there's only {} ip addresses",
+                    instance, cfg.ip_addresses.len());
+            }
+        }
+        return Ok(cfg);
+    }
     pub fn mapping_validator<'x>() -> Mapping<'x> {
         return Mapping::new(
             Scalar::new(),

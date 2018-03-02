@@ -33,6 +33,7 @@ humantime = "1.0.0"
 libcantal = "0.3.0"
 ipnetwork = "0.12.7"
 serde_str = "0.1.0"
+failure = "0.1.0"
 
 [profile.release]
 debug = true

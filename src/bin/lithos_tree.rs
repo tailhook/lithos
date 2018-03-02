@@ -16,7 +16,6 @@ extern crate unshare;
 
 
 use std::env;
-use std::rc::Rc;
 use std::mem::replace;
 use std::fs::{File, OpenOptions, metadata, remove_file, rename};
 use std::io::{self, stderr, Read, Write};
@@ -72,7 +71,7 @@ struct Process {
     cmd: Command,
     name: String,
     base_name: (String, String),
-    config: Rc<String>,
+    config: String,
     inner_config: InstantiatedConfig,
     addresses: Vec<InetAddr>,
     socket_cred: (u32, u32),
@@ -940,12 +939,9 @@ fn read_subtree<'x>(master: &MasterConfig,
         .unwrap_or(BTreeMap::new())
         .into_iter()
         .filter(|&(_, ref child)| child.kind == Daemon)
-        .flat_map(|(child_name, mut child)| {
+        .flat_map(|(child_name, child)| {
             let instances = child.instances;
 
-            //  Child doesn't need to know how many instances it's run
-            //  And for comparison on restart we need to have "one" always
-            child.instances = 1;
             let image_dir = sandbox.image_dir.join(&child.image);
             let cfg_res = temporary_change_root(&image_dir, || {
                 parse_config(&child.config,
@@ -961,7 +957,6 @@ fn read_subtree<'x>(master: &MasterConfig,
                     return Vec::new().into_iter();
                 }
             };
-            let child_string = Rc::new(to_string(&child).unwrap());
             let mut sock_uid = cfg.user_id;
             let mut sock_gid = cfg.group_id;
             if sandbox.uid_map.len() > 0 {
@@ -975,6 +970,15 @@ fn read_subtree<'x>(master: &MasterConfig,
             let mut items = Vec::<(String, Process)>::new();
             for i in 0..instances {
                 let name = format!("{}/{}.{}", sandbox_name, child_name, i);
+                let child = match child.instantiate(i) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        error!("Error instantiating child {:?} \
+                                of sandbox {:?}: {}",
+                                child_name, sandbox_name, e);
+                        continue;
+                    }
+                };
                 let cfg = match cfg.instantiate(&Variables {
                         user_vars: &child.variables,
                         lithos_name: &name,
@@ -989,6 +993,8 @@ fn read_subtree<'x>(master: &MasterConfig,
                         continue;
                     }
                 };
+                let child_string = to_string(&child)
+                    .expect("can always serialize child config");
                 let cmd = new_child(bin, &name, master_file,
                     &child_string, options);
                 let restart_min = now + duration(cfg.restart_timeout);
@@ -997,7 +1003,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                     name: name.clone(),
                     base_name: (sandbox_name.clone(), child_name.clone()),
                     restart_min: restart_min,
-                    config: child_string.clone(), // should avoid cloning?
+                    config: child_string,
                     addresses: cfg.tcp_ports.iter().map(|(&port, item)| {
                             InetAddr::from_std(
                                 &SocketAddr::new(item.host.0, port))
