@@ -146,4 +146,18 @@ Reference
    2. If same ``image-dir`` is used for multiple sandboxes it will be cleaned
       if at least one of them has non-falsy ``auto-clean``.
 
+.. opt:: resolv-conf
 
+   (default ``/etc/resolv.conf``) default place to copy ``resolv.conf`` from
+   for containers.
+
+   Note: Container itself can override it's own resolv.conf file, but can't
+   read original ``/etc/resolv.conf`` if this setting is changed.
+
+.. opt:: hosts-file
+
+   (default ``/etc/hosts``) default place to copy ``hosts`` from
+   for containers.
+
+   Note: Container itself can override it's own ``hosts`` file, but can't
+   read original ``/etc/hosts`` if this setting is changed.

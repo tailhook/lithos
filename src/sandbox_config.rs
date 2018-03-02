@@ -1,11 +1,21 @@
 use std::collections::BTreeMap;
+use std::net::Ipv4Addr;
 use std::path::{PathBuf, Path, Component};
 
 use id_map::{IdMap, mapping_validator};
-use range::Range;
+use ipnetwork::Ipv4Network;
 use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 use quire::validate::{Structure};
+use range::Range;
 
+
+#[derive(Deserialize)]
+pub struct Network {
+    pub bridge: String,
+    #[serde(with="::serde_str")]
+    pub network: Ipv4Network,
+    pub default_gateway: Ipv4Addr,
+}
 
 #[derive(Deserialize)]
 pub struct SandboxConfig {
@@ -24,6 +34,9 @@ pub struct SandboxConfig {
     pub uid_map: Vec<IdMap>,
     pub gid_map: Vec<IdMap>,
     pub auto_clean: bool,
+    pub resolv_conf: PathBuf,
+    pub hosts_file: PathBuf,
+    pub bridged_network: Option<Network>,
 }
 
 impl SandboxConfig {
@@ -62,5 +75,12 @@ impl SandboxConfig {
             Scalar::new(),
             Scalar::new()))
         .member("auto_clean", Scalar::new().default("true").optional())
+        .member("hosts_file", Scalar::new().default("/etc/hosts"))
+        .member("resolv_conf", Scalar::new().default("/etc/resolv.conf"))
+        .member("bridged_network", Structure::new()
+            .member("bridge", Scalar::new())
+            .member("network", Scalar::new())
+            .member("default_gateway", Scalar::new())
+            .optional())
     }
 }

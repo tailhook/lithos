@@ -1,17 +1,16 @@
-#![crate_name="lithos"]
-#![crate_type="lib"]
-
 extern crate fern;
+extern crate ipnetwork;
 extern crate libc;
+extern crate libcantal;
 extern crate libmount;
 extern crate nix;
 extern crate quire;
 extern crate serde;
 extern crate serde_json;
+extern crate serde_str;
 extern crate signal;
 extern crate syslog;
 extern crate time;
-extern crate libcantal;
 #[macro_use] extern crate log;
 #[macro_use] extern crate serde_derive;
 

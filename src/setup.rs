@@ -153,7 +153,7 @@ pub fn prepare_state_dir(dir: &Path, local: &InstantiatedConfig,
             .map_err(|e| format!("Couldn't set chmod for state dir: {}", e)));
     }
     if local.resolv_conf.copy_from_host {
-        try!(copy(&Path::new("/etc/resolv.conf"), &dir.join("resolv.conf"))
+        try!(copy(&tree.resolv_conf, &dir.join("resolv.conf"))
             .map_err(|e| format!("State dir: {}", e)));
     }
     let copy_hosts = local.hosts_file.copy_from_host;
@@ -166,7 +166,7 @@ pub fn prepare_state_dir(dir: &Path, local: &InstantiatedConfig,
         try!(File::create(&fname)
             .and_then(|mut file| {
                 if copy_hosts {
-                    let mut source = try!(File::open("/etc/hosts"));
+                    let mut source = try!(File::open(&tree.hosts_file));
                     try!(io::copy(&mut source, &mut file));
                     // In case file has no newline at the end and we are
                     // going to add some records
