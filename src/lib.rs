@@ -1,3 +1,7 @@
+//! This is internal module not intended to be used as a library
+//!
+//! See [Documentation](http://lithos.readthedocs.io) for the actual usage.
+//!
 extern crate argparse;
 extern crate humantime;
 extern crate fern;
