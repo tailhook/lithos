@@ -3,7 +3,7 @@ use std::str::FromStr;
 use std::net::IpAddr;
 use std::collections::BTreeMap;
 
-use quire::validate::{Structure, Scalar, Numeric, Mapping};
+use quire::validate::{Structure, Scalar, Numeric, Mapping, Sequence};
 use quire::{Options, parse_string};
 
 #[derive(Serialize, Deserialize)]
@@ -52,6 +52,7 @@ impl ChildConfig {
         .member("config", Scalar::new())
         .member("variables", Mapping::new(Scalar::new(), Scalar::new()))
         .member("kind", Scalar::new().default("Daemon"))
+        .member("ip_addresses", Sequence::new(Scalar::new()))
     }
 }
 
