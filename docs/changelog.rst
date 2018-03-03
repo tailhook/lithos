@@ -10,6 +10,7 @@ v0.15.0
 
 * feature: Add :opt:`normal-exit-codes` setting
 * feature: Add :opt:`resolv-conf` and :opt:`hosts-file` to sandbox config
+* feature: Add :opt:`bridged-network` option to sandbox config
 
 
 .. _changelog 0.14.3:

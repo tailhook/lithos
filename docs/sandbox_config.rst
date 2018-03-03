@@ -161,3 +161,20 @@ Reference
 
    Note: Container itself can override it's own ``hosts`` file, but can't
    read original ``/etc/hosts`` if this setting is changed.
+
+.. opt:: bridged-network
+
+   (default is absent) a network bridge configuration for all the cotainers in
+   the bridge
+
+   Example:
+
+   .. code-block:: yaml
+
+      bridged-network:
+        bridge: br0
+        network: 10.0.0.0/24
+        default_gateway: 10.0.0.1
+
+   .. note:: when bridged network is active your :ref:`process_config` should
+      contain a list of ip addresses one for each container.

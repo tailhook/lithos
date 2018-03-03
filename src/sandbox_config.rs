@@ -1,20 +1,20 @@
 use std::collections::BTreeMap;
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::path::{PathBuf, Path, Component};
 
 use id_map::{IdMap, mapping_validator};
-use ipnetwork::Ipv4Network;
+use ipnetwork::IpNetwork;
 use quire::validate::{Sequence, Mapping, Scalar, Numeric};
 use quire::validate::{Structure};
 use range::Range;
 
 
 #[derive(Deserialize)]
-pub struct Network {
+pub struct BridgedNetwork {
     pub bridge: String,
     #[serde(with="::serde_str")]
-    pub network: Ipv4Network,
-    pub default_gateway: Ipv4Addr,
+    pub network: IpNetwork,
+    pub default_gateway: Option<IpAddr>,
 }
 
 #[derive(Deserialize)]
@@ -36,7 +36,7 @@ pub struct SandboxConfig {
     pub auto_clean: bool,
     pub resolv_conf: PathBuf,
     pub hosts_file: PathBuf,
-    pub bridged_network: Option<Network>,
+    pub bridged_network: Option<BridgedNetwork>,
 }
 
 impl SandboxConfig {

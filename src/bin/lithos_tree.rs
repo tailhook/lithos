@@ -108,7 +108,7 @@ impl AsRawFd for Socket {
 
 
 fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
-    cfg: &str, options: &Options)
+    cfg: &str, options: &Options, sandbox: &SandboxConfig)
     -> Command
 {
     let mut cmd = Command::new(&bin.lithos_knot);
@@ -135,6 +135,9 @@ fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
     }
     cmd.unshare([Namespace::Mount, Namespace::Uts,
                  Namespace::Ipc, Namespace::Pid].iter().cloned());
+    if sandbox.bridged_network.is_some() {
+        cmd.unshare([Namespace::Net].iter().cloned());
+    }
     cmd
 }
 
@@ -996,7 +999,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                 let child_string = to_string(&child)
                     .expect("can always serialize child config");
                 let cmd = new_child(bin, &name, master_file,
-                    &child_string, options);
+                    &child_string, options, &sandbox);
                 let restart_min = now + duration(cfg.restart_timeout);
                 let process = Process {
                     cmd: cmd,

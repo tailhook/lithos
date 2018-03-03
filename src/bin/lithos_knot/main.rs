@@ -1,14 +1,19 @@
 extern crate argparse;
+extern crate blake2;
 extern crate humantime;
+extern crate ipnetwork;
 extern crate libc;
 extern crate libmount;
 extern crate lithos;
 extern crate nix;
 extern crate quire;
+extern crate serde_json;
 extern crate signal;
 extern crate syslog;
 extern crate unshare;
+#[macro_use] extern crate failure;
 #[macro_use] extern crate log;
+#[macro_use] extern crate serde_derive;
 
 use std::env;
 use std::str::FromStr;
@@ -40,6 +45,7 @@ use lithos::mount::{unmount, mount_private, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
 use lithos::knot_options::Options;
 
+mod setup_network;
 
 struct SignalIter<'a> {
     trap: &'a mut Trap,
@@ -154,6 +160,7 @@ fn run(options: Options) -> Result<i32, String>
     }
 
     info!("[{}] Starting container", options.name);
+    setup_network::setup(&sandbox, &options.config, &local)?;
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(&options.name);
