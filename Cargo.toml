@@ -47,7 +47,7 @@ path = "src/bin/lithos_tree.rs"
 
 [[bin]]
 name = "lithos_knot"
-path = "src/bin/lithos_knot.rs"
+path = "src/bin/lithos_knot/main.rs"
 
 [[bin]]
 name = "lithos_cmd"

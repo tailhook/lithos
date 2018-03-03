@@ -8,8 +8,8 @@ use log;
 use argparse::{ArgumentParser, StoreOption, Store, Parse, List, StoreTrue};
 use argparse::{Print};
 
-use lithos::child_config::ChildConfig;
-use lithos::child_config::ChildKind::Daemon;
+use child_config::ChildConfig;
+use child_config::ChildKind::Daemon;
 
 
 pub struct Options {

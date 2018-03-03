@@ -38,9 +38,7 @@ use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
 use lithos::setup::{init_logging};
 use lithos::mount::{unmount, mount_private, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
-use lithos_knot_options::Options;
-
-mod lithos_knot_options;
+use lithos::knot_options::Options;
 
 
 struct SignalIter<'a> {

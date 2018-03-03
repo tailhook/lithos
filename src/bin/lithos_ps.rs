@@ -23,16 +23,16 @@ use std::default::Default;
 use std::process::exit;
 use std::collections::{BTreeMap, BTreeSet};
 
-use libc::{pid_t, _SC_CLK_TCK, sysconf};
-use lithos::utils::get_time;
 use argparse::{ArgumentParser, StoreConst, Print};
+use libc::{pid_t, _SC_CLK_TCK, sysconf};
 
+use lithos::utils::get_time;
+use lithos::knot_options;
 use ascii::Column;
 use self::LithosInfo::*;
 use self::Action::*;
 
 #[allow(unused)] mod lithos_tree_options;
-#[allow(unused)] mod lithos_knot_options;
 
 #[path = "../ascii.rs"] mod ascii;
 
@@ -167,7 +167,7 @@ fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
     let mut out = Vec::new();
     let mut err = Vec::new();
     let opt = try!(
-        lithos_knot_options::Options::parse_specific_args(
+        knot_options::Options::parse_specific_args(
             args, &mut out, &mut err)
         .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid)));
     fullname_re.captures(&opt.name)
