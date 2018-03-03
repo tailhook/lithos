@@ -28,13 +28,12 @@ use libc::{pid_t, _SC_CLK_TCK, sysconf};
 
 use lithos::utils::get_time;
 use lithos::knot_options;
+use lithos::tree_options;
 use ascii::Column;
 use self::LithosInfo::*;
 use self::Action::*;
 
-#[allow(unused)] mod lithos_tree_options;
-
-#[path = "../ascii.rs"] mod ascii;
+mod ascii;
 
 static mut BOOT_TIME: u64 = 0;
 static mut CLOCK_TICKS: u64 = 100;
@@ -156,7 +155,7 @@ fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
     let args = cmdline.clone();
     let mut out = Vec::new();
     let mut err = Vec::new();
-    lithos_tree_options::Options::parse_specific_args(args, &mut out, &mut err)
+    tree_options::Options::parse_specific_args(args, &mut out, &mut err)
         .map(|opt| TreeInfo(opt.config_file))
         .map_err(|_| debug!("Can't parse lithos_tree cmdline for {}", pid))
 }

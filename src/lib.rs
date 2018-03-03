@@ -33,6 +33,6 @@ pub mod id_map;
 pub mod metrics;
 pub mod range;
 pub mod knot_options;
-#[cfg(test)] pub mod ascii;  // actually a lithos_ps module
+pub mod tree_options;
 
 pub const MAX_CONFIG_LOGS: u32 = 100;

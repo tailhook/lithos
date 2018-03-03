@@ -59,11 +59,10 @@ use lithos::timer_queue::Queue;
 use lithos::utils::{clean_dir, relative, ABNORMAL_TERM_SIGNALS};
 use lithos::utils::{temporary_change_root};
 use lithos::utils;
-use lithos_tree_options::Options;
+use lithos::tree_options::Options;
 
 use self::Timeout::*;
 
-mod lithos_tree_options;
 
 pub const CONFIG_LOG_SIZE: u64 = 10_485_760;
 

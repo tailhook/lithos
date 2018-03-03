@@ -67,5 +67,5 @@ path = "src/bin/lithos_switch.rs"
 
 [[bin]]
 name = "lithos_ps"
-path = "src/bin/lithos_ps.rs"
+path = "src/bin/lithos_ps/main.rs"
 
