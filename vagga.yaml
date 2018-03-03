@@ -158,6 +158,8 @@ containers:
       HOME: /work/target
     setup:
     - !Ubuntu xenial
+    - !UbuntuUniverse
+    - !Install [musl-tools]
     - *pkgs
     - *rust
     - !TarInstall
