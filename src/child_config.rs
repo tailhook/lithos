@@ -85,6 +85,7 @@ mod test {
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
+            ip_addresses: Vec::new(),
             kind: Daemon,
         });
 
@@ -94,6 +95,7 @@ mod test {
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
+            ip_addresses: Vec::new(),
             kind: Daemon,
         });
     }
@@ -114,6 +116,7 @@ mod test {
             variables: vec![
                 (String::from("a"), String::from("b")),
             ].into_iter().collect(),
+            ip_addresses: Vec::new(),
             kind: Daemon,
         })
     }
@@ -125,6 +128,7 @@ mod test {
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
+            ip_addresses: Vec::new(),
             kind: Daemon,
         }).unwrap();
         assert_eq!(data, "{\
@@ -144,6 +148,7 @@ mod test {
                 (String::from("a"), String::from("b")),
                 (String::from("c"), String::from("d")),
             ].into_iter().collect(),
+            ip_addresses: Vec::new(),
             kind: Daemon,
         }).unwrap();
         assert_eq!(data, "{\
