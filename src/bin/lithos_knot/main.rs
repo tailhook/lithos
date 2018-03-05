@@ -39,13 +39,15 @@ use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::setup::{setup_filesystem, prepare_state_dir};
 use lithos::setup::{init_logging};
 use lithos::mount::{unmount, mount_private, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
 use lithos::knot_options::Options;
 
+use setup_filesystem::{setup_filesystem, prepare_state_dir};
+
 mod setup_network;
+mod setup_filesystem;
 mod config;
 
 struct SignalIter<'a> {
