@@ -199,16 +199,50 @@ Reference
     configuration is::
 
         resolv-conf:
+            mount: nil  # which basically means "auto"
             copy-from-host: true
 
     Which means ``resolv.conf`` from host where lithos is running is copied
-    to the "state" directory of the container. More options are expected to
-    be added later.
+    to the "state" directory of the container. Then if ``/etc/resolv.conf``
+    in container is a file (and not a symlink) resolv conf is mounted over
+    the ``/etc/resolv.conf``.
 
-    .. warning:: To make use of it you should symlink ``ln -s
-       /state/resolv.conf /etc/resolv.conf`` in the container's image. It's
-       done this way so you can introspect and presumably update
-       ``resolv.conf`` from the outside of container.
+    More options are expected to be added later.
+
+    .. versionchanged:: 0.15.0
+
+       ``mount`` option added. Previously to make use of ``resolv.conf`` you
+       should symlink ``ln -s /state/resolv.conf /etc/resolv.conf`` in the
+       container's image.
+
+       Another change is that ``copy-from-host`` copies file that is specified
+       in sandbox's ``resolv.conf`` which default to ``/etc/resolv.conf`` but
+       may be different.
+
+   Parameters:
+
+   copy-from-host
+        (default ``true``) Copy ``resolv.conf`` file from host machine.
+
+        Note: even if ``copy-from-host`` is ``true``, :opt:`additional-hosts`
+        from sandbox config work, which may lead to duplicate or conflicting
+        entries if some names are specified in both places.
+
+        .. versionchanged:: v0.11.0
+
+           The parameter used to be ``false`` by default, because we were
+           thinking about better (perceived) isolation.
+
+   mount
+       (default ``nil``, which means "auto") Mount copied ``resolv.conf`` file
+       over ``/etc/resolf.conf``.
+
+       `nil` enables mounting if ``/etc/resolv.conf`` is present
+       in the container and is a file (not a symlink) and also
+       ``copy-from-host`` is true
+
+       .. versionadded:: 0.15.0
+
 
 .. opt:: hosts-file
 
@@ -216,14 +250,20 @@ Reference
     configuration is::
 
         hosts-file:
+            mount: nil  # which basically means "auto"
             localhost: true
             public-hostname: true
             copy-from-host: false
 
-    .. warning:: To make use of it you should symlink ``ln -s
-       /state/hosts /etc/hosts`` in the container's image. It's
-       done this way so you can introspect and presumably update
-       ``hosts`` from the outside of container.
+    .. versionchanged:: 0.15.0
+
+       ``mount`` option added. Previously to make use of ``resolv.conf`` you
+       should symlink ``ln -s /state/resolv.conf /etc/resolv.conf`` in the
+       container's image.
+
+       Another change is that ``copy-from-host`` copies file that is specified
+       in sandbox's ``resolv.conf`` which default to ``/etc/resolv.conf`` but
+       may be different.
 
    Parameters:
 
@@ -242,6 +282,18 @@ Reference
            find those occassions where it matters to be quite rare in practice
            and using ``hosts-file`` as well as ``resolv.conf`` from the host
            system as the most expected and intuitive behavior.
+
+   mount
+       (default ``nil``, which means "auto") Mount produced ``hosts`` file over
+       ``/etc/hosts``.
+
+       `nil` enables mounting if ``/etc/hosts`` is present in the container
+       and is a file (not a symlink).
+
+       Value of ``true`` fails if ``/etc/hosts`` is not a file. Value of
+       ``false`` leaves ``/etc/hosts`` intact.
+
+       .. versionadded:: 0.15.0
 
    localhost
         (default is true when ``copy-from-host`` is false)

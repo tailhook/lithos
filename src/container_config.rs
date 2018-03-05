@@ -74,11 +74,13 @@ impl ContainerKind {
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct ResolvConf {
+    pub mount: Option<bool>,
     pub copy_from_host: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct HostsFile {
+    pub mount: Option<bool>,
     pub copy_from_host: bool,
     pub localhost: Option<bool>,
     pub public_hostname: Option<bool>,
@@ -204,8 +206,10 @@ impl ContainerConfig {
                 Scalar::new()))
         .member("workdir", Scalar::new().default("/"))
         .member("resolv_conf", Structure::new()
+            .member("mount", Scalar::new().optional())
             .member("copy_from_host", Scalar::new().default(true)))
         .member("hosts_file", Structure::new()
+            .member("mount", Scalar::new().optional())
             .member("copy_from_host", Scalar::new().default(true))
             .member("localhost", Scalar::new().optional())
             .member("public_hostname", Scalar::new().optional()))
