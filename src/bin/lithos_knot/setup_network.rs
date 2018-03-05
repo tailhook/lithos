@@ -81,11 +81,13 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         .context("can't open namespace")?;
     let parent_ns = File::open(&format!("/proc/{}/ns/net", ppid))
         .context("can't open parent namespace")?;
-    setns(parent_ns.as_raw_fd(), CLONE_NEWNET)?;
     let interface = interface_name(net, ip);
     let iinterface = interface.replace("_", "-");
     assert!(iinterface != interface);
 
+    // Create interface in the child namespace
+    // This helps to keep parent namespace clean if this process crashes for
+    // some reason.
     let mut cmd = unshare::Command::new("/bin/ip");
     cmd.arg("link").arg("add");
     cmd.arg(&interface);
@@ -97,15 +99,20 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         Err(e) => bail!("ip link failed: {}", e),
     }
 
+    // The move just external part of the interface to the parent namespace
     let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
-    cmd.arg("dev").arg(&iinterface);
-    cmd.arg("netns").arg(&format!("/proc/{}/fd/{}", pid, my_ns.as_raw_fd()));
+    cmd.arg("dev").arg(&interface);
+    cmd.arg("netns").arg(&format!("/proc/{}/fd/{}",
+        pid, parent_ns.as_raw_fd()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
         Err(e) => bail!("ip link failed: {}", e),
     }
+
+    // jump into parent namespace to add to bridge and up the interface
+    setns(parent_ns.as_raw_fd(), CLONE_NEWNET)?;
 
     let mut cmd = unshare::Command::new("/sbin/brctl");
     cmd.arg("addif").arg(&net.bridge).arg(&interface);
@@ -125,6 +132,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         Err(e) => bail!("ip link failed: {}", e),
     }
 
+    // and again to the child to setup internal part and routing
     setns(my_ns.as_raw_fd(), CLONE_NEWNET)?;
 
     let mut cmd = unshare::Command::new("/sbin/ip");
