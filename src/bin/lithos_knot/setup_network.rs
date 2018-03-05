@@ -36,11 +36,12 @@ fn interface_name(network: &BridgedNetwork, ip: &IpAddr) -> String {
         IpAddr::V4(ip) => (ip.octets()[2], ip.octets()[3]),
         IpAddr::V6(ip) => (ip.octets()[14], ip.octets()[15]),
     };
-    let name = format!("li_{:.06x}_{:02x}{:02x}",
-        blake2::Blake2b::digest(&to_vec(&HashSource {
+    let name = format!("li_{:.6}_{:02x}{:02x}",
+        // double formatting because of a bug in generic array
+        format!("{:06x}", blake2::Blake2b::digest(&to_vec(&HashSource {
             bridge: &network.bridge,
             ip: ip,
-        }).expect("can always serialize")),
+        }).expect("can always serialize"))),
         ip1, ip2);
     assert!(name.len() <= 15);
     return name;
