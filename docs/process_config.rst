@@ -10,7 +10,7 @@ Process Config
 This config resides in ``/etc/lithos/processes/NAME.yaml`` (by default).
 Where ``NAME`` is the name of a sandbox.
 
-It contains three things:
+It mainly contains three things:
 
 * ``image`` the process is run from
 * ``config`` file name inside the image that specifies command-line and other
@@ -54,6 +54,32 @@ The ``Command`` is occasionally useful, but should be used with care. To start
 a command you need root privileges on host system, so it's only useful for
 SysOp tasks or **may be** for cron tasks but not for normal operation of
 application.
+
+Options
+=======
+
+.. popt:: instances
+
+   Number of instances to run
+
+.. popt:: image
+
+   Identifier of the image to run container from
+
+.. popt:: config
+
+   Configuration file name (absolute name in container) to run
+
+.. popt:: ip-addresses
+
+   A list of ip addresses if :opt:`bridged-network` is enforced in sandbox.
+   Note the number of items in this list must match :popt:`instances` value.
+
+.. popt:: variables
+
+   A mapping of `variable: value` for variables that can be used in process
+   config.
+
 
 .. _process_variables:
 

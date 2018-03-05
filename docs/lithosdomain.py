@@ -10,6 +10,10 @@ def setup(app):
                 objname      = "Yaml Option",
                 indextemplate = "pair: %s; Option",
             ),
+            popt = dict(
+                objname      = "Process Config Option",
+                indextemplate = "pair: %s; Process Config Option",
+            ),
             volume = dict(
                 objname      = "Volume Type",
                 indextemplate = "pair: %s; Volume Type",

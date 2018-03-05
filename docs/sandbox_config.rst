@@ -100,6 +100,11 @@ Reference
       opening port will be used arbitrary from single config amonst all users,
       which have obvious security implications.
 
+   .. warning:: :opt:`tcp-ports` bind at port in **host namespace**, i.e. it
+      effectively discards :opt:`bridged-network` for that port this is both
+      the feature and might be a pitfall. So most of the time you should avoid
+      non-empty :opt:`allow-tcp-ports` if using `bridged-network`.
+
 .. opt:: additional-hosts
 
    Mapping of ``hostname: ip`` for names that will be added to ``/etc/hosts``
@@ -178,3 +183,6 @@ Reference
 
    .. note:: when bridged network is active your :ref:`process_config` should
       contain a list of ip addresses one for each container.
+
+   .. note:: this setting does not affect ``tcp-ports``. So usually you should
+      keep :opt:`allow-tcp-ports` setting empty when using bridged network.
