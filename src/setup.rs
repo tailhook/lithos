@@ -194,16 +194,6 @@ pub fn prepare_state_dir(dir: &Path, local: &InstantiatedConfig,
     return Ok(());
 }
 
-pub fn read_local_config(root: &Path, child_cfg: &ChildConfig)
-    -> Result<ContainerConfig, String>
-{
-    return temporary_change_root(root, || {
-        parse_config(&Path::new(&child_cfg.config),
-            &ContainerConfig::validator(), &Options::default())
-        .map_err(|e| e.to_string())
-    });
-}
-
 pub fn clean_child(name: &str, master: &MasterConfig, temporary: bool) {
     let st_dir = master.runtime_dir
         .join(&master.state_dir).join(name);

@@ -11,11 +11,11 @@ use serde_json::to_vec;
 use unshare;
 
 use lithos::sandbox_config::{SandboxConfig, BridgedNetwork};
-use lithos::child_config::ChildConfig;
+use lithos::child_config::ChildInstance;
 use lithos::container_config::InstantiatedConfig;
 
 
-pub fn setup(sandbox: &SandboxConfig, child: &ChildConfig,
+pub fn setup(sandbox: &SandboxConfig, child: &ChildInstance,
     container: &InstantiatedConfig)
     -> Result<(), String>
 {
@@ -70,12 +70,12 @@ fn get_real_pids() -> Result<(u32, u32), Error> {
     bail!("can't find ppid");
 }
 
-fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
+fn _setup(sandbox: &SandboxConfig, child: &ChildInstance,
     _container: &InstantiatedConfig)
     -> Result<(), Error>
 {
     let net = sandbox.bridged_network.as_ref().expect("bridged network");
-    let ip = child.ip_addresses.get(0).expect("ip address");
+    let ip = child.ip_address.as_ref().expect("ip address");
     let (pid, ppid) = get_real_pids()?;
     let my_ns = File::open("/proc/self/ns/net")
         .context("can't open namespace")?;

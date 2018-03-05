@@ -15,6 +15,18 @@ pub enum ChildKind {
 
 // Note everything here should be stable-serializable
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct ChildInstance {
+    pub instances: usize,  // legacy maybe remove somehow?
+    pub image: String,
+    pub config: String,
+    #[serde(skip_serializing_if="BTreeMap::is_empty", default)]
+    pub variables: BTreeMap<String, String>,
+    #[serde(skip_serializing_if="Option::is_none", default)]
+    pub ip_address: Option<IpAddr>,
+    pub kind: ChildKind,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ChildConfig {
     pub instances: usize,
     pub image: String,
@@ -27,17 +39,25 @@ pub struct ChildConfig {
 }
 
 impl ChildConfig {
-    pub fn instantiate(&self, instance: usize) -> Result<ChildConfig, Error>
+    pub fn instantiate(&self, instance: usize) -> Result<ChildInstance, Error>
     {
-        let mut cfg = self.clone();
-        if self.ip_addresses.len() > 0 {
-            if let Some(addr) = self.ip_addresses.get(instance) {
-                cfg.ip_addresses = vec![*addr];
+        let cfg = ChildInstance {
+            instances: 1,  // TODO(tailhook) legacy, find a way to remove
+            image: self.image.clone(),
+            config: self.config.clone(),
+            variables: self.variables.clone(),
+            ip_address: if self.ip_addresses.len() > 0 {
+                if let Some(addr) = self.ip_addresses.get(instance) {
+                    Some(*addr)
+                } else {
+                    bail!("Instance no {}, but there's only {} ip addresses",
+                        instance, self.ip_addresses.len());
+                }
             } else {
-                bail!("Instance no {}, but there's only {} ip addresses",
-                    instance, cfg.ip_addresses.len());
-            }
-        }
+                None
+            },
+            kind: self.kind,
+        };
         return Ok(cfg);
     }
     pub fn mapping_validator<'x>() -> Mapping<'x> {
@@ -56,9 +76,9 @@ impl ChildConfig {
     }
 }
 
-impl FromStr for ChildConfig {
+impl FromStr for ChildInstance {
     type Err = ();
-    fn from_str(body: &str) -> Result<ChildConfig, ()> {
+    fn from_str(body: &str) -> Result<ChildInstance, ()> {
         parse_string("<command-line>", body,
             &ChildConfig::validator(), &Options::default())
             .map_err(|_| ())

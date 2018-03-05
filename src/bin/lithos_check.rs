@@ -1,5 +1,6 @@
 extern crate argparse;
 extern crate env_logger;
+extern crate ipnetwork;
 extern crate libc;
 extern crate lithos;
 extern crate quire;
@@ -7,14 +8,16 @@ extern crate scan_dir;
 #[macro_use] extern crate log;
 
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs::{metadata};
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 
 use argparse::{ArgumentParser, Parse, ParseOption, StoreTrue, Print, Collect};
+use ipnetwork::IpNetwork;
 use quire::{parse_config, Options};
 
 use lithos::utils::{in_mapping, check_mapping, relative};
@@ -102,6 +105,14 @@ fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
         }
     }
     Ok(config)
+}
+
+fn network_contains(netw: &IpNetwork, ip: IpAddr) -> bool {
+    match (*netw, ip) {
+        (IpNetwork::V4(net), IpAddr::V4(ip)) => net.contains(ip),
+        (IpNetwork::V6(net), IpAddr::V6(ip)) => net.contains(ip),
+        _ => false,
+    }
 }
 
 fn check(config_file: &Path, verbose: bool,
@@ -231,17 +242,36 @@ fn check(config_file: &Path, verbose: bool,
                 for i in 0..child_cfg.instances {
                     let name = format!("{}/{}.{}",
                         current_name, child_name, i);
+                    let ichild = match child_cfg.instantiate(i) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            err!("{}: Can't instantiate child: {}",
+                                name, e);
+                            continue;
+                        }
+                    };
+
+                    if let Some(ref bridge) = sandbox.bridged_network {
+                        if let Some(ip) = ichild.ip_address {
+                            if !network_contains(&bridge.network, ip) {
+                                err!("{}: invalid ip {}", name, ip);
+                            }
+                        } else {
+                            err!("{}: no IP address specified", name);
+                        }
+                    }
+
                     let icfg = match config.instantiate(&Variables {
-                            user_vars: &child_cfg.variables,
+                            user_vars: &ichild.variables,
                             lithos_name: &name,
-                            lithos_config_filename: &child_cfg.config,
+                            lithos_config_filename: &ichild.config,
                         }) {
                         Ok(x) => x,
                         Err(e) => {
                             err!("Variable substitution error {:?} \
                                 of sandbox {:?} of image {:?}: {}",
-                                &child_cfg.config, current_name,
-                                child_cfg.image,
+                                &ichild.config, current_name,
+                                ichild.image,
                                 e.join("; "));
                             continue;
                         }
@@ -251,8 +281,8 @@ fn check(config_file: &Path, verbose: bool,
                         if !in_range(&sandbox.allow_tcp_ports, port as u32) {
                             err!("Port {} is not allowed for {:?} \
                                 of sandbox {:?} of image {:?}",
-                                port, &child_cfg.config, current_name,
-                                child_cfg.image);
+                                port, &ichild.config, current_name,
+                                ichild.image);
                         }
                     }
                 }

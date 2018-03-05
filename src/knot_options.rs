@@ -8,13 +8,13 @@ use log;
 use argparse::{ArgumentParser, StoreOption, Store, Parse, List, StoreTrue};
 use argparse::{Print};
 
-use child_config::ChildConfig;
+use child_config::ChildInstance;
 use child_config::ChildKind::Daemon;
 
 
 pub struct Options {
     pub master_config: PathBuf,
-    pub config: ChildConfig,
+    pub config: ChildInstance,
     pub name: String,
     pub args: Vec<String>,
     pub log_stderr: bool,
@@ -32,12 +32,12 @@ impl Options {
     {
         let mut options = Options {
             master_config: PathBuf::from("/etc/lithos/master.yaml"),
-            config: ChildConfig {
+            config: ChildInstance {
                 instances: 0,
                 image: "".to_string(),
                 config: "".to_string(),
                 variables: BTreeMap::new(),
-                ip_addresses: Vec::new(),
+                ip_address: None,
                 kind: Daemon,
             },
             name: "".to_string(),

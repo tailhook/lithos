@@ -39,13 +39,14 @@ use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};
 use lithos::container_config::ContainerKind::Daemon;
-use lithos::setup::{setup_filesystem, read_local_config, prepare_state_dir};
+use lithos::setup::{setup_filesystem, prepare_state_dir};
 use lithos::setup::{init_logging};
 use lithos::mount::{unmount, mount_private, mount_ro_recursive};
 use lithos::limits::{set_fileno_limit};
 use lithos::knot_options::Options;
 
 mod setup_network;
+mod config;
 
 struct SignalIter<'a> {
     trap: &'a mut Trap,
@@ -117,7 +118,7 @@ fn run(options: Options) -> Result<i32, String>
     try!(mount_ro_recursive(&mount_dir));
 
     let container: ContainerConfig;
-    container = try!(read_local_config(&mount_dir, &options.config));
+    container = config::container_config(&mount_dir, &options.config)?;
     if !container.kind.matches(options.config.kind) {
         return Err(format!("Container type mismatch {:?} != {:?}",
               container.kind, options.config.kind));
