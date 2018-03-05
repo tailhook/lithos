@@ -77,7 +77,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
     let iinterface = interface.replace("_", "-");
     assert!(iinterface != interface);
 
-    let mut cmd = unshare::Command::new("ip");
+    let mut cmd = unshare::Command::new("/bin/ip");
     cmd.arg("link").arg("add");
     cmd.arg(&interface);
     cmd.arg("type").arg("veth");
@@ -88,7 +88,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         Err(e) => bail!("ip link failed: {}", e),
     }
 
-    let mut cmd = unshare::Command::new("ip");
+    let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
     cmd.arg("dev").arg(&iinterface);
     // Note: this is a bit of hack bit it's known to work.
@@ -104,7 +104,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         Err(e) => bail!("ip link failed: {}", e),
     }
 
-    let mut cmd = unshare::Command::new("brctl");
+    let mut cmd = unshare::Command::new("/sbin/brctl");
     cmd.arg("addif").arg(&net.bridge).arg(&interface);
     match cmd.status() {
         Ok(s) if s.success() => {}
@@ -112,7 +112,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         Err(e) => bail!("brctl failed: {}", e),
     }
 
-    let mut cmd = unshare::Command::new("ip");
+    let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
     cmd.arg(&interface);
     cmd.arg("up");
@@ -124,7 +124,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
 
     setns(my_ns.as_raw_fd(), CLONE_NEWNET)?;
 
-    let mut cmd = unshare::Command::new("ip");
+    let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("addr").arg("add");
     cmd.arg(&format!("{}",
         IpNetwork::new(*ip, net.network.prefix())
@@ -136,7 +136,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
         Err(e) => bail!("ip link failed: {}", e),
     }
 
-    let mut cmd = unshare::Command::new("ip");
+    let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
     cmd.arg(&iinterface);
     cmd.arg("up");
@@ -147,7 +147,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
     }
 
     if let Some(gw) = net.default_gateway {
-        let mut cmd = unshare::Command::new("ip");
+        let mut cmd = unshare::Command::new("/sbin/ip");
         cmd.arg("route").arg("add");
         cmd.arg("default");
         cmd.arg("via").arg(&format!("{}", gw));
