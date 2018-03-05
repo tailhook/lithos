@@ -100,7 +100,7 @@ impl FromStr for ChildInstance {
 mod test {
     use std::collections::BTreeMap;
     use std::str::FromStr;
-    use super::ChildConfig;
+    use super::ChildInstance;
     use super::ChildKind::Daemon;
     use serde_json::{to_string, from_str};
 
@@ -111,23 +111,23 @@ mod test {
             "image":"myproj.4a20772b",
             "config":"/config/staging/myproj.yaml",
             "kind":"Daemon"}"#;
-        let cc = ChildConfig::from_str(data).unwrap();
-        assert_eq!(cc, ChildConfig {
+        let cc = ChildInstance::from_str(data).unwrap();
+        assert_eq!(cc, ChildInstance {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
-            ip_addresses: Vec::new(),
+            ip_address: None,
             kind: Daemon,
         });
 
-        let cc: ChildConfig = from_str(&data).unwrap();
-        assert_eq!(cc, ChildConfig {
+        let cc: ChildInstance = from_str(&data).unwrap();
+        assert_eq!(cc, ChildInstance {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
-            ip_addresses: Vec::new(),
+            ip_address: None,
             kind: Daemon,
         });
     }
@@ -140,27 +140,27 @@ mod test {
             "config":"/config/staging/myproj.yaml",
             "variables": {"a": "b"},
             "kind":"Daemon"}"#;
-        let cc = ChildConfig::from_str(data).unwrap();
-        assert_eq!(cc, ChildConfig {
+        let cc = ChildInstance::from_str(data).unwrap();
+        assert_eq!(cc, ChildInstance {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: vec![
                 (String::from("a"), String::from("b")),
             ].into_iter().collect(),
-            ip_addresses: Vec::new(),
+            ip_address: None,
             kind: Daemon,
         })
     }
 
     #[test]
     fn serialize_compat() {
-        let data = to_string(&ChildConfig {
+        let data = to_string(&ChildInstance {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
-            ip_addresses: Vec::new(),
+            ip_address: None,
             kind: Daemon,
         }).unwrap();
         assert_eq!(data, "{\
@@ -172,7 +172,7 @@ mod test {
 
     #[test]
     fn serialize_vars() {
-        let data = to_string(&ChildConfig {
+        let data = to_string(&ChildInstance {
             instances: 1,
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
@@ -180,7 +180,7 @@ mod test {
                 (String::from("a"), String::from("b")),
                 (String::from("c"), String::from("d")),
             ].into_iter().collect(),
-            ip_addresses: Vec::new(),
+            ip_address: None,
             kind: Daemon,
         }).unwrap();
         assert_eq!(data, "{\
