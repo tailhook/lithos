@@ -135,9 +135,6 @@ fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
     }
     cmd.unshare([Namespace::Mount, Namespace::Uts,
                  Namespace::Ipc, Namespace::Pid].iter().cloned());
-    if sandbox.bridged_network.is_some() {
-        cmd.unshare([Namespace::Net].iter().cloned());
-    }
     cmd
 }
 

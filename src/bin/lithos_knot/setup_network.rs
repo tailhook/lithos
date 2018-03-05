@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::net::IpAddr;
 use std::os::unix::io::AsRawFd;
 
@@ -6,7 +7,7 @@ use blake2::{self, Digest};
 use failure::{Error, ResultExt};
 use ipnetwork::IpNetwork;
 use nix::sched::{setns, CLONE_NEWNET};
-use nix::unistd::{getppid, getpid};
+use nix::unistd::{getpid};
 use serde_json::to_vec;
 use unshare;
 
@@ -22,6 +23,8 @@ pub fn setup(sandbox: &SandboxConfig, child: &ChildConfig,
     _setup(sandbox, child, container)
     .map_err(|e| e.to_string())
 }
+
+
 
 fn interface_name(network: &BridgedNetwork, ip: &IpAddr) -> String {
     #[derive(Serialize)]
@@ -43,13 +46,27 @@ fn interface_name(network: &BridgedNetwork, ip: &IpAddr) -> String {
     return name;
 }
 
+fn get_real_parent_pid() -> Result<u32, Error> {
+    let f = BufReader::new(File::open("/proc/self/status")
+        .context("can open /proc/self/status")?);
+    for line in f.lines() {
+        let line = line.context("can open /proc/self/status")?;
+        if line.starts_with("PPid:") {
+            let ppid = line[5..].trim().parse::<u32>()
+                .context("can parse pid in /proc/sef/status")?;
+            return Ok(ppid);
+        }
+    }
+    bail!("can't find ppid");
+}
+
 fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
     _container: &InstantiatedConfig)
     -> Result<(), Error>
 {
     let net = sandbox.bridged_network.as_ref().expect("bridged network");
     let ip = child.ip_addresses.get(0).expect("ip address");
-    let ppid = getppid();
+    let ppid = get_real_parent_pid()?;
     let my_ns = File::open("/proc/self/ns/net")
         .context("can't open namespace")?;
     let parent_ns = File::open(&format!("/proc/{}/ns/net", ppid))
