@@ -75,12 +75,23 @@ impl ChildConfig {
         .member("ip_addresses", Sequence::new(Scalar::new()))
     }
 }
+impl ChildInstance {
+    pub fn validator<'x>() -> Structure<'x> {
+        Structure::new()
+        .member("instances", Numeric::new().default(1))
+        .member("image", Scalar::new())
+        .member("config", Scalar::new())
+        .member("variables", Mapping::new(Scalar::new(), Scalar::new()))
+        .member("kind", Scalar::new().default("Daemon"))
+        .member("ip_address", Scalar::new().optional())
+    }
+}
 
 impl FromStr for ChildInstance {
     type Err = ();
     fn from_str(body: &str) -> Result<ChildInstance, ()> {
         parse_string("<command-line>", body,
-            &ChildConfig::validator(), &Options::default())
+            &Self::validator(), &Options::default())
             .map_err(|_| ())
     }
 }
