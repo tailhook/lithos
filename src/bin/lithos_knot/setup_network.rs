@@ -55,10 +55,10 @@ fn get_real_pids() -> Result<(u32, u32), Error> {
         let line = line.context("can open /proc/self/status")?;
         if line.starts_with("Pid:") {
             pid = Some(line[5..].trim().parse::<u32>()
-                .context("can parse pid in /proc/sef/status")?);
+                .context("can parse pid in /proc/self/status")?);
         } else if line.starts_with("PPid:") {
             ppid = Some(line[5..].trim().parse::<u32>()
-                .context("can parse pid in /proc/sef/status")?);
+                .context("can parse pid in /proc/self/status")?);
         } else {
             continue;
         }
