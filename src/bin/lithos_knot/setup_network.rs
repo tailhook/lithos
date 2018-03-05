@@ -36,7 +36,7 @@ fn interface_name(network: &BridgedNetwork, ip: &IpAddr) -> String {
         IpAddr::V4(ip) => (ip.octets()[2], ip.octets()[3]),
         IpAddr::V6(ip) => (ip.octets()[14], ip.octets()[15]),
     };
-    let name = format!("li_{:06x}_{:02x}{:02x}",
+    let name = format!("li_{:.06x}_{:02x}{:02x}",
         blake2::Blake2b::digest(&to_vec(&HashSource {
             bridge: &network.bridge,
             ip: ip,
