@@ -100,13 +100,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
     let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
     cmd.arg("dev").arg(&iinterface);
-    // Note: this is a bit of hack bit it's known to work.
-    // 1. We opened our namespace first so `/proc/<PID>/ns/net` is associated
-    //    with that namespace even if we change namespace
-    // 2. Then we set namespace to a parent one
-    // 3. We move interface to ours namespace
-    // 4. Then switch our namespace back to expected one
-    cmd.arg("netns").arg(&format!("/proc/{}/ns/net", pid));
+    cmd.arg("netns").arg(&format!("/proc/{}/fd/{}", pid, my_ns.as_raw_fd()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
