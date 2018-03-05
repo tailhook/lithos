@@ -7,7 +7,6 @@ use blake2::{self, Digest};
 use failure::{Error, ResultExt};
 use ipnetwork::IpNetwork;
 use nix::sched::{setns, CLONE_NEWNET};
-use nix::unistd::{getpid};
 use serde_json::to_vec;
 use unshare;
 
@@ -47,15 +46,25 @@ fn interface_name(network: &BridgedNetwork, ip: &IpAddr) -> String {
     return name;
 }
 
-fn get_real_parent_pid() -> Result<u32, Error> {
+fn get_real_pids() -> Result<(u32, u32), Error> {
+    let mut pid = None::<u32>;
+    let mut ppid = None::<u32>;
     let f = BufReader::new(File::open("/proc/self/status")
         .context("can open /proc/self/status")?);
     for line in f.lines() {
         let line = line.context("can open /proc/self/status")?;
-        if line.starts_with("PPid:") {
-            let ppid = line[5..].trim().parse::<u32>()
-                .context("can parse pid in /proc/sef/status")?;
-            return Ok(ppid);
+        if line.starts_with("Pid:") {
+            pid = Some(line[5..].trim().parse::<u32>()
+                .context("can parse pid in /proc/sef/status")?);
+        } else if line.starts_with("PPid:") {
+            ppid = Some(line[5..].trim().parse::<u32>()
+                .context("can parse pid in /proc/sef/status")?);
+        } else {
+            continue;
+        }
+        match (pid, ppid) {
+            (Some(pid), Some(ppid)) => return Ok((pid, ppid)),
+            _ => continue,
         }
     }
     bail!("can't find ppid");
@@ -67,7 +76,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
 {
     let net = sandbox.bridged_network.as_ref().expect("bridged network");
     let ip = child.ip_addresses.get(0).expect("ip address");
-    let ppid = get_real_parent_pid()?;
+    let (pid, ppid) = get_real_pids()?;
     let my_ns = File::open("/proc/self/ns/net")
         .context("can't open namespace")?;
     let parent_ns = File::open(&format!("/proc/{}/ns/net", ppid))
@@ -97,7 +106,7 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildConfig,
     // 2. Then we set namespace to a parent one
     // 3. We move interface to ours namespace
     // 4. Then switch our namespace back to expected one
-    cmd.arg("netns").arg(&format!("{}", getpid()));
+    cmd.arg("netns").arg(&format!("/proc/{}/ns/net", pid));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
