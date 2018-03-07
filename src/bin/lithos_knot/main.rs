@@ -163,7 +163,9 @@ fn run(options: Options) -> Result<i32, String>
     }
 
     info!("[{}] Starting container", options.name);
-    setup_network::setup(&sandbox, &options.config, &local)?;
+    if sandbox.bridged_network.is_some() {
+        setup_network::setup(&sandbox, &options.config, &local)?;
+    }
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(&options.name);

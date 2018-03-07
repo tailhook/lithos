@@ -3,6 +3,21 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.15.2:
+
+v0.15.2
+=======
+
+* bugfix: containers withouth bridged network work again
+
+
+.. _changelog 0.15.1:
+
+v0.15.1
+=======
+
+* nothing changed, fixed tests only
+
 .. _changelog 0.15.0:
 
 v0.15.0
