@@ -80,7 +80,9 @@ fn check_sandbox_config(sandbox: &SandboxConfig) {
     // TODO(tailhook) check allow_users/allow_groups against uid_map/gid_map
 }
 
-fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
+fn check_container(config_file: &Path,
+    sandbox: Option<&SandboxConfig>,)
+    -> Result<ContainerConfig, ()>
 {
     // Only checks things that can be checked without other configs
     let config: ContainerConfig = match parse_config(config_file,
@@ -92,17 +94,33 @@ fn check_container(config_file: &Path) -> Result<ContainerConfig, ()>
             return Err(());
         }
     };
-    if config.uid_map.len() > 0 {
-        if !in_mapping(&config.uid_map, config.user_id) {
-            err!("User is not in mapped range (uid: {})",
-                config.user_id);
+    if let Some(sandbox) = sandbox {
+        if config.uid_map.len() > 0 {
+            let user_id = config.user_id.or(sandbox.default_user);
+            if let Some(user_id) = user_id {
+                if !in_mapping(&config.uid_map, user_id) {
+                    err!("User is not in mapped range (uid: {})",
+                        user_id);
+                }
+            } else {
+                err!("Neither user id is specified nor default is found");
+            }
         }
-    }
-    if config.gid_map.len() > 0 {
-        if !in_mapping(&config.gid_map, config.group_id) {
-            err!("Group is not in mapped range (gid: {})",
-                config.user_id);
+        if config.gid_map.len() > 0 {
+            let group_id = config.group_id.or(sandbox.default_group);
+            if let Some(group_id) = group_id {
+                if !in_mapping(&config.gid_map, group_id) {
+                    err!("Group is not in mapped range (gid: {})",
+                        group_id);
+                }
+            } else {
+                err!("Neither group id is specified nor default is found");
+            }
         }
+    } else {
+        // We don't know anything about sandbox.
+        // Skip checking container uid_maps, note: they are there for a very
+        // rare and specialized use case, so isn't big issue
     }
     Ok(config)
 }
@@ -181,7 +199,8 @@ fn check(config_file: &Path, verbose: bool,
                 debug!("Opening config for {:?}", child_name);
                 let config = match check_container(&sandbox.image_dir
                     .join(&child_cfg.image)
-                    .join(&relative(cfg_path, &Path::new("/"))))
+                    .join(&relative(cfg_path, &Path::new("/"))),
+                    Some(&sandbox))
                 {
                     Ok(config) => config,
                     Err(()) => continue,
@@ -193,16 +212,23 @@ fn check(config_file: &Path, verbose: bool,
                               container itself");
                     }
                 } else {
-                    if sandbox.uid_map.len() > 0 {
-                        if sandbox.uid_map.map_id(config.user_id).is_none() {
-                            err!("User is not in mapped range \
-                                (uid: {})",
-                                config.user_id);
+                    let user_id = config.user_id
+                        .or(sandbox.default_user);
+                    if let Some(user_id) = user_id {
+                        if sandbox.uid_map.len() > 0 {
+                            if sandbox.uid_map.map_id(user_id).is_none() {
+                                err!("User is not in mapped range \
+                                    (uid: {})",
+                                    user_id);
+                            }
                         }
-                    }
-                    if !in_range(&sandbox.allow_users, config.user_id) {
-                        err!("User is not in allowed range (uid: {})",
-                            config.user_id);
+                        if !in_range(&sandbox.allow_users, user_id) {
+                            err!("User is not in allowed range (uid: {})",
+                                user_id);
+                        }
+                    } else {
+                        err!("Neither user id is specified \
+                            nor default is found");
                     }
                 }
                 if config.gid_map.len() > 0 {
@@ -211,16 +237,23 @@ fn check(config_file: &Path, verbose: bool,
                               container itself");
                     }
                 } else {
-                    if sandbox.gid_map.len() > 0 {
-                        if sandbox.gid_map.map_id(config.group_id).is_none() {
-                            err!("Group is not in mapped range \
-                                (gid: {})",
-                                config.group_id);
+                    let group_id = config.group_id
+                        .or(sandbox.default_group);
+                    if let Some(group_id) = group_id {
+                        if sandbox.gid_map.len() > 0 {
+                            if sandbox.gid_map.map_id(group_id).is_none() {
+                                err!("Group is not in mapped range \
+                                    (gid: {})",
+                                    group_id);
+                            }
                         }
-                    }
-                    if !in_range(&sandbox.allow_groups, config.group_id) {
-                        err!("Group is not in allowed range (gid: {})",
-                            config.group_id);
+                        if !in_range(&sandbox.allow_groups, group_id) {
+                            err!("Group is not in allowed range (gid: {})",
+                                group_id);
+                        }
+                    } else {
+                        err!("Neither group id is specified \
+                            nor default is found");
                     }
                 }
                 if !check_mapping(&sandbox.allow_users, &config.uid_map) {
@@ -375,7 +408,7 @@ fn main() {
     }
     if check_containers.len() > 0 {
         for file in &check_containers {
-            check_container(Path::new(file)).ok();
+            check_container(Path::new(file), None).ok();
         }
     } else {
         check_binaries();

@@ -82,10 +82,30 @@ Reference
    it limits all the user ids available to the namespace (i.e. for the
    outside setting of the uid map).
 
+.. opt:: default-user
+
+   (no default) A user id used in the container if no ``user-id`` is specified
+   in container config. By default ``user-id`` is required.
+
+   Note: ``default-user`` value must be contained in the ``allow-users`` range
+
+   .. versionadded: v0.15.3
+
 .. opt:: allow-groups
 
    List of ranges of group ids for the container.
    Works similarly to :opt:`allow-users`.
+
+.. opt:: default-group
+
+   (default ``0``) A group id used in the container if no ``group-id``
+   is specified in container config.
+
+   Note: ``default-group`` value must be contained in the ``allow-users`` range
+
+   .. versionadded: v0.15.3
+
+      In previous versions default group was always zero.
 
 .. opt:: allow-tcp-ports
 

@@ -960,8 +960,12 @@ fn read_subtree<'x>(master: &MasterConfig,
                     return Vec::new().into_iter();
                 }
             };
-            let mut sock_uid = cfg.user_id;
-            let mut sock_gid = cfg.group_id;
+            let mut sock_uid = cfg.user_id.or(sandbox.default_user)
+                // don't care sock_uid so much
+                .unwrap_or(0);
+            let mut sock_gid = cfg.group_id.or(sandbox.default_group)
+                // don't care sock_gid so much
+                .unwrap_or(0);
             if sandbox.uid_map.len() > 0 {
                 sock_uid = sandbox.uid_map.map_id(sock_uid).unwrap_or(0);
                 sock_gid = sandbox.gid_map.map_id(sock_gid).unwrap_or(0);

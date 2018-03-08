@@ -111,8 +111,8 @@ pub struct ContainerConfig {
     pub variables: BTreeMap<String, Variable>,
     pub metadata: Json,
     pub volumes: BTreeMap<String, Volume>,
-    pub user_id: u32,
-    pub group_id: u32,
+    pub user_id: Option<u32>,
+    pub group_id: Option<u32>,
     pub restart_timeout: f32,
     pub kill_timeout: f32,
     pub memory_limit: u64,
@@ -137,8 +137,8 @@ pub struct ContainerConfig {
 pub struct InstantiatedConfig {
     pub kind: ContainerKind,
     pub volumes: BTreeMap<String, Volume>,
-    pub user_id: u32,
-    pub group_id: u32,
+    pub user_id: Option<u32>,
+    pub group_id: Option<u32>,
     pub restart_timeout: f32,
     pub kill_timeout: f32,
     pub memory_limit: u64,
@@ -190,8 +190,8 @@ impl ContainerConfig {
         .member("volumes", Mapping::new(
                 Scalar::new(),
                 volume_validator()))
-        .member("user_id", Numeric::new())
-        .member("group_id", Numeric::new().default(0))
+        .member("user_id", Numeric::new().optional())
+        .member("group_id", Numeric::new().optional())
         .member("memory_limit", Numeric::new().default(0x7fffffffffffffffi64))
         .member("fileno_limit", Numeric::new().default(1024))
         .member("cpu_shares", Numeric::new().default(1024))

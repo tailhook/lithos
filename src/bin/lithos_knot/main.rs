@@ -131,28 +131,44 @@ fn run(options: Options) -> Result<i32, String>
         lithos_config_filename: &options.config.config,
     }).map_err(|e| format!("Variable substitution error: {}", e.join("; ")))?;
 
-    if local.uid_map.len() > 0 {
-        if !in_mapping(&local.uid_map, local.user_id) {
-            return Err(format!("User is not in mapped range (uid: {})",
-                local.user_id));
+    let user_id = if
+        let Some(user_id) = local.user_id.or(sandbox.default_user)
+    {
+        if local.uid_map.len() > 0 {
+            if !in_mapping(&local.uid_map, user_id) {
+                return Err(format!("User is not in mapped range (uid: {})",
+                    user_id));
+            }
+        } else {
+            if !in_range(&sandbox.allow_users, user_id) {
+                return Err(format!("User is not in allowed range (uid: {})",
+                    user_id));
+            }
         }
+        user_id
     } else {
-        if !in_range(&sandbox.allow_users, local.user_id) {
-            return Err(format!("User is not in allowed range (uid: {})",
-                local.user_id));
+        return Err(format!("No user id specified and no default is found"));
+    };
+
+    let group_id = if
+        let Some(group_id) = local.group_id.or(sandbox.default_group)
+    {
+        if local.gid_map.len() > 0 {
+            if !in_mapping(&local.gid_map, group_id) {
+                return Err(format!("Group is not in mapped range (gid: {})",
+                    group_id));
+            }
+        } else {
+            if !in_range(&sandbox.allow_groups, group_id) {
+                return Err(format!("Group is not in allowed range (gid: {})",
+                    group_id));
+            }
         }
-    }
-    if local.gid_map.len() > 0 {
-        if !in_mapping(&local.gid_map, local.group_id) {
-            return Err(format!("Group is not in mapped range (gid: {})",
-                local.user_id));
-        }
+        group_id
     } else {
-        if !in_range(&sandbox.allow_groups, local.group_id) {
-            return Err(format!("Group is not in allowed range (gid: {})",
-                local.group_id));
-        }
-    }
+        return Err(format!("No group id specified and no default is found"));
+    };
+
     if !check_mapping(&sandbox.allow_users, &local.uid_map) {
         return Err("Bad uid mapping (probably doesn't match allow_users)"
             .to_string());
@@ -201,8 +217,8 @@ fn run(options: Options) -> Result<i32, String>
 
 
     let mut cmd = Command::new(&local.executable);
-    cmd.uid(local.user_id);
-    cmd.gid(local.group_id);
+    cmd.uid(user_id);
+    cmd.gid(group_id);
     cmd.current_dir(&local.workdir);
 
     // Should we propagate TERM?

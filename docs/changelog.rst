@@ -3,6 +3,15 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.15.3:
+
+v0.15.3
+=======
+
+* feature: Add :opt:`default-user` and :opt:`default-group` to simplify
+  container config
+
+
 .. _changelog 0.15.2:
 
 v0.15.2
