@@ -69,7 +69,9 @@ impl SandboxConfig {
             Scalar::new(),
             Scalar::new()))
         .member("allow_users", Sequence::new(Scalar::new()))
+        .member("default_user", Scalar::new().optional())
         .member("allow_groups", Sequence::new(Scalar::new()))
+        .member("default_group", Scalar::new().default(0))
         .member("allow_tcp_ports", Sequence::new(Scalar::new()))
         .member("uid_map", mapping_validator())
         .member("gid_map", mapping_validator())
