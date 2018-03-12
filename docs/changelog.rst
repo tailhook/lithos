@@ -10,6 +10,8 @@ v0.15.3
 
 * feature: Add :opt:`default-user` and :opt:`default-group` to simplify
   container config
+* bugfix: fix containers having symlinks at ``/etc/{resolv.conf, hosts}``
+  (broken in v0.15.0)
 
 
 .. _changelog 0.15.2:
@@ -17,7 +19,7 @@ v0.15.3
 v0.15.2
 =======
 
-* bugfix: containers withouth bridged network work again
+* bugfix: containers without bridged network work again
 
 
 .. _changelog 0.15.1:

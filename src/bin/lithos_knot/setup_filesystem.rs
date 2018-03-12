@@ -116,14 +116,20 @@ fn check_file(root: &Path, file: &str)
     let epath = root.join("etc");
     match symlink_metadata(&epath) {
         Ok(ref m) if m.is_dir() => {},
-        Ok(_) => debug!("/etc is not a directory"),
+        Ok(_) => {
+            debug!("/etc is not a directory");
+            return Ok(false);
+        }
         Err(ref e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(e) => bail!("can't check /etc: {}", e),
     };
     let path = epath.join(file);
     match symlink_metadata(&path) {
         Ok(ref m) if m.is_file() => {},
-        Ok(_) => debug!("/etc/{} is not a file", file),
+        Ok(_) => {
+            debug!("/etc/{} is not a file", file);
+            return Ok(false);
+        }
         Err(ref e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
         Err(e) => bail!("can't check /etc/{}: {}", file, e),
     };
