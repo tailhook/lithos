@@ -27,28 +27,6 @@ repositories:
   keep-releases: 100
   match-version: \+trusty1$
 
-# precise
-- kind: debian
-  suite: precise
-  component: lithos
-  keep-releases: 1
-  match-version: ^\d+\.\d+\.\d+\+precise1$
-  add-empty-i386-repo: true
-
-- kind: debian
-  suite: precise
-  component: lithos-stable
-  keep-releases: 1000
-  match-version: ^\d+\.\d+\.\d+\+precise1$
-  add-empty-i386-repo: true
-
-- kind: debian
-  suite: precise
-  component: lithos-testing
-  keep-releases: 100
-  match-version: \+precise1$
-  add-empty-i386-repo: true
-
 # xenial
 - kind: debian
   suite: xenial
@@ -67,6 +45,25 @@ repositories:
   component: lithos-testing
   keep-releases: 100
   match-version: \+xenial1$
+
+# bionic
+- kind: debian
+  suite: bionic
+  component: lithos
+  keep-releases: 1
+  match-version: ^\d+\.\d+\.\d+\+bionic1$
+
+- kind: debian
+  suite: bionic
+  component: lithos-stable
+  keep-releases: 1000
+  match-version: ^\d+\.\d+\.\d+\+bionic1$
+
+- kind: debian
+  suite: bionic
+  component: lithos-testing
+  keep-releases: 100
+  match-version: \+bionic1$
 
 versions:
 

@@ -3,6 +3,15 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.15.4:
+
+v0.15.4
+=======
+
+* First release that stops support of ubuntu trusty and
+  adds repository for ubuntu bionic
+
+
 .. _changelog 0.15.3:
 
 v0.15.3
@@ -12,7 +21,6 @@ v0.15.3
   container config
 * bugfix: fix containers having symlinks at ``/etc/{resolv.conf, hosts}``
   (broken in v0.15.0)
-
 
 .. _changelog 0.15.2:
 
