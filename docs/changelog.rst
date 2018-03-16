@@ -8,7 +8,7 @@ Lithos Changes By Release
 v0.15.4
 =======
 
-* First release that stops support of ubuntu trusty and
+* First release that stops support of ubuntu precise and
   adds repository for ubuntu bionic
 
 

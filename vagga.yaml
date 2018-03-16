@@ -36,8 +36,8 @@ commands:
     work-dir: docs
     run: [make]
 
-  _package-precise: !Command
-    container: precise
+  _package-trusty: !Command
+    container: trusty
     run: [make, ubuntu-packages]
 
   _package-xenial: !Command
@@ -55,7 +55,7 @@ commands:
   packages: !Command
     container: xenial
     description: Build packages and repostories (mostly for CI)
-    prerequisites: [_package-precise, _package-xenial, _package-bionic,
+    prerequisites: [_package-trusty, _package-xenial, _package-bionic,
                     _package-lithos_check]
     accepts_arguments: true
     run: |
@@ -134,9 +134,9 @@ containers:
     environ: &environ
       HOME: /work/target
 
-  precise:
+  trusty:
     setup:
-    - !Ubuntu precise
+    - !Ubuntu trusty
     - *pkgs
     - *rust
     - *bulk
