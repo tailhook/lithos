@@ -10,6 +10,8 @@ v0.15.4
 
 * First release that stops support of ubuntu precise and
   adds repository for ubuntu bionic
+* bugfix: passing TCP port as fd < 3 didn't work before, now we allow ``fd: 0``
+  and fail gracefully on 1, 2.
 
 
 .. _changelog 0.15.3:

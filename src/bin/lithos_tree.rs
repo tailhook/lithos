@@ -13,6 +13,7 @@ extern crate signal;
 extern crate syslog;
 extern crate unshare;
 #[macro_use] extern crate log;
+#[macro_use] extern crate failure;
 
 
 use std::env;
@@ -28,6 +29,7 @@ use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::{RawFd, AsRawFd};
 
+use failure::Error;
 use humantime::format_rfc3339_seconds;
 use libc::{close};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
@@ -42,7 +44,7 @@ use regex::Regex;
 use serde_json::to_string;
 use signal::exec_handler;
 use signal::trap::Trap;
-use unshare::{Command, reap_zombies, Namespace, Fd};
+use unshare::{Command, reap_zombies, Namespace, Fd, Stdio};
 
 use lithos::MAX_CONFIG_LOGS;
 use lithos::cgroup;
@@ -577,14 +579,14 @@ fn close_unused_sockets(sockets: &mut HashMap<InetAddr, Socket>,
 }
 
 fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
-    -> Result<RawFd, String>
+    -> Result<RawFd, Error>
 {
 
     let sock = {
         let _fsuid_guard = utils::FsUidGuard::set(uid, gid);
         try!(socket(AddressFamily::Inet,
             SockType::Stream, SockFlag::empty(), 0)
-            .map_err(|e| format!("Can't create socket: {:?}", e)))
+            .map_err(|e| format_err!("Can't create socket: {:?}", e)))
     };
 
     let mut result = Ok(());
@@ -598,7 +600,7 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
     result =  result.and_then(|_| listen(sock, cfg.listen_backlog));
     if let Err(e) = result {
         unsafe { close(sock) };
-        Err(format!("Socket option error: {:?}", e))
+        Err(format_err!("Socket option error: {:?}", e))
     } else {
         Ok(sock)
     }
@@ -608,13 +610,13 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
                     ports: &HashMap<u16, TcpPort>,
                     cmd: &mut Command,
                     uid: u32, gid: u32)
-    -> Result<(), String>
+    -> Result<(), Error>
 {
     for (&port, item) in ports {
         let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
         if !socks.contains_key(&addr) {
             if !item.reuse_port {
-                let sock = try!(open_socket(addr, item, uid, gid));
+                let sock = open_socket(addr, item, uid, gid)?;
                 socks.insert(addr, Socket {
                     fd: sock,
                 });
@@ -628,9 +630,25 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
                       ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
         for (&port, item) in ports {
             let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
-            let fd = Fd::dup_file(socks.get(&addr).unwrap())
-                .map_err(|e| format!("Can't dup file descriptor: {}", e))?;
-            cmd.file_descriptor(item.fd, fd);
+            match item.fd {
+                0 => {
+                    let fd = Stdio::dup_file(socks.get(&addr).unwrap())
+                        .map_err(|e| {
+                            format_err!("Can't dup file descriptor: {}", e)
+                        })?;
+                    cmd.stdin(fd);
+                }
+                // TODO(tailhook) these is dangerous to pass to lithos knot
+                // as stdout and stderr, we need to map them somehow
+                1|2 => bail!("passing fd 1 and fd 2 is not supported yet"),
+                _ => {
+                    let fd = Fd::dup_file(socks.get(&addr).unwrap())
+                        .map_err(|e| {
+                            format_err!("Can't dup file descriptor: {}", e)
+                        })?;
+                    cmd.file_descriptor(item.fd, fd);
+                }
+            }
         }
     }
     Ok(())
