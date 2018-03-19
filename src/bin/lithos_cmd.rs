@@ -78,8 +78,6 @@ fn run(master_cfg: &Path, sandbox_name: String,
     let child_cfg = try!(sandbox_children.get(&command_name)
         .ok_or(format!("Command {:?} not found", command_name)));
 
-
-
     if child_cfg.kind != ChildKind::Command {
         return Err(format!("The target container is: {:?}", child_cfg.kind));
     }
@@ -113,6 +111,9 @@ fn run(master_cfg: &Path, sandbox_name: String,
     cmd.args(&args);
     cmd.unshare([Namespace::Mount, Namespace::Uts,
                  Namespace::Ipc, Namespace::Pid].iter().cloned());
+    if sandbox.bridged_network.is_some() {
+        cmd.unshare([Namespace::Net].iter().cloned());
+    }
 
     info!("Running {:?}", cmd);
 
