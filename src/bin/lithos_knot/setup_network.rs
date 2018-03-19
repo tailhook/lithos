@@ -8,7 +8,7 @@ use failure::{Error, ResultExt};
 use ipnetwork::IpNetwork;
 use nix::sched::{setns, CLONE_NEWNET};
 use serde_json::to_vec;
-use unshare;
+use unshare::{self, Style};
 
 use lithos::sandbox_config::{SandboxConfig, BridgedNetwork};
 use lithos::child_config::ChildInstance;
@@ -96,6 +96,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     cmd.arg(&interface);
     cmd.arg("type").arg("veth");
     cmd.arg("peer").arg("name").arg(&iinterface);
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
@@ -108,6 +109,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     cmd.arg("dev").arg(&interface);
     cmd.arg("netns").arg(&format!("/proc/{}/fd/{}",
         pid, parent_ns.as_raw_fd()));
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
@@ -119,6 +121,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
 
     let mut cmd = unshare::Command::new("/sbin/brctl");
     cmd.arg("addif").arg(&net.bridge).arg(&interface);
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("brctl failed: {}", s),
@@ -129,6 +132,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     cmd.arg("link").arg("set");
     cmd.arg(&interface);
     cmd.arg("up");
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
@@ -141,6 +145,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
     cmd.arg("lo").arg("up");
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
@@ -153,6 +158,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
         IpNetwork::new(ip, net.network.prefix())
         .expect("network asways valid")));
     cmd.arg("dev").arg(&iinterface);
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
@@ -163,6 +169,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     cmd.arg("link").arg("set");
     cmd.arg(&iinterface);
     cmd.arg("up");
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
@@ -174,6 +181,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
         cmd.arg("route").arg("add");
         cmd.arg("default");
         cmd.arg("via").arg(&format!("{}", gw));
+        debug!("Running {}", cmd.display(&Style::short()));
         match cmd.status() {
             Ok(s) if s.success() => {}
             Ok(s) => bail!("ip route failed: {}", s),
@@ -189,6 +197,7 @@ fn _setup_isolated(_sandbox: &SandboxConfig, _child: &ChildInstance)
     let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
     cmd.arg("lo").arg("up");
+    debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
         Ok(s) => bail!("ip link failed: {}", s),
