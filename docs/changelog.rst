@@ -13,6 +13,7 @@ v0.15.5
   is configured
 * Feature: allow ``lithos_cmd`` without ``ip_addresses`` (only loopback is
   initialized in this case)
+* Bugfix: return error result from ``lithos_cmd`` if inner process failed
 
 
 .. _changelog 0.15.4:

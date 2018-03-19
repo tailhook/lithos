@@ -117,14 +117,18 @@ fn run(master_cfg: &Path, sandbox_name: String,
 
     info!("Running {:?}", cmd);
 
-    match cmd.status() {
-        Ok(x) => info!("Command {:?} {}", cmd, x),
-        Err(e) => error!("Can't run {:?}: {}", cmd, e),
-    }
+    let res = match cmd.status() {
+        Ok(x) if x.success() => {
+            info!("Command {:?} {}", cmd, x);
+            Ok(())
+        }
+        Ok(x) => Err(format!("Command {:?} {}", cmd, x)),
+        Err(e) => Err(format!("Can't run {:?}: {}", cmd, e)),
+    };
 
     clean_child(&name, &master, false);
 
-    return Ok(());
+    return res;
 }
 
 fn main() {
