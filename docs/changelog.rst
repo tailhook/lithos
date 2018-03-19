@@ -9,6 +9,10 @@ v0.15.5
 =======
 
 * Bugfix: add support for bridged-network and ip-addresses for lithos_cmd
+* Bugfix: initialize looppack interface in container when ``bridged-network``
+  is configured
+* Feature: allow ``lithos_cmd`` without ``ip_addresses`` (only loopback is
+  initialized in this case)
 
 
 .. _changelog 0.15.4:

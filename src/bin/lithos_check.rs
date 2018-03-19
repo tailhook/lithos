@@ -25,7 +25,7 @@ use lithos::range::in_range;
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};
-use lithos::child_config::ChildConfig;
+use lithos::child_config::{ChildConfig, ChildKind};
 use lithos::network::{get_host_name, get_host_ip};
 use lithos::id_map::{IdMapExt};
 
@@ -289,6 +289,8 @@ fn check(config_file: &Path, verbose: bool,
                             if !network_contains(&bridge.network, ip) {
                                 err!("{}: invalid ip {}", name, ip);
                             }
+                        } else if ichild.kind == ChildKind::Command {
+                            // okay to have no IP for commands
                         } else {
                             err!("{}: no IP address specified", name);
                         }

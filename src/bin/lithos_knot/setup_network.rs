@@ -16,11 +16,16 @@ use lithos::container_config::InstantiatedConfig;
 
 
 pub fn setup(sandbox: &SandboxConfig, child: &ChildInstance,
-    container: &InstantiatedConfig)
+    _container: &InstantiatedConfig)
     -> Result<(), String>
 {
-    _setup(sandbox, child, container)
-    .map_err(|e| e.to_string())
+    if let Some(ip) = child.ip_address {
+        _setup_bridged(sandbox, child, ip)
+        .map_err(|e| e.to_string())
+    } else {
+        _setup_isolated(sandbox, child)
+        .map_err(|e| e.to_string())
+    }
 }
 
 
@@ -70,18 +75,16 @@ fn get_real_pids() -> Result<(u32, u32), Error> {
     bail!("can't find ppid");
 }
 
-fn _setup(sandbox: &SandboxConfig, child: &ChildInstance,
-    _container: &InstantiatedConfig)
+fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     -> Result<(), Error>
 {
     let net = sandbox.bridged_network.as_ref().expect("bridged network");
-    let ip = child.ip_address.as_ref().expect("ip address");
     let (pid, ppid) = get_real_pids()?;
     let my_ns = File::open("/proc/self/ns/net")
         .context("can't open namespace")?;
     let parent_ns = File::open(&format!("/proc/{}/ns/net", ppid))
         .context("can't open parent namespace")?;
-    let interface = interface_name(net, ip);
+    let interface = interface_name(net, &ip);
     let iinterface = interface.replace("_", "-");
     assert!(iinterface != interface);
 
@@ -136,9 +139,18 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildInstance,
     setns(my_ns.as_raw_fd(), CLONE_NEWNET)?;
 
     let mut cmd = unshare::Command::new("/sbin/ip");
+    cmd.arg("link").arg("set");
+    cmd.arg("lo").arg("up");
+    match cmd.status() {
+        Ok(s) if s.success() => {}
+        Ok(s) => bail!("ip link failed: {}", s),
+        Err(e) => bail!("ip link failed: {}", e),
+    }
+
+    let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("addr").arg("add");
     cmd.arg(&format!("{}",
-        IpNetwork::new(*ip, net.network.prefix())
+        IpNetwork::new(ip, net.network.prefix())
         .expect("network asways valid")));
     cmd.arg("dev").arg(&iinterface);
     match cmd.status() {
@@ -167,6 +179,20 @@ fn _setup(sandbox: &SandboxConfig, child: &ChildInstance,
             Ok(s) => bail!("ip route failed: {}", s),
             Err(e) => bail!("ip route failed: {}", e),
         }
+    }
+    Ok(())
+}
+
+fn _setup_isolated(_sandbox: &SandboxConfig, _child: &ChildInstance)
+    -> Result<(), Error>
+{
+    let mut cmd = unshare::Command::new("/sbin/ip");
+    cmd.arg("link").arg("set");
+    cmd.arg("lo").arg("up");
+    match cmd.status() {
+        Ok(s) if s.success() => {}
+        Ok(s) => bail!("ip link failed: {}", s),
+        Err(e) => bail!("ip link failed: {}", e),
     }
     Ok(())
 }
