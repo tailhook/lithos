@@ -84,6 +84,8 @@ fn run(master_cfg: &Path, sandbox_name: String,
         return Err(format!("The target container is: {:?}", child_cfg.kind));
     }
 
+    let child_cfg = child_cfg.instantiate(0)
+        .map_err(|e| format!("can't instantiate: {}", e))?;
 
     let name = format!("{}/cmd.{}.{}", sandbox_name,
         command_name, unsafe { getpid() });

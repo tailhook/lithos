@@ -33,7 +33,7 @@ impl Options {
         let mut options = Options {
             master_config: PathBuf::from("/etc/lithos/master.yaml"),
             config: ChildInstance {
-                instances: 0,
+                instances: 1,
                 image: "".to_string(),
                 config: "".to_string(),
                 variables: BTreeMap::new(),

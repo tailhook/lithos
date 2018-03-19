@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.15.5:
+
+v0.15.5
+=======
+
+* Bugfix: add support for bridged-network and ip-addresses for lithos_cmd
+
+
 .. _changelog 0.15.4:
 
 v0.15.4
@@ -10,7 +18,7 @@ v0.15.4
 
 * First release that stops support of ubuntu precise and
   adds repository for ubuntu bionic
-* bugfix: passing TCP port as fd < 3 didn't work before, now we allow ``fd: 0``
+* Bugfix: passing TCP port as fd < 3 didn't work before, now we allow ``fd: 0``
   and fail gracefully on 1, 2.
 
 

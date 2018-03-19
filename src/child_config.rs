@@ -26,8 +26,11 @@ pub struct ChildInstance {
     pub kind: ChildKind,
 }
 
+fn one() -> usize { 1 }
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ChildConfig {
+    #[serde(default="one")]
     pub instances: usize,
     pub image: String,
     pub config: String,
