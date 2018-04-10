@@ -87,5 +87,6 @@ impl SandboxConfig {
             .member("network", Scalar::new())
             .member("default_gateway", Scalar::new())
             .optional())
+        .member("secrets_private_key", Scalar::new().optional())
     }
 }

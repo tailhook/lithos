@@ -188,6 +188,42 @@ Reference
     explicitly. This is to ensure that your environment is always the same
     regardless of where you run process.
 
+.. opt:: secret-environ
+
+    Similarlty to ``environ`` but contains encrypted environment variables.
+    For example::
+
+        secret-environ:
+          DB_PASSWORD: v1:+0bk9vko8U5MpklOAZpYttmW5DzZwmNZ9KXqyL+cyCqNMn9fMQxUhcbchSoLmVja0kSvp3R4srpAKS44ThfqUjf2zfVUTtjCj0G78VD+A61P
+
+    Note: if environment variable is both in ``environ`` and ``secret-environ``
+    which one overrides is not specified for now.
+
+    You can encrypt variables using ``lithos_crypt``::
+
+        lithos_crypt encrypt -k key.pub -d "secret"
+
+    You only need public key for encryption. So the idea is that public key
+    is published somewhere and anyone, even users having to access to
+    server/private key can add a secret.
+
+    Usually there is only one private key for every deployment (cluster),
+    but in case you need single lithos config for multiple destinations
+    or just want to rotate private key smoothly, you can put secret encoded
+    by multiple keys
+
+    secret-environ:
+      DB_PASSWORD:
+      - v1:+0bk9vko8U5MpklOAZpYttmW5DzZwmNZ9KXqyL+cyCqNMn9fMQxUhcbchSoLmVja0kSvp3R4srpAKS44ThfqUjf2zfVUTtjCj0G78VD+A61P
+      - v1:6i2sXYF8SUOIlvjECuwmQTYBX+v32SVSdjs0VBUgM3Fgx4tqxHduxIKU/nLCeSoN7sFrrWqjoDbZcob0+q41GiMr7doW5DRBUOwF2vdE8YBM
+
+    Note: technically you can encrypt different things here, we can't enforce
+    that, but it's very discouraged.
+
+    Algorithm used for for version ``v1`` of encoding is
+    Curve25519+Xsalsa20+Poly1305 (the same one used by default in
+    ``crypto_secretbox`` of libnacl)
+
 .. opt:: workdir
 
     The working directory for target process. Default is ``/``. Working

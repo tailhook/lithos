@@ -206,3 +206,12 @@ Reference
 
    .. note:: this setting does not affect ``tcp-ports``. So usually you should
       keep :opt:`allow-tcp-ports` setting empty when using bridged network.
+
+.. opt:: secrets-private-key
+
+    (default is absent) Use the specified private key(s) to decode secrets
+    in container's `secret-environ` setting.
+
+    The key in this file is openssh-compatible ed25519 private  key
+    (RSA keys are *not* supported). File can contain multiple keys
+    (concatenated), if secret matches any of them it will be decoded.

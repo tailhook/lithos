@@ -121,6 +121,7 @@ pub struct ContainerConfig {
     pub executable: String,
     pub arguments: Vec<String>,
     pub environ: BTreeMap<String, String>,
+    pub secret_environ: BTreeMap<String, String>,
     pub workdir: PathBuf,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
@@ -147,6 +148,7 @@ pub struct InstantiatedConfig {
     pub executable: String,
     pub arguments: Vec<String>,
     pub environ: BTreeMap<String, String>,
+    pub secret_environ: BTreeMap<String, String>,
     pub workdir: PathBuf,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
@@ -202,6 +204,9 @@ impl ContainerConfig {
         .member("executable", Scalar::new())
         .member("arguments", Sequence::new(Scalar::new()))
         .member("environ", Mapping::new(
+                Scalar::new(),
+                Scalar::new()))
+        .member("secret_environ", Mapping::new(
                 Scalar::new(),
                 Scalar::new()))
         .member("workdir", Scalar::new().default("/"))
@@ -272,6 +277,7 @@ impl ContainerConfig {
                          replace_vars(&val, &mut replacer).into())
                     })
                     .collect(),
+                secret_environ: self.secret_environ.clone(),
                 workdir: self.workdir.clone(),
                 resolv_conf: self.resolv_conf.clone(),
                 hosts_file: self.hosts_file.clone(),
