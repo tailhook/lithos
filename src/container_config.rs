@@ -121,7 +121,7 @@ pub struct ContainerConfig {
     pub executable: String,
     pub arguments: Vec<String>,
     pub environ: BTreeMap<String, String>,
-    pub secret_environ: BTreeMap<String, String>,
+    pub secret_environ: BTreeMap<String, Vec<String>>,
     pub workdir: PathBuf,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
@@ -148,7 +148,6 @@ pub struct InstantiatedConfig {
     pub executable: String,
     pub arguments: Vec<String>,
     pub environ: BTreeMap<String, String>,
-    pub secret_environ: BTreeMap<String, String>,
     pub workdir: PathBuf,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
@@ -174,6 +173,18 @@ impl InstantiatedConfig {
     }
     pub fn map_gid(&self, internal_gid: u32) -> Option<u32> {
         self.gid_map.map_id(internal_gid)
+    }
+}
+
+fn wrap_into_list(ast: ::quire::ast::Ast) -> Vec<::quire::ast::Ast> {
+    use quire::ast::Ast::Scalar;
+    use quire::ast::Tag::NonSpecific;
+    use quire::ast::ScalarKind::Plain;
+    match ast {
+        Scalar(pos, _, style, value) => {
+            vec![Scalar(pos.clone(), NonSpecific, Plain, value)]
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -208,7 +219,8 @@ impl ContainerConfig {
                 Scalar::new()))
         .member("secret_environ", Mapping::new(
                 Scalar::new(),
-                Scalar::new()))
+                Sequence::new(Scalar::new())
+                .parser(wrap_into_list)))
         .member("workdir", Scalar::new().default("/"))
         .member("resolv_conf", Structure::new()
             .member("mount", Scalar::new().optional())
@@ -277,7 +289,7 @@ impl ContainerConfig {
                          replace_vars(&val, &mut replacer).into())
                     })
                     .collect(),
-                secret_environ: self.secret_environ.clone(),
+                // ignore secret environ, it will be pushed into environ later
                 workdir: self.workdir.clone(),
                 resolv_conf: self.resolv_conf.clone(),
                 hosts_file: self.hosts_file.clone(),

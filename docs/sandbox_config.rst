@@ -210,8 +210,16 @@ Reference
 .. opt:: secrets-private-key
 
     (default is absent) Use the specified private key(s) to decode secrets
-    in container's `secret-environ` setting.
+    in container's :opt:`secret-environ` setting.
 
     The key in this file is openssh-compatible ed25519 private  key
     (RSA keys are *not* supported). File can contain multiple keys
     (concatenated), if secret matches any of them it will be decoded.
+
+    To create a key use normal ``ssh-keygen`` and leave the password empty
+    (password-protected keys aren't supported)::
+
+        ssh-keygen -t ed25519 -t /etc/lithos/keys/secret.key
+
+    Note: the key must be owned by root with permissions of 0600 (default for
+    ssh-keygen).

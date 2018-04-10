@@ -1,4 +1,5 @@
 extern crate argparse;
+extern crate base64;
 extern crate blake2;
 extern crate humantime;
 extern crate ipnetwork;
@@ -10,6 +11,7 @@ extern crate quire;
 extern crate serde_json;
 extern crate signal;
 extern crate syslog;
+extern crate ssh_keys;
 extern crate unshare;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate log;
@@ -49,6 +51,7 @@ use setup_filesystem::{setup_filesystem, prepare_state_dir};
 mod setup_network;
 mod setup_filesystem;
 mod config;
+mod secrets;
 
 struct SignalIter<'a> {
     trap: &'a mut Trap,
@@ -125,11 +128,17 @@ fn run(options: Options) -> Result<i32, String>
         return Err(format!("Container type mismatch {:?} != {:?}",
               container.kind, options.config.kind));
     }
-    let local = container.instantiate(&Variables {
+    let mut local = container.instantiate(&Variables {
         user_vars: &options.config.variables,
         lithos_name: &options.name,
         lithos_config_filename: &options.config.config,
     }).map_err(|e| format!("Variable substitution error: {}", e.join("; ")))?;
+
+    if container.secret_environ.len() > 0 {
+        let secrets = secrets::decode(&sandbox, &container.secret_environ)
+            .map_err(|e| format!("Error decoding secrets: {}", e))?;
+        local.environ.extend(secrets);
+    }
 
     let user_id = if
         let Some(user_id) = local.user_id.or(sandbox.default_user)
