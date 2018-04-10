@@ -40,6 +40,9 @@ failure = "0.1.0"
 blake2 = "0.7.0"
 rust-crypto = "0.2.36"
 ssh-keys = "0.1.1"
+structopt = "0.2.6"
+rand = "0.4.2"
+base64 = "0.9.0"
 
 [profile.release]
 debug = true
@@ -71,4 +74,8 @@ path = "src/bin/lithos_switch.rs"
 [[bin]]
 name = "lithos_ps"
 path = "src/bin/lithos_ps/main.rs"
+
+[[bin]]
+name = "lithos_crypt"
+path = "src/bin/lithos_crypt.rs"
 
