@@ -29,11 +29,25 @@ enum Options {
     Encrypt(EncryptOpt),
     #[structopt(name="decrypt")]
     Decrypt(DecryptOpt),
+    #[structopt(name="check-key")]
+    CheckKey(CheckKeyOpt),
 }
 
 #[derive(Debug, StructOpt)]
 #[structopt(about = "Encrypt secret value to put in config")]
 pub struct EncryptOpt {
+    #[structopt(long="key-file", short="k", help="
+        A openssh-formatted ed25519 public key to use for encryption
+    ", parse(try_from_str="parse_public_key"))]
+    key: PublicKey,
+    #[structopt(long="data", short="d", help="data to encrypt")]
+    data: String,
+}
+
+#[derive(Debug, StructOpt)]
+#[structopt(about = "Check that the secret value is encrypted \
+                     with specified public key")]
+pub struct CheckKeyOpt {
     #[structopt(long="key-file", short="k", help="
         A openssh-formatted ed25519 public key to use for encryption
     ", parse(try_from_str="parse_public_key"))]
@@ -91,6 +105,24 @@ fn encrypt(e: EncryptOpt) -> Result<(), Error> {
     Ok(())
 }
 
+fn check_key(o: CheckKeyOpt) -> Result<(), Error> {
+    let key_bytes = match o.key {
+        PublicKey::Ed25519(key) => key,
+        _ => bail!("Only ed25519 keys are supported"),
+    };
+    if !o.data.starts_with("v1:") {
+        bail!("Only v1 secrets are supported");
+    }
+    let data = base64::decode(&o.data["v1:".len()..])?;
+    if data.len() < 32+24 {
+        bail!("data is too short");
+    }
+    if data[..32] != key_bytes {
+        bail!("Key mismatch");
+    }
+    Ok(())
+}
+
 fn decrypt(e: DecryptOpt) -> Result<(), Error> {
     let key_bytes = match e.key {
         PrivateKey::Ed25519(key) => key,
@@ -119,6 +151,7 @@ fn main() {
     let res = match opt {
         Encrypt(e) => encrypt(e),
         Decrypt(d) => decrypt(d),
+        CheckKey(c) => check_key(c),
     };
     match res {
         Ok(()) => {
