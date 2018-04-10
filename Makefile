@@ -24,6 +24,7 @@ _install:
 	install -m 755 target/release/lithos_cmd $(DESTDIR)$(PREFIX)/bin/lithos_cmd
 	install -m 755 target/release/lithos_switch $(DESTDIR)$(PREFIX)/bin/lithos_switch
 	install -m 755 target/release/lithos_ps $(DESTDIR)$(PREFIX)/bin/lithos_ps
+	install -m 755 target/release/lithos_crypt $(DESTDIR)$(PREFIX)/bin/lithos_crypt
 	install -m 755 bin/lithos_mkdev $(DESTDIR)$(PREFIX)/bin/lithos_mkdev
 
 ubuntu-packages: version:=$(shell git describe --dirty)
