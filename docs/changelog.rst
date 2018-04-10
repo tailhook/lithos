@@ -3,6 +3,15 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.15.6:
+
+v0.15.6
+=======
+
+* Feature: add ``secret-environ`` and ``secrets-private-key`` settings which
+  allow to pass to the application decrypted environment variables
+
+
 .. _changelog 0.15.5:
 
 v0.15.5
