@@ -44,11 +44,18 @@ jobs:
         install -D target/x86_64-unknown-linux-musl/release/lithos_check pkg/usr/bin/lithos_check
         tar -C pkg -czf dist/lithos_check-static-$TRAVIS_TAG.tar.gz usr
       '
+      rm -rf pkg
+      fakeroot sh -ecx '
+        install -D target/x86_64-unknown-linux-musl/release/lithos_crypt pkg/usr/bin/lithos_crypt
+        tar -C pkg -czf dist/lithos_crypt-static-$TRAVIS_TAG.tar.gz usr
+      '
     deploy:
       provider: releases
       api_key:
         secure: "si7BVNFjW3gny3nQoIt/yMLjS848BeWbBNy6dVgKUhKxqzq7lgvXsLMIMtO6isc7Zwqzg6QR83usrSnUw+qL8X6fKvicce5gxroF17aBXOQhXU4PEBCX8hB8cCQGhWsogPEdJr0Xl/zIrbBKE3Xg8LxSvaLjIzOubSkwGhNKiZg="
-      file: "dist/lithos_check-static-$TRAVIS_TAG.tar.gz"
+      file:
+      - "dist/lithos_check-static-$TRAVIS_TAG.tar.gz"
+      - "dist/lithos_crypt-static-$TRAVIS_TAG.tar.gz"
       skip_cleanup: true
       on:
         tags: true
