@@ -14,17 +14,17 @@ use lithos::sandbox_config::SandboxConfig;
 
 fn parse_private_key(filename: &Path) -> Result<Vec<PrivateKey>, Error> {
     let mut buf = String::with_capacity(1024);
-    let f = File::open(filename)?
+    let mut f = File::open(filename)
         .context(Path::new(filename).display().to_string())?;
-    let meta = f.metadata()?
+    let meta = f.metadata()
         .context(Path::new(filename).display().to_string())?;
-    if f.uid() != 0 {
+    if meta.uid() != 0 {
         bail!("Key must be owned by root");
     }
-    if f.mode() & 0o777 & !0o600 != 0 {
+    if meta.mode() & 0o777 & !0o600 != 0 {
         bail!("Key's mode must be 0600");
     }
-    f.read_to_string(&mut buf)?;
+    f.read_to_string(&mut buf)
         .context(Path::new(filename).display().to_string())?;
     Ok(openssh::parse_private_key(&buf)?)
 }
