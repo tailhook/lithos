@@ -39,6 +39,7 @@ pub struct SandboxConfig {
     pub resolv_conf: PathBuf,
     pub hosts_file: PathBuf,
     pub bridged_network: Option<BridgedNetwork>,
+    pub secrets_private_key: Option<PathBuf>,
 }
 
 impl SandboxConfig {

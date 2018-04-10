@@ -87,7 +87,7 @@ fn encrypt(e: EncryptOpt) -> Result<(), Error> {
     buf.write(&nonce[..]).unwrap();
     buf.write(&cypher).unwrap();
     let data = base64::encode(&buf);
-    println!("{}", data);
+    println!("v1:{}", data);
     Ok(())
 }
 
@@ -96,7 +96,10 @@ fn decrypt(e: DecryptOpt) -> Result<(), Error> {
         PrivateKey::Ed25519(key) => key,
         _ => bail!("Only ed25519 keys are supported"),
     };
-    let data = base64::decode(&e.data)?;
+    if !e.data.starts_with("v1:") {
+        bail!("Only v1 secrets are supported");
+    }
+    let data = base64::decode(&e.data["v1:".len()..])?;
     if data.len() < 32+24 {
         bail!("data is too short");
     }
