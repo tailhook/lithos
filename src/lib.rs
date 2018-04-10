@@ -3,6 +3,7 @@
 //! See [Documentation](http://lithos.readthedocs.io) for the actual usage.
 //!
 extern crate argparse;
+extern crate crypto;
 extern crate humantime;
 extern crate fern;
 extern crate ipnetwork;
@@ -38,5 +39,6 @@ pub mod metrics;
 pub mod range;
 pub mod knot_options;
 pub mod tree_options;
+pub mod nacl;
 
 pub const MAX_CONFIG_LOGS: u32 = 100;
