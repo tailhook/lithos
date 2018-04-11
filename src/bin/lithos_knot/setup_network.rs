@@ -188,6 +188,18 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
             Err(e) => bail!("ip route failed: {}", e),
         }
     }
+
+    let mut cmd = unshare::Command::new("/usr/bin/arping");
+    cmd.arg("-U");
+    cmd.arg(&format!("{}", ip));
+    cmd.arg("-c1");
+    debug!("Running {}", cmd.display(&Style::short()));
+    match cmd.status() {
+        Ok(s) if s.success() => {}
+        Ok(s) => bail!("arping failed: {}", s),
+        Err(e) => bail!("arping failed: {}", e),
+    }
+
     Ok(())
 }
 

@@ -10,6 +10,7 @@ v0.15.6
 
 * Feature: add ``secret-environ`` and ``secrets-private-key`` settings which
   allow to pass to the application decrypted environment variables
+* Bugfix: when bridged network is enabled we use ``arping`` to update ARP cache
 
 
 .. _changelog 0.15.5:
