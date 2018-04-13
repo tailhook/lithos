@@ -181,7 +181,7 @@ fn wrap_into_list(ast: ::quire::ast::Ast) -> Vec<::quire::ast::Ast> {
     use quire::ast::Tag::NonSpecific;
     use quire::ast::ScalarKind::Plain;
     match ast {
-        Scalar(pos, _, style, value) => {
+        Scalar(pos, _, _style, value) => {
             vec![Scalar(pos.clone(), NonSpecific, Plain, value)]
         }
         _ => unreachable!(),
