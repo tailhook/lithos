@@ -60,7 +60,7 @@ fn decrypt(key: &PrivateKey, namespaces: &[String], value: &str)
         }
     };
 
-    let plain = nacl::crypto_box_seal_open(
+    let plain = nacl::crypto_box_edwards_seal_open(
         &cipher, &key_bytes[32..], &key_bytes[32..])
         .map_err(|e| format_err!("{}", e))?;
 

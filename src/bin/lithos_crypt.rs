@@ -117,7 +117,8 @@ fn encrypt(e: EncryptOpt) -> Result<(), Error> {
         _ => bail!("Only ed25519 keys are supported"),
     };
     let plaintext = format!("{}:{}", e.namespace, e.data);
-    let cypher = nacl::crypto_box_seal(plaintext.as_bytes(), &key_bytes[..]);
+    let cypher = nacl::crypto_box_edwards_seal(
+        plaintext.as_bytes(), &key_bytes[..]);
     let mut buf = Vec::with_capacity(cypher.len() + 24);
     buf.write(&cypher).unwrap();
     let data = base64::encode(&buf);
@@ -166,7 +167,7 @@ fn decrypt(e: DecryptOpt) -> Result<(), Error> {
         }
     };
 
-    let plain = nacl::crypto_box_seal_open(
+    let plain = nacl::crypto_box_edwards_seal_open(
         &cipher, &key_bytes[32..], &key_bytes[..32])
         .map_err(|e| format_err!("Decryption error: {}", e))?;
     let mut pair = plain.splitn(2, |&x| x == b':');
