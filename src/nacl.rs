@@ -16,13 +16,16 @@
 
 use std::iter::repeat;
 
+use blake2::{Blake2b, digest::{VariableOutput, Input}};
 use crypto::mac::Mac;
 use crypto::symmetriccipher::SynchronousStreamCipher;
 
-use crypto::curve25519::{curve25519};
+use crypto::curve25519::curve25519;
+use crypto::ed25519;
 use crypto::poly1305::Poly1305;
 use crypto::salsa20::{Salsa20, hsalsa20};
 use crypto::util::fixed_time_eq;
+use rand::{OsRng, Rng};
 
 /// The length of the crypto_secretbox key in bytes.
 #[allow(non_upper_case_globals)]
@@ -138,6 +141,20 @@ pub fn crypto_secretbox_open(ciphertext: &[u8], nonce: &[u8], key: &[u8]) -> Res
     }
 }
 
+fn crypto_box_ed25519_setup(pk: &[u8], sk: &[u8]) -> [u8; 32] {
+    assert!(pk.len() == crypto_box_PUBLICKEYBYTES);
+    assert!(sk.len() == crypto_box_SECRETKEYBYTES);
+
+    // Obtain the shared secret with a Curve25519 scalar base mult.
+    let curve_key = ed25519::exchange(pk, sk);
+
+    // Derive the crypto_secretbox key with HSalsa20.
+    let mut key = [0u8; 32];
+    hsalsa20(&curve_key, &ZERO_HSALSA_NONCE, &mut key);
+
+    key
+}
+
 fn crypto_box_setup(pk: &[u8], sk: &[u8]) -> [u8; 32] {
     assert!(pk.len() == crypto_box_PUBLICKEYBYTES);
     assert!(sk.len() == crypto_box_SECRETKEYBYTES);
@@ -151,6 +168,48 @@ fn crypto_box_setup(pk: &[u8], sk: &[u8]) -> [u8; 32] {
 
     key
 }
+
+/// Create a sealed (anonymous) crypto box
+///
+/// This differs from what is in libsodium in the way that it uses
+/// ed25519 key exchange, because SSH uses public keys in edwards form,
+/// but libsodium uses public keys in montgomery form. Basically,
+/// ed25519::exchange converts between the two forms as I understand.
+pub fn crypto_box_seal(msg: &[u8], pk: &[u8]) -> Vec<u8> {
+    let mut esk = [0u8; 32];
+    OsRng::new().expect("random works").fill_bytes(&mut esk);
+    let (_, epk) = ed25519::keypair(&esk);
+
+    let nonce = seal_nonce(&epk, pk);
+
+    let key = crypto_box_ed25519_setup(pk, &esk);
+    let res = crypto_secretbox(msg, &nonce, &key);
+    let mut vec = epk[..].to_owned();
+    vec.extend(res);
+    return vec;
+}
+
+fn seal_nonce(pk1: &[u8], pk2: &[u8]) -> [u8; 24] {
+    assert_eq!(pk1.len(), 32);
+    assert_eq!(pk2.len(), 32);
+    let mut nonce = [0u8; 24];
+    let mut b2 = Blake2b::new(nonce.len()).expect("blake2b");
+    b2.process(&pk1);
+    b2.process(&pk2);
+    b2.variable_result(&mut nonce).expect("blake2b");
+    return nonce;
+}
+
+pub fn crypto_box_seal_open(cipher: &[u8], pk: &[u8], sk: &[u8])
+    -> Result<Vec<u8>, &'static str>
+{
+    assert_eq!(sk.len(), 32);
+    let (epk, cipher) = cipher.split_at(32);
+    let nonce = seal_nonce(epk, pk);
+    let key = crypto_box_ed25519_setup(epk, sk);
+    return crypto_secretbox_open(cipher, &nonce, &key);
+}
+
 
 /// Public-key authenticated encryption.
 ///
@@ -400,5 +459,55 @@ mod test {
             Ok(unboxed) => assert!(unboxed == msg),
             Err(_) => panic!()
         }
+    }
+    extern crate sha2;
+    use self::sha2::Digest;
+
+    #[test]
+    fn curve_roundtrip() {
+        use rand::Rng;
+        let mut sk1 = [0u8; 32];
+        let mut sk2 = [0u8; 32];
+        ::rand::OsRng::new().expect("random works").fill_bytes(&mut sk1);
+        ::rand::OsRng::new().expect("random works").fill_bytes(&mut sk2);
+        let mut mk1 = [0u8; 64];
+        mk1.copy_from_slice(sha2::Sha512::digest(&sk1[..32]).as_ref());
+        mk1[0] &= 248;
+        mk1[31] &= 63;
+        mk1[31] |= 64;
+        let mut mk2 = [0u8; 64];
+        mk2.copy_from_slice(sha2::Sha512::digest(&sk2[..32]).as_ref());
+        mk2[0] &= 248;
+        mk2[31] &= 63;
+        mk2[31] |= 64;
+        let pk1 = ::crypto::curve25519::ge_scalarmult_base(&mk1).to_bytes();
+        let pk2 = ::crypto::curve25519::ge_scalarmult_base(&mk2).to_bytes();
+        assert_eq!(pk1.len(), 32);
+        assert_eq!(pk2.len(), 32);
+        assert_eq!(sk1.len(), 32);
+        assert_eq!(sk2.len(), 32);
+
+        let key1 = ::crypto::ed25519::exchange(&pk1, &sk2);
+        let key2 = ::crypto::ed25519::exchange(&pk2, &sk1);
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn curve_roundtrip2() {
+        use rand::Rng;
+        let mut sk1 = [0u8; 32];
+        let mut sk2 = [0u8; 32];
+        ::rand::OsRng::new().expect("random works").fill_bytes(&mut sk1);
+        ::rand::OsRng::new().expect("random works").fill_bytes(&mut sk2);
+        let pk1 = ::crypto::curve25519::curve25519_base(&sk1);
+        let pk2 = ::crypto::curve25519::curve25519_base(&sk2);
+        assert_eq!(pk1.len(), 32);
+        assert_eq!(pk2.len(), 32);
+        assert_eq!(sk1.len(), 32);
+        assert_eq!(sk2.len(), 32);
+
+        let key1 = ::crypto::curve25519::curve25519(&sk2, &pk1);
+        let key2 = ::crypto::curve25519::curve25519(&sk1, &pk2);
+        assert_eq!(key1, key2);
     }
 }

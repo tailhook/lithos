@@ -3,8 +3,10 @@ use std::io::Read;
 use std::fs::{File};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::str::from_utf8;
 
 use base64;
+use blake2::{Blake2b, digest::VariableOutput, digest::Input};
 use failure::{Error, ResultExt};
 use ssh_keys::{PrivateKey, openssh};
 
@@ -29,32 +31,71 @@ fn parse_private_key(filename: &Path) -> Result<Vec<PrivateKey>, Error> {
     Ok(openssh::parse_private_key(&buf)?)
 }
 
-fn decrypt(key: &PrivateKey, value: &str) -> Result<String, Error> {
+fn b2_short_hash(data: &[u8]) -> String {
+    let mut buf = [0u8; 6];
+    let mut hash: Blake2b = VariableOutput::new(buf.len()).expect("blake2b");
+    hash.process(data);
+    hash.variable_result(&mut buf[..]).expect("blake2b");
+    return base64::encode(&buf[..])
+}
+
+fn decrypt(key: &PrivateKey, namespaces: &[String], value: &str)
+    -> Result<String, Error>
+{
     let key_bytes = match *key {
         PrivateKey::Ed25519(key) => key,
         _ => bail!("Only ed25519 keys are supported"),
     };
-    if !value.starts_with("v1:") {
-        bail!("Only v1 secrets are supported");
+    if !value.starts_with("v2:") {
+        bail!("Only v2 secrets are supported");
     }
-    let data = base64::decode(&value["v1:".len()..])?;
-    if data.len() < 32+24 {
-        bail!("data is too short");
-    }
-    let plain = nacl::crypto_secretbox_open(
-        &data[32+24..], &data[32..32+24], &key_bytes[32..])
+    let mut it = value.split(":");
+    it.next(); // skip version
+    let (key_hash, ns_hash, secr_hash, cipher) = {
+        match (it.next(), it.next(), it.next(), it.next(), it.next()) {
+            (Some(key), Some(ns), Some(secr), Some(cipher), None) => {
+                (key, ns, secr, base64::decode(cipher)?)
+            }
+            _ => bail!("invalid key format"),
+        }
+    };
+
+    let plain = nacl::crypto_box_seal_open(
+        &cipher, &key_bytes[32..], &key_bytes[32..])
         .map_err(|e| format_err!("{}", e))?;
-    String::from_utf8(plain)
+
+    let mut pair = plain.splitn(2, |&x| x == b':');
+    let namespace = from_utf8(pair.next().unwrap())
+        .map_err(|_| format_err!("can't decode namespace from utf-8"))?;
+    let secret = pair.next().ok_or(format_err!("decrypted data is invalid"))?;
+
+    if b2_short_hash(&key_bytes[32..]) != key_hash {
+        bail!("invalid key hash");
+    }
+    if b2_short_hash(namespace.as_bytes()) != ns_hash {
+        bail!("invalid namespace hash");
+    }
+    if b2_short_hash(&secret) != secr_hash {
+        bail!("invalid secret hash");
+    }
+    if !namespaces.iter().any(|x| x == namespace) {
+        bail!("expected namespaces {:?} got {}", namespaces, namespace);
+    }
+    if secret.contains(&0) {
+        bail!("no null bytes allowed in secret");
+    }
+
+    String::from_utf8(secret.to_vec())
         .map_err(|_| format_err!("Can't decode secret as utf-8"))
 }
 
-fn decrypt_pair(keys: &[PrivateKey], values: &[String])
+fn decrypt_pair(keys: &[PrivateKey], namespaces: &[String], values: &[String])
     -> Result<String, Vec<Error>>
 {
     let mut errs = Vec::new();
     for key in keys {
         for value in values {
-            match decrypt(key, value) {
+            match decrypt(key, namespaces, value) {
                 Ok(value) => return Ok(value),
                 Err(e) => errs.push(e),
             }
@@ -78,10 +119,17 @@ pub fn decode(sandbox: &SandboxConfig, secrets: &BTreeMap<String, Vec<String>>)
             secrets.keys());
     };
 
+    let empty_string = [String::from("")];
+    let namespaces = if sandbox.secrets_namespaces.len() == 0 {
+        &empty_string[..]
+    } else {
+        &sandbox.secrets_namespaces[..]
+    };
+
     let mut res = BTreeMap::new();
 
     for (name, values) in secrets {
-        res.insert(name.clone(), decrypt_pair(&keys, values)
+        res.insert(name.clone(), decrypt_pair(&keys, namespaces, values)
             .map_err(|e| {
                 format_err!("Can't decrypt secret {:?}, errors: {}", name,
                     e.iter().map(|x| x.to_string())

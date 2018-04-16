@@ -223,3 +223,34 @@ Reference
 
     Note: the key must be owned by root with permissions of 0600 (default for
     ssh-keygen).
+
+.. opt:: secrets-namespaces
+
+    (default is `[""]`) allow only secrets with listed namespaces.
+    Useful only if ``secrets-private-key`` is set.
+
+    For example:
+
+    .. code-block:: yaml
+
+        secrets-namespaces:
+        - project1.web
+        - project1.celery
+
+    The idea is you might want to use single secret private key for a whole
+    cluster. But diferent services having different "namespaces". This means
+    you can use single public key for encyption and specify different
+    namespace for each service. With this setup user can't just copy a
+    key from one service to another if that another service isn't authorized
+    to read the namespace using :opt:`secrets-namespaces`.
+
+    To encrypt secret for a specific namespace use::
+
+        lithos_crypt encrypt -k key.pub -d "secret" -n "project1.web"
+
+    By default both ``lithos_crypt`` and :opt:`secrets-namespaces` specify
+    empty string as a namespace. This is good enough if you don't have
+    multiple teams sharing the same cluster.
+
+    Currently namespaces are limited to a regexp ``^[a-zA-Z0-9_.-]*$``
+

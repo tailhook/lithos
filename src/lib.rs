@@ -3,6 +3,8 @@
 //! See [Documentation](http://lithos.readthedocs.io) for the actual usage.
 //!
 extern crate argparse;
+extern crate blake2;
+extern crate base64;
 extern crate crypto;
 extern crate humantime;
 extern crate fern;
@@ -12,6 +14,7 @@ extern crate libcantal;
 extern crate libmount;
 extern crate nix;
 extern crate quire;
+extern crate rand;
 extern crate serde;
 extern crate serde_json;
 extern crate serde_str;

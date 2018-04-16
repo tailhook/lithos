@@ -40,6 +40,7 @@ pub struct SandboxConfig {
     pub hosts_file: PathBuf,
     pub bridged_network: Option<BridgedNetwork>,
     pub secrets_private_key: Option<PathBuf>,
+    pub secrets_namespaces: Vec<String>,
 }
 
 impl SandboxConfig {
@@ -88,5 +89,6 @@ impl SandboxConfig {
             .member("default_gateway", Scalar::new())
             .optional())
         .member("secrets_private_key", Scalar::new().optional())
+        .member("secrets_namespaces", Scalar::new().optional())
     }
 }

@@ -194,35 +194,38 @@ Reference
     For example::
 
         secret-environ:
-          DB_PASSWORD: v1:+0bk9vko8U5MpklOAZpYttmW5DzZwmNZ9KXqyL+cyCqNMn9fMQxUhcbchSoLmVja0kSvp3R4srpAKS44ThfqUjf2zfVUTtjCj0G78VD+A61P
+          DB_PASSWORD: v2:ROit92I5:82HdsExJ:Gd3ocJsr:Hp3pngQZUos5b8ioKVUx40kegM1uDsYWwsWqC1cJ1/1KmQPQQWJZe86xgl1EOIxbuLj6PUlBH8yz5qCnWp//Ofbc
 
     Note: if environment variable is both in ``environ`` and ``secret-environ``
     which one overrides is not specified for now.
 
     You can encrypt variables using ``lithos_crypt``::
 
-        lithos_crypt encrypt -k key.pub -d "secret"
+        lithos_crypt encrypt -k key.pub -d "secret" -n "some.namespace"
 
     You only need public key for encryption. So the idea is that public key
     is published somewhere and anyone, even users having to access to
     server/private key can add a secret.
 
-    Usually there is only one private key for every deployment (cluster),
-    but in case you need single lithos config for multiple destinations
-    or just want to rotate private key smoothly, you can put secret encoded
-    by multiple keys
+    The ``-n`` / ``--namespace`` parameter must match one of
+    the :opt:`secrets-namespaces` defined for project's sandbox.
 
-    secret-environ:
-      DB_PASSWORD:
-      - v1:+0bk9vko8U5MpklOAZpYttmW5DzZwmNZ9KXqyL+cyCqNMn9fMQxUhcbchSoLmVja0kSvp3R4srpAKS44ThfqUjf2zfVUTtjCj0G78VD+A61P
-      - v1:6i2sXYF8SUOIlvjECuwmQTYBX+v32SVSdjs0VBUgM3Fgx4tqxHduxIKU/nLCeSoN7sFrrWqjoDbZcob0+q41GiMr7doW5DRBUOwF2vdE8YBM
+    Usually there is only one private key for every deployment (cluster), and
+    a single namespace per project. But in some cases you might need single
+    lithos config for multiple destinations or just want to rotate private key
+    smoothly. So you can put secret(s) encoded for multiple keys and/or
+    namespaces:
 
-    Note: technically you can encrypt different things here, we can't enforce
+    .. code-block:: yaml
+
+        secret-environ:
+          DB_PASSWORD:
+          - v2:h+M9Ue9x:82HdsExJ:Gd3ocJsr:/+f4ezLfKIP/mp0xdF7H6gfdM7onHWwbGFQX+M1aB+PoCNQidKyz/1yEGrwxD+i+qBGwLVBIXRqIc5FJ6/hw26CE
+          - v2:ROit92I5:cX9ciQzf:Gd3ocJsr:LMHBRtPFpMRRrljNnkaU6Y9JyVvEukRiDs4mitnTksNGSX5xU/zADWDwEOCOtYoelbJeyDdPhM7Q1mEOSwjeyO317Q==
+          - v2:h+M9Ue9x:82HdsExJ:Gd3ocJsr:/+f4ezLfKIP/mp0xdF7H6gfdM7onHWwbGFQX+M1aB+PoCNQidKyz/1yEGrwxD+i+qBGwLVBIXRqIc5FJ6/hw26CE
+
+    Note: technically you can encrypt different secrets here, we can't enforce
     that, but it's very discouraged.
-
-    Algorithm used for for version ``v1`` of encoding is
-    Curve25519+Xsalsa20+Poly1305 (the same one used by default in
-    ``crypto_secretbox`` of libnacl)
 
 .. opt:: workdir
 
@@ -232,7 +235,9 @@ Reference
 .. opt:: resolv-conf
 
     Parameters of the ``/etc/resolv.conf`` file to generate. Default
-    configuration is::
+    configuration is:
+
+    .. code-block:: yaml
 
         resolv-conf:
             mount: nil  # which basically means "auto"
