@@ -20,12 +20,12 @@ use blake2::{Blake2b, digest::{VariableOutput, Input}};
 use crypto::mac::Mac;
 use crypto::symmetriccipher::SynchronousStreamCipher;
 
-use crypto::curve25519::{curve25519, curve25519_base};
-use crypto::ed25519;
+use crypto::curve25519::{curve25519, curve25519_base, Fe};
 use crypto::poly1305::Poly1305;
 use crypto::salsa20::{Salsa20, hsalsa20};
 use crypto::util::fixed_time_eq;
 use rand::{OsRng, Rng};
+use sha2::{self, Digest};
 
 /// The length of the crypto_secretbox key in bytes.
 #[allow(non_upper_case_globals)]
@@ -141,20 +141,6 @@ pub fn crypto_secretbox_open(ciphertext: &[u8], nonce: &[u8], key: &[u8]) -> Res
     }
 }
 
-fn crypto_box_edwards_setup(pk: &[u8], sk: &[u8]) -> [u8; 32] {
-    assert!(pk.len() == crypto_box_PUBLICKEYBYTES);
-    assert!(sk.len() == crypto_box_SECRETKEYBYTES);
-
-    // Obtain the shared secret with a Curve25519 scalar base mult.
-    let curve_key = ed25519::exchange(pk, sk);
-
-    // Derive the crypto_secretbox key with HSalsa20.
-    let mut key = [0u8; 32];
-    hsalsa20(&curve_key, &ZERO_HSALSA_NONCE, &mut key);
-
-    key
-}
-
 fn crypto_box_setup(pk: &[u8], sk: &[u8]) -> [u8; 32] {
     assert!(pk.len() == crypto_box_PUBLICKEYBYTES);
     assert!(sk.len() == crypto_box_SECRETKEYBYTES);
@@ -188,42 +174,75 @@ pub fn crypto_box_seal(msg: &[u8], pk: &[u8]) -> Vec<u8> {
 /// Create a sealed (anonymous) crypto box
 ///
 /// This differs from what is in libsodium because it accepts public key in
-/// edwards form and convert them to montgomery internally.
-/// In libsodium/libnacl public key is accepted in mongomery form. If keys are
-/// converted the crypto should be compatible.
+/// edwards form and convert it to montgomery internally.
+/// In libsodium/libnacl public key is accepted in mongomery form. Except key
+/// conversion the  encryption is compatible.
 pub fn crypto_box_edwards_seal(msg: &[u8], pk: &[u8]) -> Vec<u8> {
-    let mut esk = [0u8; 32];
-    OsRng::new().expect("random works").fill_bytes(&mut esk);
-    let (_, epk) = ed25519::keypair(&esk);
+    let pk = convert_public_key(&pk);
+    return crypto_box_seal(msg, &pk);
+}
 
-    let nonce = seal_nonce(&epk, pk);
+/// Converts public key from edwards format to montgomery to use for crypto_box
+fn convert_public_key(public_key: &[u8]) -> [u8; 32] {
+    assert_eq!(public_key.len(), 32);
+    let ed_y = Fe::from_bytes(&public_key);
+    // Produce public key in Montgomery form.
+    let mont_x = edwards_to_montgomery_x(ed_y);
+    return mont_x.to_bytes();
+}
 
-    let key = crypto_box_edwards_setup(pk, &esk);
-    let res = crypto_secretbox(msg, &nonce, &key);
-    let mut vec = epk[..].to_owned();
-    vec.extend(res);
-    return vec;
+fn convert_private_key(private_key: &[u8]) -> [u8; 32] {
+    assert_eq!(private_key.len(), 32);
+    let mut curve_key = [0u8; 32];
+    let hash = sha2::Sha512::digest(private_key);
+    curve_key.copy_from_slice(&hash.as_ref()[..32]);
+    curve_key[0] &= 248;
+    curve_key[31] &= 63;
+    curve_key[31] |= 64;
+    return curve_key;
+}
+
+/// Convert public key format
+///
+/// Copied from rust crypto as it's private there
+fn edwards_to_montgomery_x(ed_y: Fe) -> Fe {
+    use std::ops::{Add, Sub, Mul};
+    let ed_z = Fe([1,0,0,0,0,0,0,0,0,0]);
+    let temp_x = ed_z.add(ed_y);
+    let temp_z = ed_z.sub(ed_y);
+    let temp_z_inv = temp_z.invert();
+
+    let mont_x = temp_x.mul(temp_z_inv);
+
+    mont_x
 }
 
 fn seal_nonce(pk1: &[u8], pk2: &[u8]) -> [u8; 24] {
     assert_eq!(pk1.len(), 32);
     assert_eq!(pk2.len(), 32);
     let mut nonce = [0u8; 24];
-    let mut b2 = Blake2b::new(nonce.len()).expect("blake2b");
+    let mut b2: Blake2b = VariableOutput::new(nonce.len()).expect("blake2b");
     b2.process(&pk1);
     b2.process(&pk2);
     b2.variable_result(&mut nonce).expect("blake2b");
     return nonce;
 }
 
+/// Open (decrypt) a sealed (anonymous) crypto box
+///
+/// This differs from what is in libsodium because it accepts public key in
+/// edwards form and convert it to montgomery internally. Also we take first
+/// 32 bytes of the sha512 of the key instead of full key, because that's
+/// what ed25519 algorithm does before deriving a public key.
+///
+/// Except key conversion the encryption is compatible.
 pub fn crypto_box_edwards_seal_open(cipher: &[u8], pk: &[u8], sk: &[u8])
     -> Result<Vec<u8>, &'static str>
 {
     assert_eq!(sk.len(), 32);
-    let (epk, cipher) = cipher.split_at(32);
-    let nonce = seal_nonce(epk, pk);
-    let key = crypto_box_edwards_setup(epk, sk);
-    return crypto_secretbox_open(cipher, &nonce, &key);
+    let montgomery_pk = convert_public_key(pk);
+    let hashed_sk = convert_private_key(sk);
+    return crypto_box_seal_open(cipher, &montgomery_pk, &hashed_sk);
 }
 
 /// Unseal an (anonymous) crypto box

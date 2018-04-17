@@ -19,6 +19,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate serde_str;
 extern crate signal;
+extern crate sha2;
 extern crate syslog;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate log;

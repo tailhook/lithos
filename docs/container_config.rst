@@ -227,6 +227,9 @@ Reference
     Note: technically you can encrypt different secrets here, we can't enforce
     that, but it's very discouraged.
 
+    The underlying encyrption is curve25519xsalsa20poly1305 which is compatible
+    with libnacl and libsodium.
+
 .. opt:: workdir
 
     The working directory for target process. Default is ``/``. Working
