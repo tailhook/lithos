@@ -135,15 +135,14 @@ fn check_key(o: CheckKeyOpt) -> Result<(), Error> {
         PublicKey::Ed25519(key) => key,
         _ => bail!("Only ed25519 keys are supported"),
     };
-    if !o.data.starts_with("v1:") {
+    if !o.data.starts_with("v2:") {
         bail!("Only v1 secrets are supported");
     }
-    let data = base64::decode(&o.data["v1:".len()..])?;
-    if data.len() < 32+24 {
-        bail!("data is too short");
-    }
-    if data[..32] != key_bytes {
-        bail!("Key mismatch");
+    let mut it = o.data.splitn(3, ":");
+    it.next(); // skip version
+    let key_hash = it.next().ok_or(format_err!("bad format of data"))?;
+    if b2_short_hash(&key_bytes) != key_hash {
+        bail!("key doesn't match");
     }
     Ok(())
 }
