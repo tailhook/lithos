@@ -47,6 +47,7 @@ fn decrypt(key: &PrivateKey, namespaces: &HashSet<&str>, value: &str)
         PrivateKey::Ed25519(key) => key,
         _ => bail!("Only ed25519 keys are supported"),
     };
+    let (private_key, public_key) = key_bytes.split_at(32);
     if !value.starts_with("v2:") {
         bail!("Only v2 secrets are supported");
     }
