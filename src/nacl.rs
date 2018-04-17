@@ -55,9 +55,14 @@ pub static crypto_box_NONCEBYTES: usize = 24;
 #[allow(non_upper_case_globals)]
 pub static crypto_box_OVERHEAD: usize = 16;
 
-static INVALID_TAG_ERR_STR: &'static str = "Invalid tag.";
 static ZERO_AUTH_KEY: [u8; 32] = [0u8; 32];
 static ZERO_HSALSA_NONCE: [u8; 16] = [0u8; 16];
+
+
+#[derive(Fail, Debug, PartialEq, Eq)]
+#[fail(display="decryption error. This usually means the key is wrong.")]
+pub struct DecryptionError;
+
 
 fn crypto_secretbox_setup(nonce: &[u8], key: &[u8]) -> (Poly1305, Salsa20) {
     assert!(nonce.len() == crypto_secretbox_NONCEBYTES);
@@ -119,7 +124,7 @@ pub fn crypto_secretbox(msg: &[u8], nonce: &[u8], key: &[u8]) -> Vec<u8> {
 /// * ciphertext - The ciphertext to authenticate/decrypt.
 /// * nonce - The nonce to use for the authentication/decryption.
 /// * key - The key to use for the authentication/decryption.
-pub fn crypto_secretbox_open(ciphertext: &[u8], nonce: &[u8], key: &[u8]) -> Result<Vec<u8>, &'static str> {
+pub fn crypto_secretbox_open(ciphertext: &[u8], nonce: &[u8], key: &[u8]) -> Result<Vec<u8>, DecryptionError> {
     assert!(ciphertext.len() >= crypto_secretbox_OVERHEADBYTES);
     let (mut auth, mut stream) = crypto_secretbox_setup(nonce, key);
     let taglen = crypto_secretbox_OVERHEADBYTES;
@@ -137,7 +142,7 @@ pub fn crypto_secretbox_open(ciphertext: &[u8], nonce: &[u8], key: &[u8]) -> Res
         stream.process(&ciphertext[taglen..], out.as_mut_slice());
         return Ok(out);
     } else {
-        return Err(INVALID_TAG_ERR_STR);
+        return Err(DecryptionError);
     }
 }
 
@@ -237,7 +242,7 @@ fn seal_nonce(pk1: &[u8], pk2: &[u8]) -> [u8; 24] {
 ///
 /// Except key conversion the encryption is compatible.
 pub fn crypto_box_edwards_seal_open(cipher: &[u8], pk: &[u8], sk: &[u8])
-    -> Result<Vec<u8>, &'static str>
+    -> Result<Vec<u8>, DecryptionError>
 {
     assert_eq!(sk.len(), 32);
     let montgomery_pk = convert_public_key(pk);
@@ -247,7 +252,7 @@ pub fn crypto_box_edwards_seal_open(cipher: &[u8], pk: &[u8], sk: &[u8])
 
 /// Unseal an (anonymous) crypto box
 pub fn crypto_box_seal_open(cipher: &[u8], pk: &[u8], sk: &[u8])
-    -> Result<Vec<u8>, &'static str>
+    -> Result<Vec<u8>, DecryptionError>
 {
     assert_eq!(sk.len(), 32);
     let (epk, cipher) = cipher.split_at(32);
@@ -292,7 +297,7 @@ pub fn crypto_box(msg: &[u8], nonce: &[u8], pk: &[u8], sk: &[u8]) -> Vec<u8> {
 /// * nonce - The nonce to use for the authentication/decryption.
 /// * pk - The sender's public key.
 /// * sk - The receiver's secret (private) key.
-pub fn crypto_box_open(ciphertext: &[u8], nonce: &[u8], pk: &[u8], sk: &[u8]) -> Result<Vec<u8>, &'static str> {
+pub fn crypto_box_open(ciphertext: &[u8], nonce: &[u8], pk: &[u8], sk: &[u8]) -> Result<Vec<u8>, DecryptionError> {
     assert!(nonce.len() == crypto_box_NONCEBYTES);
 
     let key = crypto_box_setup(pk, sk);
@@ -301,8 +306,7 @@ pub fn crypto_box_open(ciphertext: &[u8], nonce: &[u8], pk: &[u8], sk: &[u8]) ->
 
 #[cfg(test)]
 mod test {
-    extern crate sha2;
-    use self::sha2::Digest;
+    use sha2::{self, Digest};
     use nacl::{crypto_secretbox, crypto_secretbox_open};
     use nacl::{crypto_box, crypto_box_open};
     use nacl::{crypto_box_seal, crypto_box_seal_open};

@@ -168,8 +168,7 @@ fn decrypt(e: DecryptOpt) -> Result<(), Error> {
     };
 
     let plain = nacl::crypto_box_edwards_seal_open(
-        &cipher, &key_bytes[32..], &key_bytes[..32])
-        .map_err(|e| format_err!("Decryption error: {}", e))?;
+        &cipher, &key_bytes[32..], &key_bytes[..32])?;
     let mut pair = plain.splitn(2, |&x| x == b':');
     let namespace = pair.next().unwrap();
     let secret = pair.next().ok_or(format_err!("decrypted data is invalid"))?;
