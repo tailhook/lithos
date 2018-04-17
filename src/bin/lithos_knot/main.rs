@@ -135,7 +135,8 @@ fn run(options: Options) -> Result<i32, String>
     }).map_err(|e| format!("Variable substitution error: {}", e.join("; ")))?;
 
     if container.secret_environ.len() > 0 {
-        let secrets = secrets::decode(&sandbox, &container.secret_environ)
+        let secrets = secrets::decode(&sandbox, &options.config,
+            &container.secret_environ)
             .map_err(|e| format!("Error decoding secrets: {}", e))?;
         local.environ.extend(secrets);
     }

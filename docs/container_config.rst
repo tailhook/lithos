@@ -230,6 +230,8 @@ Reference
     The underlying encyrption is curve25519xsalsa20poly1305 which is compatible
     with libnacl and libsodium.
 
+    See :ref:`encrypted-vars` for more info.
+
 .. opt:: workdir
 
     The working directory for target process. Default is ``/``. Working

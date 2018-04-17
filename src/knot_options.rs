@@ -37,6 +37,7 @@ impl Options {
                 image: "".to_string(),
                 config: "".to_string(),
                 variables: BTreeMap::new(),
+                extra_secrets_namespaces: Vec::new(),
                 ip_address: None,
                 kind: Daemon,
             },

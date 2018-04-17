@@ -254,3 +254,5 @@ Reference
 
     Currently namespaces are limited to a regexp ``^[a-zA-Z0-9_.-]*$``
 
+    See :ref:`encrypted-vars` for more info.
+

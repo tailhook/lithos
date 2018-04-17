@@ -80,6 +80,11 @@ Options
    A mapping of `variable: value` for variables that can be used in process
    config.
 
+.. popt:: extra-secrets-namespaces
+
+   Additional secrets namespaces allowed for this specific project. In
+   addition to :opt:`secrets-namespaces`. See :ref:`encrypted-vars` for
+   more info.
 
 .. _process_variables:
 

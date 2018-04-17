@@ -9,6 +9,7 @@ There are currently two ways to provide "secrets" for containers:
 
 .. contents:: :local:
 
+.. _encrypted-vars:
 
 Encrypted Variables
 ===================
@@ -37,7 +38,8 @@ Usually setup (steps 1-3) is done once. And adding keys to a container
        secrets-namespaces: [myapp]
 
     You can omit ``secrets-namespaces`` if you're sole owner of this
-    server/cluster.
+    server/cluster (it allows only empty string as a namespace). You can also
+    make per-process namespaces (:popt:`extra-secrets-namespaces`).
 
 3. Publish your public key ``/etc/lithos/keys/main.key.pub`` for your users.
    *(Cryptography guarantees that even if this key is shared publically, i.e.
@@ -133,3 +135,15 @@ actual password from this data anyway unless your password is very simple
 Note: even if all three {encryption key, namespace, secret} match, the
 last part of data (encrypted payload) will be different each time you encode
 that same value. All of the outputs are equally right.
+
+
+Security Notes
+--------------
+
+1. Namespaces allow to divide security zones between many projects without
+   nightmare of generating, syncing and managing secret keys per project.
+2. Namespaces match exactly they aren't prefixes or any other kind of pattern
+3. If you rely on ``lithos_switch`` to switch containers securely (with
+   untrusted :ref:`process_config`), you need to use different private key
+   per project (as otherwise ``extra-secrets-namespaces`` can be used to steal
+   keys)

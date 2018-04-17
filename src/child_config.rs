@@ -21,6 +21,8 @@ pub struct ChildInstance {
     pub config: String,
     #[serde(skip_serializing_if="BTreeMap::is_empty", default)]
     pub variables: BTreeMap<String, String>,
+    #[serde(skip_serializing_if="Vec::is_empty", default)]
+    pub extra_secrets_namespaces: Vec<String>,
     #[serde(skip_serializing_if="Option::is_none", default)]
     pub ip_address: Option<IpAddr>,
     pub kind: ChildKind,
@@ -36,6 +38,8 @@ pub struct ChildConfig {
     pub config: String,
     #[serde(skip_serializing_if="BTreeMap::is_empty", default)]
     pub variables: BTreeMap<String, String>,
+    #[serde(skip_serializing_if="Vec::is_empty", default)]
+    pub extra_secrets_namespaces: Vec<String>,
     #[serde(skip_serializing_if="Vec::is_empty", default)]
     pub ip_addresses: Vec<IpAddr>,
     pub kind: ChildKind,
@@ -59,6 +63,7 @@ impl ChildConfig {
             } else {
                 None
             },
+            extra_secrets_namespaces: self.extra_secrets_namespaces.clone(),
             kind: self.kind,
         };
         return Ok(cfg);
@@ -74,6 +79,7 @@ impl ChildConfig {
         .member("image", Scalar::new())
         .member("config", Scalar::new())
         .member("variables", Mapping::new(Scalar::new(), Scalar::new()))
+        .member("extra_secrets_namespaces", Sequence::new(Scalar::new()))
         .member("kind", Scalar::new().default("Daemon"))
         .member("ip_addresses", Sequence::new(Scalar::new()))
     }
@@ -85,6 +91,7 @@ impl ChildInstance {
         .member("image", Scalar::new())
         .member("config", Scalar::new())
         .member("variables", Mapping::new(Scalar::new(), Scalar::new()))
+        .member("extra_secrets_namespaces", Sequence::new(Scalar::new()))
         .member("kind", Scalar::new().default("Daemon"))
         .member("ip_address", Scalar::new().optional())
     }
@@ -120,6 +127,7 @@ mod test {
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
+            extra_secrets_namespaces: Vec::new(),
             ip_address: None,
             kind: Daemon,
         });
@@ -130,6 +138,7 @@ mod test {
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
+            extra_secrets_namespaces: Vec::new(),
             ip_address: None,
             kind: Daemon,
         });
@@ -151,6 +160,7 @@ mod test {
             variables: vec![
                 (String::from("a"), String::from("b")),
             ].into_iter().collect(),
+            extra_secrets_namespaces: Vec::new(),
             ip_address: None,
             kind: Daemon,
         })
@@ -163,6 +173,7 @@ mod test {
             image: String::from("myproj.4a20772b"),
             config: String::from("/config/staging/myproj.yaml"),
             variables: BTreeMap::new(),
+            extra_secrets_namespaces: Vec::new(),
             ip_address: None,
             kind: Daemon,
         }).unwrap();
@@ -183,6 +194,7 @@ mod test {
                 (String::from("a"), String::from("b")),
                 (String::from("c"), String::from("d")),
             ].into_iter().collect(),
+            extra_secrets_namespaces: Vec::new(),
             ip_address: None,
             kind: Daemon,
         }).unwrap();

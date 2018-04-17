@@ -9,8 +9,8 @@ v0.16.0
 =======
 
 * Breaking: remove ``v1`` encryption for secrets (it was alive for a week)
-* Feature: add :opt:`secrets-namespaces` option to allow namespacing secrets
-  on top of a single key
+* Feature: add :opt:`secrets-namespaces` and :opt:`extra-secrets-namespaces`
+  option to allow namespacing secrets on top of a single key
 * Feature: add ``v2`` key encryption scheme
 
 

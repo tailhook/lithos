@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Read;
 use std::fs::{File};
 use std::os::unix::fs::MetadataExt;
@@ -12,6 +12,7 @@ use ssh_keys::{PrivateKey, openssh};
 
 use lithos::nacl;
 use lithos::sandbox_config::SandboxConfig;
+use lithos::child_config::ChildInstance;
 
 
 fn parse_private_key(filename: &Path) -> Result<Vec<PrivateKey>, Error> {
@@ -39,7 +40,7 @@ fn b2_short_hash(data: &[u8]) -> String {
     return base64::encode(&buf[..])
 }
 
-fn decrypt(key: &PrivateKey, namespaces: &[String], value: &str)
+fn decrypt(key: &PrivateKey, namespaces: &HashSet<&str>, value: &str)
     -> Result<String, Error>
 {
     let key_bytes = match *key {
@@ -78,8 +79,8 @@ fn decrypt(key: &PrivateKey, namespaces: &[String], value: &str)
     if b2_short_hash(&secret) != secr_hash {
         bail!("invalid secret hash");
     }
-    if !namespaces.iter().any(|x| x == namespace) {
-        bail!("expected namespaces {:?} got {}", namespaces, namespace);
+    if !namespaces.contains(namespace) {
+        bail!("expected namespaces {:?} got {:?}", namespaces, namespace);
     }
     if secret.contains(&0) {
         bail!("no null bytes allowed in secret");
@@ -89,7 +90,8 @@ fn decrypt(key: &PrivateKey, namespaces: &[String], value: &str)
         .map_err(|_| format_err!("Can't decode secret as utf-8"))
 }
 
-fn decrypt_pair(keys: &[PrivateKey], namespaces: &[String], values: &[String])
+fn decrypt_pair(keys: &[PrivateKey], namespaces: &HashSet<&str>,
+    values: &[String])
     -> Result<String, Vec<Error>>
 {
     let mut errs = Vec::new();
@@ -104,7 +106,8 @@ fn decrypt_pair(keys: &[PrivateKey], namespaces: &[String], values: &[String])
     Err(errs)
 }
 
-pub fn decode(sandbox: &SandboxConfig, secrets: &BTreeMap<String, Vec<String>>)
+pub fn decode(sandbox: &SandboxConfig, child_config: &ChildInstance,
+    secrets: &BTreeMap<String, Vec<String>>)
     -> Result<BTreeMap<String, String>, Error>
 {
     if secrets.len() == 0 {
@@ -119,17 +122,20 @@ pub fn decode(sandbox: &SandboxConfig, secrets: &BTreeMap<String, Vec<String>>)
             secrets.keys());
     };
 
-    let empty_string = [String::from("")];
-    let namespaces = if sandbox.secrets_namespaces.len() == 0 {
-        &empty_string[..]
+    let mut all_namespaces = HashSet::new();
+    if sandbox.secrets_namespaces.len() == 0 {
+        all_namespaces.insert("");
     } else {
-        &sandbox.secrets_namespaces[..]
+        all_namespaces.extend(
+            sandbox.secrets_namespaces.iter().map(|x| &x[..]))
     };
+    all_namespaces.extend(
+        child_config.extra_secrets_namespaces.iter().map(|x| &x[..]));
 
     let mut res = BTreeMap::new();
 
     for (name, values) in secrets {
-        res.insert(name.clone(), decrypt_pair(&keys, namespaces, values)
+        res.insert(name.clone(), decrypt_pair(&keys, &all_namespaces, values)
             .map_err(|e| {
                 format_err!("Can't decrypt secret {:?}, errors: {}", name,
                     e.iter().map(|x| x.to_string())
