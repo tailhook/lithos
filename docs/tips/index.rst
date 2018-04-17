@@ -12,3 +12,4 @@ Contents:
 
    tcp-ports
    vagga
+   secrets

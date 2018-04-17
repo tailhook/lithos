@@ -3,13 +3,24 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.16.0:
+
+v0.16.0
+=======
+
+* Breaking: remove ``v1`` encryption for secrets (it was alive for a week)
+* Feature: add :opt:`secrets-namespaces` option to allow namespacing secrets
+  on top of a single key
+* Feature: add ``v2`` key encryption scheme
+
+
 .. _changelog 0.15.6:
 
 v0.15.6
 =======
 
-* Feature: add ``secret-environ`` and ``secrets-private-key`` settings which
-  allow to pass to the application decrypted environment variables
+* Feature: add :opt:`secret-environ` and :opt:`secrets-private-key`` settings
+  which allow to pass to the application decrypted environment variables
 * Bugfix: when bridged network is enabled we use ``arping`` to update ARP cache
 
 
