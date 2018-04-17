@@ -62,15 +62,14 @@ fn decrypt(key: &PrivateKey, namespaces: &HashSet<&str>, value: &str)
     };
 
     let plain = nacl::crypto_box_edwards_seal_open(
-        &cipher, &key_bytes[32..], &key_bytes[32..])
-        .map_err(|e| format_err!("{}", e))?;
+        &cipher, public_key, private_key)?;
 
     let mut pair = plain.splitn(2, |&x| x == b':');
     let namespace = from_utf8(pair.next().unwrap())
         .map_err(|_| format_err!("can't decode namespace from utf-8"))?;
     let secret = pair.next().ok_or(format_err!("decrypted data is invalid"))?;
 
-    if b2_short_hash(&key_bytes[32..]) != key_hash {
+    if b2_short_hash(public_key) != key_hash {
         bail!("invalid key hash");
     }
     if b2_short_hash(namespace.as_bytes()) != ns_hash {

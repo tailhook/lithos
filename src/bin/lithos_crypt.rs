@@ -152,6 +152,7 @@ fn decrypt(e: DecryptOpt) -> Result<(), Error> {
         PrivateKey::Ed25519(key) => key,
         _ => bail!("Only ed25519 keys are supported"),
     };
+    let (private_key, public_key) = key_bytes.split_at(32);
     if !e.data.starts_with("v2:") {
         bail!("Only v2 secrets are supported");
     }
@@ -167,12 +168,12 @@ fn decrypt(e: DecryptOpt) -> Result<(), Error> {
     };
 
     let plain = nacl::crypto_box_edwards_seal_open(
-        &cipher, &key_bytes[32..], &key_bytes[..32])?;
+        &cipher, public_key, private_key)?;
     let mut pair = plain.splitn(2, |&x| x == b':');
     let namespace = pair.next().unwrap();
     let secret = pair.next().ok_or(format_err!("decrypted data is invalid"))?;
 
-    if b2_short_hash(&key_bytes[32..]) != key_hash {
+    if b2_short_hash(public_key) != key_hash {
         bail!("invalid key hash");
     }
     if b2_short_hash(&namespace) != ns_hash {
