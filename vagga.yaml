@@ -5,6 +5,11 @@ commands:
     container: xenial
     run: [cargo, build]
 
+  test: !Command
+    description: Run cargo tests
+    container: xenial
+    run: [cargo, test]
+
   _static-lithos_check-package: !Command
     description: Build static lithos_check package (.tar.gz)
     container: rust-musl
