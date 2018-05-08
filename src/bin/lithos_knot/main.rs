@@ -341,9 +341,13 @@ fn run(options: Options) -> Result<i32, String>
                     for (pid, status) in reap_zombies() {
                         if pid == child.pid() {
                             if status.signal() == Some(SIGTERM as i32) ||
-                               status.code().map(|c| {
-                                    container.normal_exit_codes.contains(&c)
-                               }).unwrap_or(false)
+                                status.code().map(|c| {
+                                    if container.normal_exit_codes.is_empty() { 
+                                        local.kind != Daemon && c == 0
+                                    } else {
+                                        container.normal_exit_codes.contains(&c)
+                                    }
+                                }).unwrap_or(false)
                             {
                                 exit_code = 0;
                             }

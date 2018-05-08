@@ -526,7 +526,8 @@ Reference
    death. This currently only improves ``failures`` metric.
    See :ref:`Determining Failure <failures>`.
 
-   Note: by default even `0` exit code is considered an error for daemons.
+   Note: by default even ``0`` exit code is considered an error for daemons,
+   and for commands (``lithos_cmd``) ``0`` is considered successful.
 
    This setting is intended for daemons which may voluntarily exit for some
    reason (soft memory limit, version upgrade, configuration reload).

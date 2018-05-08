@@ -10,6 +10,8 @@ v0.17.0
 
 * Breaking: add ``external`` flag to :opt:`tcp-ports`, which by default is
   ``false`` (previous behavior was equal to ``external: true``)
+* Bugfix: ``lithos_cmd`` now returns exit code 0 if underlying command is
+  exited successfully (was broken in 0.15.5)
 
 
 .. _changelog 0.16.0:
