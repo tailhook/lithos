@@ -30,7 +30,7 @@ use humantime::format_rfc3339_seconds;
 use libmount::BindMount;
 use quire::{parse_config, Options as COptions};
 use signal::trap::Trap;
-use unshare::{Command, Stdio, Style, reap_zombies};
+use unshare::{Command, Stdio, Fd, Style, reap_zombies};
 use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 
@@ -192,6 +192,8 @@ fn run(options: Options) -> Result<i32, String>
     if sandbox.bridged_network.is_some() {
         setup_network::setup(&sandbox, &options.config, &local)?;
     }
+    let extra_fds = setup_network::listen_fds(
+        &sandbox, &options.config, &local)?;
 
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(&options.name);
@@ -266,6 +268,15 @@ fn run(options: Options) -> Result<i32, String>
                 outside_gid: g.outside,
                 count: g.count,
             }).collect());
+    }
+    if extra_fds.len() > 0 {
+        for (dest_fd, sock_fd) in extra_fds {
+            if dest_fd == 0 {
+                cmd.stdin(Stdio::from_file(sock_fd));
+            } else {
+                cmd.file_descriptor(dest_fd, Fd::from_file(sock_fd));
+            }
+        }
     }
     let rtimeo = Duration::from_millis((local.restart_timeout*1000.0) as u64);
 

@@ -312,13 +312,17 @@ fn check(config_file: &Path, verbose: bool,
                             continue;
                         }
                     };
-                    // TODO(tailhook) check tcp ports
-                    for (port, _) in icfg.tcp_ports {
-                        if !in_range(&sandbox.allow_tcp_ports, port as u32) {
-                            err!("Port {} is not allowed for {:?} \
-                                of sandbox {:?} of image {:?}",
-                                port, &ichild.config, current_name,
-                                ichild.image);
+                    for (port, pinfo) in icfg.tcp_ports {
+                        if sandbox.bridged_network.is_none() ||
+                           pinfo.external
+                        {
+                            if !in_range(&sandbox.allow_tcp_ports, port as u32)
+                            {
+                                err!("Port {} is not allowed for {:?} \
+                                    of sandbox {:?} of image {:?}",
+                                    port, &ichild.config, current_name,
+                                    ichild.image);
+                            }
                         }
                     }
                 }

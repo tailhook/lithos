@@ -3,6 +3,15 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.0:
+
+v0.17.0
+=======
+
+* Breaking: add ``external`` flag to :opt:`tcp-ports`, which by default is
+  ``false`` (previous behavior was equal to ``external: true``)
+
+
 .. _changelog 0.16.0:
 
 v0.16.0

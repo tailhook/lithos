@@ -498,6 +498,19 @@ Reference
       This should be set to ``true`` only on very high performant servers that
       experience assymetric workload in default case.
 
+    external
+      (default ``false``) If set to ``true`` listen on the port in the
+      external network (host network of the system not bridged network).
+      This is only effective if :opt:`bridged-network` is enabled
+      for container.
+
+      .. versionchanged:: 0.17.0
+
+         Previously we only allowed external ports to be declared in lithos
+         config. It was expected that container in bridged network can
+         listen port itself. But it turned out file descriptors are still
+         convenient for some use-cases even inside a bridge.
+
 .. opt:: metadata
 
    (optional) Allows to add arbitrary metadata to lithos configuration file.

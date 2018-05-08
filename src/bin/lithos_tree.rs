@@ -77,6 +77,7 @@ struct Process {
     inner_config: InstantiatedConfig,
     addresses: Vec<InetAddr>,
     socket_cred: (u32, u32),
+    bridged_network: bool,
 }
 
 struct Socket {
@@ -609,17 +610,20 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
 fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
                     ports: &HashMap<u16, TcpPort>,
                     cmd: &mut Command,
-                    uid: u32, gid: u32)
+                    uid: u32, gid: u32,
+                    external_only: bool)
     -> Result<(), Error>
 {
     for (&port, item) in ports {
-        let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
-        if !socks.contains_key(&addr) {
-            if !item.reuse_port {
-                let sock = open_socket(addr, item, uid, gid)?;
-                socks.insert(addr, Socket {
-                    fd: sock,
-                });
+        if external_only == false || item.external {
+            let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
+            if !socks.contains_key(&addr) {
+                if !item.reuse_port {
+                    let sock = open_socket(addr, item, uid, gid)?;
+                    socks.insert(addr, Socket {
+                        fd: sock,
+                    });
+                }
             }
         }
     }
@@ -629,6 +633,9 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
         cmd.close_fds(socks.values().map(|x| x.fd).min().unwrap()
                       ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
         for (&port, item) in ports {
+            if external_only == true && !item.external {
+                continue;
+            }
             let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
             match item.fd {
                 0 => {
@@ -677,7 +684,8 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                     match open_sockets_for(
                         sockets, &child.inner_config.tcp_ports,
                         &mut child.cmd,
-                        child.socket_cred.0, child.socket_cred.1)
+                        child.socket_cred.0, child.socket_cred.1,
+                        !child.bridged_network)
                     {
                         Ok(()) => {}
                         Err(e) => {
@@ -1035,6 +1043,7 @@ fn read_subtree<'x>(master: &MasterConfig,
                         }).collect(),
                     inner_config: cfg,
                     socket_cred: (sock_uid, sock_gid),
+                    bridged_network: sandbox.bridged_network.is_some(),
                 };
                 items.push((name, process));
             }

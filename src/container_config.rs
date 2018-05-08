@@ -96,6 +96,7 @@ pub struct TcpPort {
     pub reuse_addr: bool,
     pub reuse_port: bool,
     pub listen_backlog: usize,
+    pub external: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
@@ -244,6 +245,7 @@ impl ContainerConfig {
                 .member("reuse_addr", Scalar::new().default(true))
                 .member("reuse_port", Scalar::new().default(false))
                 .member("listen_backlog", Scalar::new().default(128))
+                .member("external", Scalar::new().default(false))
             ))
     }
     pub fn instantiate(&self, variables: &Variables)
@@ -365,9 +367,14 @@ impl Variable {
                 let port = value.parse::<u16>()
                     .map_err(|e| format!(
                         "invalid TcpPort {:?}: {}", value, e))?;
-                if !in_range(&sandbox.allow_tcp_ports, port as u32) {
-                    return Err(format!(
-                        "TcpPort {:?} is not in allowed range", port));
+                // TODO(tailhook) This still has an issue with
+                //                validating "external" ports.
+                //                But we don't know if port is external here.
+                if sandbox.bridged_network.is_none() {
+                    if !in_range(&sandbox.allow_tcp_ports, port as u32) {
+                        return Err(format!(
+                            "TcpPort {:?} is not in allowed range", port));
+                    }
                 }
             }
             Variable::Name => {

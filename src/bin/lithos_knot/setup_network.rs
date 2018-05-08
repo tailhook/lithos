@@ -1,18 +1,24 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::net::IpAddr;
-use std::os::unix::io::AsRawFd;
+use std::net::{IpAddr, SocketAddr};
+use std::os::unix::io::{RawFd, AsRawFd, FromRawFd};
 
 use blake2::{self, Digest};
 use failure::{Error, ResultExt};
 use ipnetwork::IpNetwork;
+use libc::{close};
 use nix::sched::{setns, CLONE_NEWNET};
+use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
+use nix::sys::socket::{SockAddr, setsockopt, bind, listen};
+use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
 use serde_json::to_vec;
 use unshare::{self, Style};
 
-use lithos::sandbox_config::{SandboxConfig, BridgedNetwork};
 use lithos::child_config::ChildInstance;
-use lithos::container_config::InstantiatedConfig;
+use lithos::container_config::{InstantiatedConfig, TcpPort};
+use lithos::sandbox_config::{SandboxConfig, BridgedNetwork};
+use lithos::utils;
 
 
 pub fn setup(sandbox: &SandboxConfig, child: &ChildInstance,
@@ -216,4 +222,59 @@ fn _setup_isolated(_sandbox: &SandboxConfig, _child: &ChildInstance)
         Err(e) => bail!("ip link failed: {}", e),
     }
     Ok(())
+}
+
+pub fn listen_fds(sandbox: &SandboxConfig, child: &ChildInstance,
+    container: &InstantiatedConfig)
+    -> Result<HashMap<RawFd, File>, String>
+{
+    _listen_fds(sandbox, child, container)
+        .map_err(|e| e.to_string())
+}
+
+fn _listen_fds(sandbox: &SandboxConfig, _child: &ChildInstance,
+    container: &InstantiatedConfig)
+    -> Result<HashMap<RawFd, File>, Error>
+{
+    let mut res = HashMap::new();
+    if sandbox.bridged_network.is_some() {
+        for (&port_no, port) in &container.tcp_ports {
+            if !port.external {
+                let sock = open_socket(port_no, port,
+                    container.user_id.or(sandbox.default_user).unwrap_or(0),
+                    container.group_id.or(sandbox.default_group).unwrap_or(0))?;
+                res.insert(port.fd, sock);
+            }
+        }
+    }
+    return Ok(res);
+}
+
+// TODO(tailhook) this is very similar to one in lithos_tree
+fn open_socket(port: u16, cfg: &TcpPort, uid: u32, gid: u32)
+    -> Result<File, Error>
+{
+    let addr = InetAddr::from_std(&SocketAddr::new(cfg.host.0, port));
+    let sock = {
+        let _fsuid_guard = utils::FsUidGuard::set(uid, gid);
+        try!(socket(AddressFamily::Inet,
+            SockType::Stream, SockFlag::empty(), 0)
+            .map_err(|e| format_err!("Can't create socket: {:?}", e)))
+    };
+
+    let mut result = Ok(());
+    if cfg.reuse_addr {
+        result = result.and_then(|_| setsockopt(sock, ReuseAddr, &true));
+    }
+    if cfg.reuse_port {
+        result = result.and_then(|_| setsockopt(sock, ReusePort, &true));
+    }
+    result =  result.and_then(|_| bind(sock, &SockAddr::Inet(addr)));
+    result =  result.and_then(|_| listen(sock, cfg.listen_backlog));
+    if let Err(e) = result {
+        unsafe { close(sock) };
+        Err(format_err!("Socket option error: {:?}", e))
+    } else {
+        Ok(unsafe { File::from_raw_fd(sock) })
+    }
 }
