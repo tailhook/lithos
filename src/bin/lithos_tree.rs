@@ -615,7 +615,7 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
     -> Result<(), Error>
 {
     for (&port, item) in ports {
-        if external_only == false || item.external {
+        if external_only == true || item.external {
             let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));
             if !socks.contains_key(&addr) {
                 if !item.reuse_port {
@@ -633,7 +633,7 @@ fn open_sockets_for(socks: &mut HashMap<InetAddr, Socket>,
         cmd.close_fds(socks.values().map(|x| x.fd).min().unwrap()
                       ..(socks.values().map(|x| x.fd).max().unwrap() + 1));
         for (&port, item) in ports {
-            if external_only == true && !item.external {
+            if external_only == false && !item.external {
                 continue;
             }
             let addr = InetAddr::from_std(&SocketAddr::new(item.host.0, port));

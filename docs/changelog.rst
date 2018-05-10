@@ -2,6 +2,13 @@
 Lithos Changes By Release
 =========================
 
+.. _changelog 0.17.1:
+
+v0.17.1
+=======
+
+* Bugfix: passing sockets as FDs in non-bridged network was broken in v0.17.0
+
 
 .. _changelog 0.17.0:
 
