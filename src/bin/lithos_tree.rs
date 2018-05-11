@@ -263,7 +263,7 @@ fn recover_sockets(sockets: &mut HashMap<InetAddr, Socket>) {
                     match sockets.insert(addr, sock) {
                         None => {}
                         Some(old) => {
-                            error!("Addreesss {} has two sockets: \
+                            error!("Address {} has two sockets: \
                                 fd={} and fd={}, discarding latter.",
                                 addr, fd, old.fd);
                         }
