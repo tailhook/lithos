@@ -280,7 +280,9 @@ fn recover_sockets(sockets: &mut HashMap<InetAddr, Socket>) {
                         fd: fd,
                     };
                     match sockets.insert(addr, sock) {
-                        None => {}
+                        None => {
+                            info!("Recovered fd {} as {}", fd, addr);
+                        }
                         Some(old) => {
                             error!("Address {} has two sockets: \
                                 fd={} and fd={}, discarding latter.",
@@ -592,6 +594,7 @@ fn close_unused_sockets(sockets: &mut HashMap<InetAddr, Socket>,
             if used_addresses.contains(&p) {
                 true
             } else {
+                info!("Closing fd {} addr {}", s.fd, p);
                 unsafe { close(s.fd) };
                 false
             }
@@ -628,6 +631,7 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
         unsafe { close(sock) };
         Err(format_err!("Socket option error: {:?}", e))
     } else {
+        info!("Socket {} open as {}", addr, sock);
         Ok(sock)
     }
 }
