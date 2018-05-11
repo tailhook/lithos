@@ -16,18 +16,19 @@ extern crate unshare;
 #[macro_use] extern crate failure;
 
 
-use std::env;
-use std::mem::replace;
-use std::fs::{File, OpenOptions, metadata, remove_file, rename};
-use std::io::{self, stderr, Read, Write};
-use std::str::{FromStr};
-use std::fs::{remove_dir};
-use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, Instant, Duration};
-use std::process::exit;
 use std::collections::{HashMap, BTreeMap, HashSet};
+use std::env;
+use std::fs::{File, OpenOptions, metadata, remove_file, rename};
+use std::fs::{remove_dir};
+use std::io::{self, stderr, Read, Write};
+use std::mem::replace;
+use std::net::SocketAddr;
 use std::os::unix::io::{RawFd, AsRawFd};
+use std::path::{Path, PathBuf};
+use std::process::exit;
+use std::str::{FromStr};
+use std::thread::sleep;
+use std::time::{SystemTime, Instant, Duration};
 
 use failure::Error;
 use humantime::format_rfc3339_seconds;
@@ -179,23 +180,39 @@ fn discard<E>(_: E) { }
 fn _read_args(pid: Pid, global_config: &Path)
     -> Result<(String, String), ()>
 {
-    let mut buf = String::with_capacity(4096);
-    try!(File::open(&format!("/proc/{}/cmdline", pid))
-         .and_then(|mut f| f.read_to_string(&mut buf))
-         .map_err(discard));
-    let args: Vec<&str> = buf[..].splitn(8, '\0').collect();
-    if args.len() != 8
-       || Path::new(args[0]).file_name()
-          .and_then(|x| x.to_str()) != Some("lithos_knot")
-       || args[1] != "--name"
-       || args[3] != "--master"
-       || Path::new(args[4]) != global_config
-       || args[5] != "--config"
-       || args[7] != ""
-    {
-       return Err(());
+    let start = Instant::now();
+    loop {
+        let mut buf = String::with_capacity(4096);
+        try!(File::open(&format!("/proc/{}/cmdline", pid))
+             .and_then(|mut f| f.read_to_string(&mut buf))
+             .map_err(discard));
+        let args: Vec<&str> = buf[..].splitn(8, '\0').collect();
+
+        if Path::new(args[0]).file_name()
+          .and_then(|x| x.to_str()) == Some("lithos_tree")
+        {
+            if start + Duration::new(1, 0) > Instant::now() {
+                sleep(Duration::from_millis(2));
+                continue;
+            } else {
+                error!("Child did not exec'd in > 1 sec");
+                return Err(());
+            }
+        }
+
+        if args.len() != 8
+           || Path::new(args[0]).file_name()
+              .and_then(|x| x.to_str()) != Some("lithos_knot")
+           || args[1] != "--name"
+           || args[3] != "--master"
+           || Path::new(args[4]) != global_config
+           || args[5] != "--config"
+           || args[7] != ""
+        {
+           return Err(());
+        }
+        return Ok((args[2].to_string(), args[6].to_string()));
     }
-    return Ok((args[2].to_string(), args[6].to_string()));
 }
 
 fn _is_child(pid: Pid, ppid: Pid) -> bool {

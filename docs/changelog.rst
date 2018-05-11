@@ -2,6 +2,18 @@
 Lithos Changes By Release
 =========================
 
+
+.. _changelog 0.17.2:
+
+v0.17.2
+=======
+
+* Bugfix: previously lithos_tree process after fork but before execing
+  lithos_knot could be recognized as undefined child and killed.
+  This race-condition sometimes led to closing sockets prematurely and being
+  unable to listen them again
+
+
 .. _changelog 0.17.1:
 
 v0.17.1
