@@ -727,7 +727,10 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                     }
                     metrics.processes[&child.base_name].started.incr(1);
                     metrics.started.incr(1);
-                    match child.cmd.spawn() {
+                    let result = child.cmd.spawn();
+                    // need to drop referenced duplicated sockets
+                    child.cmd.reset_fds();
+                    match result {
                         Ok(c) => {
                             info!("Forked {:?} (pid: {})",
                                 child.name, c.pid());

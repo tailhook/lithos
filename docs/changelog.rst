@@ -3,6 +3,17 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.3:
+
+v0.17.3
+=======
+
+* Bugfix: fix EADDRINUSE error when all children requiring file descriptor
+  where queued for restart (throttled), bug was due to duped socket lying in
+  scheduled command (where main socket is closed to notify peers there are
+  no listeners)
+
+
 .. _changelog 0.17.2:
 
 v0.17.2
