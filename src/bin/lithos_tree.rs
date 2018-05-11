@@ -717,6 +717,8 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                     metrics.started.incr(1);
                     match child.cmd.spawn() {
                         Ok(c) => {
+                            info!("Forked {:?} (pid: {})",
+                                child.name, c.pid());
                             metrics.processes[&child.base_name]
                                 .running.incr(1);
                             metrics.running.incr(1);
@@ -779,7 +781,8 @@ fn normal_loop(queue: &mut Queue<Timeout>,
                 for (pid, status) in reap_zombies() {
                     match children.remove(&Pid::from_raw(pid)) {
                         Some(Child::Process(child)) => {
-                            error!("Process {:?} {}", child.name, status);
+                            error!("Container {:?} (pid: {}) {}",
+                                child.name, pid, status);
                             metrics.processes
                                 [&child.base_name].deaths.incr(1);
                             metrics.deaths.incr(1);
@@ -838,7 +841,8 @@ fn shutdown_loop(children: &mut HashMap<Pid, Child>,
                 for (pid, status) in reap_zombies() {
                     match children.remove(&Pid::from_raw(pid)) {
                         Some(Child::Process(child)) => {
-                            info!("Process {:?} {}", child.name, status);
+                            info!("Container {:?} (pid {}) {}",
+                                child.name, pid, status);
                             metrics.processes[&child.base_name]
                                 .deaths.incr(1);
                             metrics.deaths.incr(1);
