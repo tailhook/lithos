@@ -211,7 +211,7 @@ fn _read_args(pid: Pid, global_config: &Path)
            || args[5] != "--config"
            || args[7] != ""
         {
-           return Err(());
+            return Err(());
         }
         return Ok((args[2].to_string(), args[6].to_string()));
     }
