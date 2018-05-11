@@ -16,28 +16,30 @@ extern crate unshare;
 #[macro_use] extern crate failure;
 
 
-use std::collections::{HashMap, BTreeMap, HashSet};
 use std::env;
-use std::fs::{File, OpenOptions, metadata, remove_file, rename};
-use std::fs::{remove_dir};
-use std::io::{self, stderr, Read, Write};
 use std::mem::replace;
-use std::net::SocketAddr;
-use std::os::unix::io::{RawFd, AsRawFd};
-use std::path::{Path, PathBuf};
-use std::process::exit;
+use std::fs::{File, OpenOptions, metadata, remove_file, rename};
+use std::io::{self, stderr, Read, Write};
 use std::str::{FromStr};
-use std::thread::sleep;
+use std::fs::{remove_dir};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, Instant, Duration};
+use std::process::exit;
+use std::thread::sleep;
+use std::collections::{HashMap, BTreeMap, HashSet};
+use std::os::unix::io::{RawFd, AsRawFd};
 
 use failure::Error;
 use humantime::format_rfc3339_seconds;
 use libc::{close};
+use nix::fcntl::{fcntl, FdFlag, F_GETFD, F_SETFD, FD_CLOEXEC};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::socket::{getsockname, SockAddr};
 use nix::sys::socket::{setsockopt, bind, listen};
-use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
+use nix::sys::socket::{socket, AddressFamily, SockType, InetAddr};
+use nix::sys::socket::{SOCK_CLOEXEC};
 use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use nix::unistd::{Pid, getpid};
 use quire::{parse_config, Options as COptions};
@@ -602,8 +604,7 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
 
     let sock = {
         let _fsuid_guard = utils::FsUidGuard::set(uid, gid);
-        try!(socket(AddressFamily::Inet,
-            SockType::Stream, SockFlag::empty(), 0)
+        try!(socket(AddressFamily::Inet, SockType::Stream, SOCK_CLOEXEC, 0)
             .map_err(|e| format_err!("Can't create socket: {:?}", e)))
     };
 
@@ -614,8 +615,15 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
     if cfg.reuse_port {
         result = result.and_then(|_| setsockopt(sock, ReusePort, &true));
     }
-    result =  result.and_then(|_| bind(sock, &SockAddr::Inet(addr)));
-    result =  result.and_then(|_| listen(sock, cfg.listen_backlog));
+    result = result.and_then(|_| bind(sock, &SockAddr::Inet(addr)));
+    result = result.and_then(|_| listen(sock, cfg.listen_backlog));
+    // Only reset cloexec flag when socket is fully ready
+    result = result
+        .and_then(|_| fcntl(sock, F_GETFD))
+        .and_then(|flags| fcntl(sock, F_SETFD(
+            FdFlag::from_bits(flags).expect("os returned valid flags")
+            & !FD_CLOEXEC)))
+        .map(|_| ());
     if let Err(e) = result {
         unsafe { close(sock) };
         Err(format_err!("Socket option error: {:?}", e))
