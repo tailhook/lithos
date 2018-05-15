@@ -52,15 +52,24 @@ There are the following types of variables:
 TcpPort
     Allows a number between 1-65535 and ensures that the number matches
     port range allowed in sandbox (see :opt:`allow-tcp-ports`)
+
 Choice
     Allows a value from a fixed set of choices
     (example: ``!Choice ["high-priority", "low-priority"]``)
+
 Name
     Allows a value that matches regex ``^[0-9a-zA-Z_-]+$``. Useful for passing
     names of things into a script without having a chance to keep value
     unescaped when passing somewhere within a script or using it as a filename.
 
     .. versionadded:: 0.10.3
+
+DottedName
+    Allows arbitrary DNS-like name. It's defined as dot-separated name with
+    only alphanumeric and underscores, where no component could start or end
+    with a dash and no consequent dots allowed.
+
+    .. versionadded:: 0.17.4
 
 All entries of ``@{variable_name}`` are substituted in the following fields:
 

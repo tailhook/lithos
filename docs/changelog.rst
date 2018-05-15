@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.4:
+
+v0.17.4
+=======
+
+* Feature: Add ``DottedName`` :ref:`variable type <container_variables>`
+
+
 .. _changelog 0.17.3:
 
 v0.17.3

@@ -103,6 +103,7 @@ pub struct TcpPort {
 pub enum Variable {
     TcpPort,
     Name,
+    DottedName,
     Choice(Vec<String>),
 }
 
@@ -198,6 +199,7 @@ impl ContainerConfig {
             Enum::new()
                 .option("TcpPort", Nothing)
                 .option("Name", Nothing)
+                .option("DottedName", Nothing)
                 .option("Choice", Sequence::new(Scalar::new()))
         ))
         .member("metadata", Anything)
@@ -385,6 +387,26 @@ impl Variable {
                     return Err(format!("Value {:?} contains characters that \
                         are invalid for names (alphanumeric, `-` and `_`)",
                         value));
+                }
+            }
+            Variable::DottedName => {
+                let chars_ok = value.chars().all(|x| {
+                    x.is_ascii() && x.is_alphanumeric() ||
+                    x == '-' || x == '_' || x == '.'
+                });
+                if !chars_ok {
+                    return Err(format!("Value {:?} contains characters that \
+                        are invalid for dns names (alphanumeric, `-` and `_`)",
+                        value));
+                }
+                for slice in value.split('.') {
+                    if slice == "" || slice.starts_with("-") ||
+                                      slice.ends_with("-")
+                    {
+                        return Err(format!("Component {:?} from name {:?} \
+                            is invalid for dotted name",
+                            slice, value));
+                    }
                 }
             }
             Variable::Choice(ref choices) => {
