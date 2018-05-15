@@ -33,6 +33,9 @@ commands:
     description: Build HTML docs
     container: docs
     work-dir: docs
+    epilog: |
+      ----------------------------------------
+        xdg-open docs/_build/html/index.html
     run: [make, html]
 
   make-docs: !Command
