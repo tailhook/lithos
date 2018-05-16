@@ -3,7 +3,7 @@
 CONFIGS="${1:-py}"
 
 sudo -k
-echo Copying examples/py into the system
+echo Copying examples/"$CONFIGS" into the system
 echo WARNING: This Command will remove /etc/lithos from the system
 echo ... hopefully you run this in a virtual machine
 echo ... but let you think for 10 seconds
