@@ -9,6 +9,7 @@ v0.17.4
 =======
 
 * Feature: Add ``DottedName`` :ref:`variable type <container_variables>`
+* Feature: Add ``activation`` parameter to ``TcpPort`` variable
 
 
 .. _changelog 0.17.3:

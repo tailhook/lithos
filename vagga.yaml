@@ -109,6 +109,23 @@ containers:
       source: /work/examples/py_var/code/py.yaml
       path: /config/py.yaml
 
+  py_systemd-example:
+    # This one is used as a container inside the lithos example
+    setup:
+    - !Alpine v3.7
+    - !Install [python3]
+    - !EnsureDir /config
+    - !EnsureDir /code
+    - !Copy
+      source: /work/examples/py_systemd/code/sock.py
+      path: /code/sock.py
+    - !Copy
+      source: /work/examples/py_systemd/code/socket.yaml
+      path: /config/socket.yaml
+    - !Copy
+      source: /work/examples/py_systemd/code/py.yaml
+      path: /config/py.yaml
+
   multi_level-example:
     # This one is used as a container inside the lithos example
     setup:

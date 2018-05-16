@@ -342,7 +342,7 @@ fn run(options: Options) -> Result<i32, String>
                         if pid == child.pid() {
                             if status.signal() == Some(SIGTERM as i32) ||
                                 status.code().map(|c| {
-                                    if container.normal_exit_codes.is_empty() { 
+                                    if container.normal_exit_codes.is_empty() {
                                         local.kind != Daemon && c == 0
                                     } else {
                                         container.normal_exit_codes.contains(&c)

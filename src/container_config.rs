@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 #[cfg(not(target_arch="wasm32"))] use std::os::unix::io::RawFd;
@@ -99,12 +99,17 @@ pub struct TcpPort {
     pub external: bool,
 }
 
-#[derive(Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, Debug)]
 pub enum Variable {
-    TcpPort,
+    TcpPort(TcpPortSettings),
     Name,
     DottedName,
     Choice(Vec<String>),
+}
+
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, Debug)]
+pub struct TcpPortSettings {
+    pub activation: Activation,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -190,6 +195,13 @@ fn wrap_into_list(ast: ::quire::ast::Ast) -> Vec<::quire::ast::Ast> {
     }
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all="kebab-case")]
+pub enum Activation {
+    Systemd,
+    None,
+}
+
 impl ContainerConfig {
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
@@ -197,7 +209,11 @@ impl ContainerConfig {
         .member("variables", Mapping::new(
             Scalar::new(),
             Enum::new()
-                .option("TcpPort", Nothing)
+                .option("TcpPort", Structure::new()
+                    .member("activation", Enum::new()
+                        .option("systemd", Nothing)
+                        .allow_plain()
+                        .plain_default("none")))
                 .option("Name", Nothing)
                 .option("DottedName", Nothing)
                 .option("Choice", Sequence::new(Scalar::new()))
@@ -255,6 +271,7 @@ impl ContainerConfig {
     {
         let mut errors1 = HashSet::new();
         let mut errors2 = HashSet::new();
+        let mut errors3 = Vec::new();
         let result = {
             let mut replacer = |varname: &str| {
                 let val = variables.user_vars.get(varname).map(|x| x.clone())
@@ -273,6 +290,69 @@ impl ContainerConfig {
                     }
                 }
             };
+            let mut tcp_ports = self.tcp_ports.iter()
+                .map(|(key, val)| {
+                    let s = replace_vars(&key, &mut replacer);
+                    let port = match s.parse::<u16>() {
+                        Ok(x) => x,
+                        Err(e) => {
+                            errors2.insert(format!("Bad port {:?}: {}",
+                                key, e));
+                            return (0, val.clone());
+                        }
+                    };
+                    (port, val.clone())
+                })
+                .collect::<HashMap<_, _>>();
+
+            let mut environ = self.environ.iter()
+                .map(|(key, val)| {
+                    (key.clone(),
+                     replace_vars(&val, &mut replacer).into())
+                })
+                .collect::<BTreeMap<_, _>>();
+
+            let mut names = Vec::new();
+            for (key, typ) in &self.variables {
+                match typ {
+                    Variable::TcpPort(TcpPortSettings {
+                        activation: Activation::Systemd
+                    }) => {
+                        names.push(&key[..]);
+                        let fd = (2 + names.len()) as i32;
+                        let port_str = match variables.user_vars.get(key) {
+                            None => {
+                                errors3.push(
+                                    format_err!("can't find var {:?}", key));
+                                continue;
+                            }
+                            Some(port_str) => port_str,
+                        };
+                        let port = match port_str.parse() {
+                            Err(e) => {
+                                errors3.push(format_err!("can't parse port \
+                                    {:?}: value {:?}: {}", key, port_str, e));
+                                continue;
+                            }
+                            Ok(port) => port,
+                        };
+                        tcp_ports.insert(port, TcpPort {
+                            host: Host(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
+                            fd,
+                            reuse_addr: true,
+                            reuse_port: false,
+                            listen_backlog: 128,
+                            external: false,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            if !names.is_empty() {
+                environ.insert("LISTEN_FDS".into(), names.len().to_string());
+                environ.insert("LISTEN_NAMES".into(), names.join(":"));
+            }
+
             InstantiatedConfig {
                 kind: self.kind.clone(),
                 volumes: self.volumes.clone(),
@@ -287,12 +367,7 @@ impl ContainerConfig {
                 arguments: self.arguments.iter()
                     .map(|x| replace_vars(&x, &mut replacer).into())
                     .collect(),
-                environ: self.environ.iter()
-                    .map(|(key, val)| {
-                        (key.clone(),
-                         replace_vars(&val, &mut replacer).into())
-                    })
-                    .collect(),
+                environ,
                 // ignore secret environ, it will be pushed into environ later
                 workdir: self.workdir.clone(),
                 resolv_conf: self.resolv_conf.clone(),
@@ -303,25 +378,14 @@ impl ContainerConfig {
                 interactive: self.interactive.clone(),
                 restart_process_only: self.restart_process_only.clone(),
                 normal_exit_codes: self.normal_exit_codes.clone(),
-                tcp_ports: self.tcp_ports.iter()
-                    .map(|(key, val)| {
-                        let s = replace_vars(&key, &mut replacer);
-                        let port = match s.parse::<u16>() {
-                            Ok(x) => x,
-                            Err(e) => {
-                                errors2.insert(format!("Bad port {:?}: {}",
-                                    key, e));
-                                return (0, val.clone());
-                            }
-                        };
-                        (port, val.clone())
-                    })
-                    .collect(),
+                tcp_ports,
             }
         };
-        if errors1.len() > 0 || errors2.len() > 0 {
-            return Err(errors1.into_iter().chain(errors2.into_iter())
-                       .collect());
+        if errors1.len() > 0 || errors2.len() > 0 || errors3.len() > 0 {
+            return Err(errors1.into_iter()
+                .chain(errors2.into_iter())
+                .chain(errors3.into_iter().map(|x| x.to_string()))
+                .collect());
         } else {
             return Ok(result);
         }
@@ -365,7 +429,7 @@ impl Variable {
         -> Result<(), String>
     {
         match *self {
-            Variable::TcpPort => {
+            Variable::TcpPort { .. } => {
                 let port = value.parse::<u16>()
                     .map_err(|e| format!(
                         "invalid TcpPort {:?}: {}", value, e))?;

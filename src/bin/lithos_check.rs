@@ -25,6 +25,8 @@ use lithos::range::in_range;
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};
+use lithos::container_config::{Variable::TcpPort, Activation::Systemd};
+use lithos::container_config::TcpPortSettings;
 use lithos::child_config::{ChildConfig, ChildKind};
 use lithos::network::{get_host_name, get_host_ip};
 use lithos::id_map::{IdMapExt};
@@ -263,7 +265,7 @@ fn check(config_file: &Path, verbose: bool,
                 if !check_mapping(&sandbox.allow_groups, &config.gid_map) {
                     err!("Bad gid mapping (probably doesn't match allow_groups)");
                 }
-                // Per-instance validation
+                let mut nsockets = 0;
                 for (key, typ) in &config.variables {
                     if let Some(value) = child_cfg.variables.get(key) {
                         if let Err(e) = typ.validate(value, &sandbox) {
@@ -272,7 +274,38 @@ fn check(config_file: &Path, verbose: bool,
                     } else {
                         err!("Variable {:?} is undefined", key);
                     }
+                    match typ {
+                        TcpPort(TcpPortSettings { activation: Systemd })
+                        => {
+                            nsockets += 1;
+                            let fd = 2+nsockets;
+                            for (port, props) in &config.tcp_ports {
+                                 if props.fd == fd {
+                                    err!("Port {} conflicts with var {:?} \
+                                        for fd: {}. \
+                                        You may change file descriptor to a \
+                                        higher value, or expand 'activation' \
+                                        manually.",
+                                        port, key, fd);
+                                 }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
+                if nsockets > 0 { // only first time
+                    if config.environ.contains_key("LISTEN_FDS") ||
+                       config.environ.contains_key("LISTEN_NAMES") ||
+                       config.secret_environ.contains_key("LISTEN_FDS") ||
+                       config.secret_environ.contains_key("LISTEN_NAMES")
+                    {
+                        err!("To use 'activation' you should not have any of \
+                              LISTEN_FDS and LISTEN_NAMES in your environ. \
+                              You can remove vars or remove activation \
+                              parameter and propagate sockets manually.");
+                    }
+                }
+                // Per-instance validation
                 for i in 0..child_cfg.instances {
                     let name = format!("{}/{}.{}",
                         current_name, child_name, i);

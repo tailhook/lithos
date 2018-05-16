@@ -1,0 +1,8 @@
+allow-users: [1]
+allow-groups: [0-1]
+image-dir: /var/lib/lithos/images
+uid-map:
+- {outside: 10000, inside: 0, count: 2}
+gid-map:
+- {outside: 10000, inside: 0, count: 2}
+allow-tcp-ports: [77]

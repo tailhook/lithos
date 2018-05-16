@@ -53,6 +53,40 @@ TcpPort
     Allows a number between 1-65535 and ensures that the number matches
     port range allowed in sandbox (see :opt:`allow-tcp-ports`)
 
+    .. versionchanged:: 0.17.4
+
+       Added ``activation`` parameter as a shortcut to support systemd
+       activation protocol. I.e. the following (showing two ports
+       for more comprehensive example):
+
+       .. code-block:: yaml
+
+          variables:
+            port1: !TcpPort { activation: systemd }
+            port2: !TcpPort { activation: systemd }
+
+       Means to add something like this:
+
+       .. code-block:: yaml
+
+          variables:
+            port1: !TcpPort
+            port2: !TcpPort
+          tcp-ports:
+            "@{port1}":
+              fd: 3
+            "@{port2}":
+              fd: 4
+          environ:
+            LISTEN_FDS: 1
+            LISTEN_NAMES: "port1:port2"
+
+        This works for any number of sockets. And it requires that
+        ``LISTEN_FDS`` and ``LISTEN_NAMES`` were absent in the
+        ``environ`` as written in the file. Also it doesn't allow fine-grained
+        control over parameters of the socket and file descriptor numbers.
+        Use full form if you need specific options.
+
 Choice
     Allows a value from a fixed set of choices
     (example: ``!Choice ["high-priority", "low-priority"]``)
