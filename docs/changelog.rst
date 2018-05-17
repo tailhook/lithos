@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.5:
+
+v0.17.5
+=======
+
+* Feature: check variable substitution with ``lithos_check`` even in
+  ``--check-container`` (out of system) mode
+
 .. _changelog 0.17.4:
 
 v0.17.4

@@ -24,7 +24,7 @@ use lithos::utils::{in_mapping, check_mapping, relative};
 use lithos::range::in_range;
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
-use lithos::container_config::{ContainerConfig, Variables};
+use lithos::container_config::{ContainerConfig, Variables, replace_vars};
 use lithos::container_config::{Variable::TcpPort, Activation::Systemd};
 use lithos::container_config::TcpPortSettings;
 use lithos::child_config::{ChildConfig, ChildKind};
@@ -96,6 +96,8 @@ fn check_container(config_file: &Path,
             return Err(());
         }
     };
+    validate_activation(&config);
+    validate_substitutions(&config);
     if let Some(sandbox) = sandbox {
         if config.uid_map.len() > 0 {
             let user_id = config.user_id.or(sandbox.default_user);
@@ -132,6 +134,75 @@ fn network_contains(netw: &IpNetwork, ip: IpAddr) -> bool {
         (IpNetwork::V4(net), IpAddr::V4(ip)) => net.contains(ip),
         (IpNetwork::V6(net), IpAddr::V6(ip)) => net.contains(ip),
         _ => false,
+    }
+}
+
+fn validate_substitutions(config: &ContainerConfig) {
+    let mut replacer = |varname: &str| {
+        if !config.variables.contains_key(varname) {
+            err!("undefined variable {:?}", varname);
+        }
+        ""
+    };
+    for val in config.tcp_ports.keys() {
+        // TODO(tailhook) check type of variable?
+        replace_vars(&val, &mut replacer);
+    }
+    for val in config.environ.values() {
+         replace_vars(&val, &mut replacer);
+    }
+    for val in &config.arguments {
+         replace_vars(&val, &mut replacer);
+    }
+}
+
+fn validate_variable_types(config: &ContainerConfig, child_cfg: &ChildConfig,
+    sandbox: &SandboxConfig)
+{
+    for (key, typ) in &config.variables {
+        if let Some(value) = child_cfg.variables.get(key) {
+            if let Err(e) = typ.validate(value, &sandbox) {
+                err!("Variable {:?} is invalid: {}", key, e);
+            }
+        } else {
+            err!("Variable {:?} is undefined", key);
+        }
+    }
+}
+
+fn validate_activation(config: &ContainerConfig) {
+    let mut nsockets = 0;
+    for (key, typ) in &config.variables {
+        match typ {
+            TcpPort(TcpPortSettings { activation: Systemd })
+            => {
+                nsockets += 1;
+                let fd = 2+nsockets;
+                for (port, props) in &config.tcp_ports {
+                     if props.fd == fd {
+                        err!("Port {} conflicts with var {:?} \
+                            for fd: {}. \
+                            You may change file descriptor to a \
+                            higher value, or expand 'activation' \
+                            manually.",
+                            port, key, fd);
+                     }
+                }
+            }
+            _ => {}
+        }
+    }
+    if nsockets > 0 { // only first time
+        if config.environ.contains_key("LISTEN_FDS") ||
+           config.environ.contains_key("LISTEN_NAMES") ||
+           config.secret_environ.contains_key("LISTEN_FDS") ||
+           config.secret_environ.contains_key("LISTEN_NAMES")
+        {
+            err!("To use 'activation' you should not have any of \
+                  LISTEN_FDS and LISTEN_NAMES in your environ. \
+                  You can remove vars or remove activation \
+                  parameter and propagate sockets manually.");
+        }
     }
 }
 
@@ -265,46 +336,9 @@ fn check(config_file: &Path, verbose: bool,
                 if !check_mapping(&sandbox.allow_groups, &config.gid_map) {
                     err!("Bad gid mapping (probably doesn't match allow_groups)");
                 }
-                let mut nsockets = 0;
-                for (key, typ) in &config.variables {
-                    if let Some(value) = child_cfg.variables.get(key) {
-                        if let Err(e) = typ.validate(value, &sandbox) {
-                            err!("Variable {:?} is invalid: {}", key, e);
-                        }
-                    } else {
-                        err!("Variable {:?} is undefined", key);
-                    }
-                    match typ {
-                        TcpPort(TcpPortSettings { activation: Systemd })
-                        => {
-                            nsockets += 1;
-                            let fd = 2+nsockets;
-                            for (port, props) in &config.tcp_ports {
-                                 if props.fd == fd {
-                                    err!("Port {} conflicts with var {:?} \
-                                        for fd: {}. \
-                                        You may change file descriptor to a \
-                                        higher value, or expand 'activation' \
-                                        manually.",
-                                        port, key, fd);
-                                 }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                if nsockets > 0 { // only first time
-                    if config.environ.contains_key("LISTEN_FDS") ||
-                       config.environ.contains_key("LISTEN_NAMES") ||
-                       config.secret_environ.contains_key("LISTEN_FDS") ||
-                       config.secret_environ.contains_key("LISTEN_NAMES")
-                    {
-                        err!("To use 'activation' you should not have any of \
-                              LISTEN_FDS and LISTEN_NAMES in your environ. \
-                              You can remove vars or remove activation \
-                              parameter and propagate sockets manually.");
-                    }
-                }
+                validate_variable_types(&config, &child_cfg, &sandbox);
+                validate_activation(&config);
+                validate_substitutions(&config);
                 // Per-instance validation
                 for i in 0..child_cfg.instances {
                     let name = format!("{}/{}.{}",

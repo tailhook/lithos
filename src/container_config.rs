@@ -484,7 +484,7 @@ impl Variable {
     }
 }
 
-fn replace_vars<F, S>(mut s: &str, mut f: F)
+pub fn replace_vars<F, S>(mut s: &str, mut f: F)
     -> String
     where F: FnMut(&str) -> S,
           S: AsRef<str>,
