@@ -594,7 +594,7 @@ mod test {
 
     #[test]
     fn curve_roundtrip() {
-        use rand::Rng;
+        use rand::RngCore;
         let mut sk1 = [0u8; 32];
         let mut sk2 = [0u8; 32];
         ::rand::OsRng::new().expect("random works").fill_bytes(&mut sk1);
@@ -623,7 +623,7 @@ mod test {
 
     #[test]
     fn curve_roundtrip2() {
-        use rand::Rng;
+        use rand::RngCore;
         let mut sk1 = [0u8; 32];
         let mut sk2 = [0u8; 32];
         ::rand::OsRng::new().expect("random works").fill_bytes(&mut sk1);
