@@ -8,7 +8,8 @@ use blake2::{self, Digest};
 use failure::{Error, ResultExt};
 use ipnetwork::IpNetwork;
 use libc::{close};
-use nix::sched::{setns, CLONE_NEWNET};
+use nix::sched::{setns};
+use nix::sched::CloneFlags;
 use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use nix::sys::socket::{SockAddr, setsockopt, bind, listen};
 use nix::sys::socket::{socket, AddressFamily, SockType, SockFlag, InetAddr};
@@ -123,7 +124,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     }
 
     // jump into parent namespace to add to bridge and up the interface
-    setns(parent_ns.as_raw_fd(), CLONE_NEWNET)?;
+    setns(parent_ns.as_raw_fd(), CloneFlags::CLONE_NEWNET)?;
 
     let mut cmd = unshare::Command::new("/sbin/brctl");
     cmd.arg("addif").arg(&net.bridge).arg(&interface);
@@ -146,7 +147,7 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
     }
 
     // and again to the child to setup internal part and routing
-    setns(my_ns.as_raw_fd(), CLONE_NEWNET)?;
+    setns(my_ns.as_raw_fd(), CloneFlags::CLONE_NEWNET)?;
 
     let mut cmd = unshare::Command::new("/sbin/ip");
     cmd.arg("link").arg("set");
@@ -258,7 +259,7 @@ fn open_socket(port: u16, cfg: &TcpPort, uid: u32, gid: u32)
     let sock = {
         let _fsuid_guard = utils::FsUidGuard::set(uid, gid);
         try!(socket(AddressFamily::Inet,
-            SockType::Stream, SockFlag::empty(), 0)
+            SockType::Stream, SockFlag::empty(), None)
             .map_err(|e| format_err!("Can't create socket: {:?}", e)))
     };
 

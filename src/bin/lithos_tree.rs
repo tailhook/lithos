@@ -33,13 +33,13 @@ use std::os::unix::io::{RawFd, AsRawFd};
 use failure::Error;
 use humantime::format_rfc3339_seconds;
 use libc::{close};
-use nix::fcntl::{fcntl, FdFlag, F_GETFD, F_SETFD, FD_CLOEXEC};
+use nix::fcntl::{fcntl, FdFlag, F_GETFD, F_SETFD};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::socket::{getsockname, SockAddr};
 use nix::sys::socket::{setsockopt, bind, listen};
 use nix::sys::socket::{socket, AddressFamily, SockType, InetAddr};
-use nix::sys::socket::{SOCK_CLOEXEC};
+use nix::sys::socket::{SockFlag};
 use nix::sys::socket::sockopt::{ReuseAddr, ReusePort};
 use nix::unistd::{Pid, getpid};
 use quire::{parse_config, Options as COptions};
@@ -607,7 +607,8 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
 
     let sock = {
         let _fsuid_guard = utils::FsUidGuard::set(uid, gid);
-        try!(socket(AddressFamily::Inet, SockType::Stream, SOCK_CLOEXEC, 0)
+        try!(socket(AddressFamily::Inet, SockType::Stream,
+                    SockFlag::SOCK_CLOEXEC, None)
             .map_err(|e| format_err!("Can't create socket: {:?}", e)))
     };
 
@@ -625,7 +626,7 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
         .and_then(|_| fcntl(sock, F_GETFD))
         .and_then(|flags| fcntl(sock, F_SETFD(
             FdFlag::from_bits(flags).expect("os returned valid flags")
-            & !FD_CLOEXEC)))
+            & !FdFlag::FD_CLOEXEC)))
         .map(|_| ());
     if let Err(e) = result {
         unsafe { close(sock) };
