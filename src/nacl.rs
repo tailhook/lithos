@@ -24,7 +24,7 @@ use crypto::curve25519::{curve25519, curve25519_base, Fe};
 use crypto::poly1305::Poly1305;
 use crypto::salsa20::{Salsa20, hsalsa20};
 use crypto::util::fixed_time_eq;
-use rand::{OsRng, Rng};
+use rand::{OsRng, RngCore};
 use sha2::{self, Digest};
 
 /// The length of the crypto_secretbox key in bytes.
