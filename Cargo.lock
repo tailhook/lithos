@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "lithos"
-version = "0.17.5"
+version = "0.17.6"
 dependencies = [
  "argparse 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
