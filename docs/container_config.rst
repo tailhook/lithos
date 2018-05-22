@@ -79,10 +79,11 @@ TcpPort
               fd: 4
           environ:
             LISTEN_FDS: 1
-            LISTEN_NAMES: "port1:port2"
+            LISTEN_FDNAMES: "port1:port2"
+            LISTEN_PID: "${lithos:pid}"
 
         This works for any number of sockets. And it requires that
-        ``LISTEN_FDS`` and ``LISTEN_NAMES`` were absent in the
+        ``LISTEN_FDS`, ``LISTEN_FDNAMES``, ``LISTEN_PID`` were absent in the
         ``environ`` as written in the file. Also it doesn't allow fine-grained
         control over parameters of the socket and file descriptor numbers.
         Use full form if you need specific options.

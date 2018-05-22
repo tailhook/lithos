@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.6:
+
+v0.17.6
+=======
+
+* Bugfix: systemd protocol support fixed: LISTEN_FDNAMES and LISTEN_PID
+
+
 .. _changelog 0.17.5:
 
 v0.17.5

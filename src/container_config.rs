@@ -165,6 +165,7 @@ pub struct InstantiatedConfig {
     pub restart_process_only: bool,
     pub normal_exit_codes: BTreeSet<i32>,
     pub tcp_ports: HashMap<u16, TcpPort>,
+    pub pid_env_vars: HashSet<String>,
 }
 
 
@@ -285,7 +286,14 @@ impl ContainerConfig {
                 match val {
                     Some(x) => x,
                     None => {
-                        errors1.insert(format!("unknown variable {:?}", varname));
+                        if varname == "lithos:pid" {
+                            errors1.insert("lithos:pid variable \
+                                can only be used in environment as a sole \
+                                value".into());
+                        } else {
+                            errors1.insert(format!("unknown variable {:?}",
+                                varname));
+                        }
                         return format!("<<no var {:?}>>", varname);
                     }
                 }
@@ -305,10 +313,15 @@ impl ContainerConfig {
                 })
                 .collect::<HashMap<_, _>>();
 
+            let mut pid_env_vars = HashSet::new();
             let mut environ = self.environ.iter()
                 .map(|(key, val)| {
-                    (key.clone(),
-                     replace_vars(&val, &mut replacer).into())
+                    if val == "${lithos:pid}" {
+                        pid_env_vars.insert(key.clone());
+                        (key.clone(), "".into())
+                    } else {
+                        (key.clone(), replace_vars(&val, &mut replacer).into())
+                    }
                 })
                 .collect::<BTreeMap<_, _>>();
 
@@ -350,7 +363,8 @@ impl ContainerConfig {
             }
             if !names.is_empty() {
                 environ.insert("LISTEN_FDS".into(), names.len().to_string());
-                environ.insert("LISTEN_NAMES".into(), names.join(":"));
+                environ.insert("LISTEN_FDNAMES".into(), names.join(":"));
+                pid_env_vars.insert("LISTEN_PID".into());
             }
 
             InstantiatedConfig {
@@ -379,6 +393,7 @@ impl ContainerConfig {
                 restart_process_only: self.restart_process_only.clone(),
                 normal_exit_codes: self.normal_exit_codes.clone(),
                 tcp_ports,
+                pid_env_vars,
             }
         };
         if errors1.len() > 0 || errors2.len() > 0 || errors3.len() > 0 {

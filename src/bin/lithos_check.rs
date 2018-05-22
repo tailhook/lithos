@@ -194,12 +194,14 @@ fn validate_activation(config: &ContainerConfig) {
     }
     if nsockets > 0 { // only first time
         if config.environ.contains_key("LISTEN_FDS") ||
-           config.environ.contains_key("LISTEN_NAMES") ||
+           config.environ.contains_key("LISTEN_FDNAMES") ||
+           config.environ.contains_key("LISTEN_PID") ||
            config.secret_environ.contains_key("LISTEN_FDS") ||
-           config.secret_environ.contains_key("LISTEN_NAMES")
+           config.secret_environ.contains_key("LISTEN_FDNAMES") ||
+           config.secret_environ.contains_key("LISTEN_PID")
         {
             err!("To use 'activation' you should not have any of \
-                  LISTEN_FDS and LISTEN_NAMES in your environ. \
+                  LISTEN_FDS, LISTEN_FDNAMES, LISTEN_PID in your environ. \
                   You can remove vars or remove activation \
                   parameter and propagate sockets manually.");
         }
