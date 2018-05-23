@@ -7,6 +7,7 @@
 *.pyc
 __pycache__
 
+/tmp
 /run
 /pkg
 /dist
