@@ -81,7 +81,7 @@ impl<'a> Iterator for SignalIter<'a> {
     }
 }
 
-fn run(options: Options) -> Result<i32, String>
+fn run(options: &Options) -> Result<i32, String>
 {
     let master: MasterConfig = try!(parse_config(&options.master_config,
         &MasterConfig::validator(), &COptions::default())
@@ -394,14 +394,14 @@ fn main() {
             exit(x);
         }
     };
-    match run(options)
+    match run(&options)
     {
         Ok(code) => {
             exit(code);
         }
         Err(e) => {
             write!(&mut stderr(), "Fatal error: {}\n", e).ok();
-            error!("Fatal error: {}", e);
+            error!("Fatal error running {:?}: {}", options.name, e);
             exit(1);
         }
     }

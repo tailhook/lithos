@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.7:
+
+v0.17.7
+=======
+
+* Bugfix: log name of the process when lithos_knot failed
+
+
 .. _changelog 0.17.6:
 
 v0.17.6
