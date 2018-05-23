@@ -1,4 +1,5 @@
 extern crate argparse;
+extern crate env_logger;
 extern crate libc;
 extern crate lithos;
 extern crate quire;
@@ -161,21 +162,23 @@ fn get_tree_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
 }
 
 fn get_knot_info(pid: pid_t, cmdline: &Vec<String>) -> Result<LithosInfo, ()> {
-    let fullname_re = Regex::new(r"^([\w-]+)/([\w-]+)\.(\d+)$").unwrap();
     let args = cmdline.clone();
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let opt = try!(
+    let opt =
         knot_options::Options::parse_specific_args(
             args, &mut out, &mut err)
-        .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid)));
-    fullname_re.captures(&opt.name)
-        .map(|c| KnotInfo(
-            c.get(1).unwrap().as_str().to_string(),
-            c.get(2).unwrap().as_str().to_string(),
-            FromStr::from_str(c.get(3).unwrap().as_str()).unwrap()
-        ))
-        .ok_or(())
+        .map_err(|_| debug!("Can't parse lithos_knot cmdline for {}", pid))?;
+    let mut pair = opt.name.splitn(2, "/");
+    let group = pair.next().unwrap().to_string();
+    let process = pair.next().unwrap_or("<unknown>");
+    let mut num_pair = process.rsplitn(2, ".");
+    let (name, index) =
+        match (num_pair.next().unwrap().parse(), num_pair.next()) {
+            (Ok(n), Some(name)) => (name.to_string(), n),
+            _ => (process.to_string(), 0),
+    };
+    return Ok(KnotInfo(group, name, index));
 }
 
 fn read_process(pid: pid_t) -> Result<Process, IoError> {
@@ -662,6 +665,7 @@ enum Action {
 }
 
 fn main() {
+    env_logger::init();
 
     read_global_consts();
 

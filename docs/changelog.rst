@@ -9,6 +9,7 @@ v0.17.7
 =======
 
 * Bugfix: log name of the process when lithos_knot failed
+* Bugfix: more robust parsing of process names by lithos_ps
 * Feature: add ``@{lithos:pid}`` magic variable
 
 
