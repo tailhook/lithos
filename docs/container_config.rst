@@ -80,7 +80,7 @@ TcpPort
           environ:
             LISTEN_FDS: 1
             LISTEN_FDNAMES: "port1:port2"
-            LISTEN_PID: "${lithos:pid}"
+            LISTEN_PID: "@{lithos:pid}"
 
         This works for any number of sockets. And it requires that
         ``LISTEN_FDS`, ``LISTEN_FDNAMES``, ``LISTEN_PID`` were absent in the
@@ -125,6 +125,15 @@ lithos:name
 
 lithos:config_filename
     Full path of this configuration file as visible from within container
+
+lithos:pid
+    Pid of the process as visible inside of the container. Note: this variable
+    can only be in environment and can only be full value of the variable.
+    I.e. `PID: "@{lithos:pid}"` is fine,
+    but `PID: "pid is @{lithos:pid}"` is **not allowed**. (In most cases
+    this variable is exaclty ``2``, this is expected but might not be always
+    true in some cases).
+
 
 More built-in variables may be added in the future. Built-in variables
 doesn't have to be declared.

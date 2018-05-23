@@ -316,7 +316,7 @@ impl ContainerConfig {
             let mut pid_env_vars = HashSet::new();
             let mut environ = self.environ.iter()
                 .map(|(key, val)| {
-                    if val == "${lithos:pid}" {
+                    if val == "@{lithos:pid}" {
                         pid_env_vars.insert(key.clone());
                         (key.clone(), "".into())
                     } else {
