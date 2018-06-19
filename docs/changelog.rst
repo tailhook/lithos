@@ -3,6 +3,17 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.17.8:
+
+v0.17.8
+=======
+
+* Bugfix: fixes issue with bridged networking when host system
+  is alpine (`#15`__)
+
+__ https://github.com/tailhook/lithos/issues/15
+
+
 .. _changelog 0.17.7:
 
 v0.17.7
