@@ -198,8 +198,8 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
 
     let mut cmd = unshare::Command::new("/usr/bin/arping");
     cmd.arg("-U");
-    cmd.arg(&format!("{}", ip));
     cmd.arg("-c1");
+    cmd.arg(&format!("{}", ip));
     debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
