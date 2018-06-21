@@ -17,7 +17,7 @@ use serde_json::to_vec;
 use unshare::{self, Style};
 
 use lithos::child_config::ChildInstance;
-use lithos::container_config::{InstantiatedConfig, TcpPort};
+use lithos::container_config::{InstantiatedConfig, TcpPort, replace_vars};
 use lithos::sandbox_config::{SandboxConfig, BridgedNetwork};
 use lithos::utils;
 
@@ -196,15 +196,30 @@ fn _setup_bridged(sandbox: &SandboxConfig, _child: &ChildInstance, ip: IpAddr)
         }
     }
 
-    let mut cmd = unshare::Command::new("/usr/bin/arping");
-    cmd.arg("-U");
-    cmd.arg("-c1");
-    cmd.arg(&format!("{}", ip));
-    debug!("Running {}", cmd.display(&Style::short()));
-    match cmd.status() {
-        Ok(s) if s.success() => {}
-        Ok(s) => bail!("arping failed: {}", s),
-        Err(e) => bail!("arping failed: {}", e),
+    if net.after_setup_command.len() > 0 {
+        let mut cmd = unshare::Command::new(&net.after_setup_command[0]);
+        for item in &net.after_setup_command[1..] {
+            if item.contains('@') {
+                cmd.arg(&replace_vars(item, |v| {
+                    match v {
+                        "container_ip" => ip.to_string(),
+                        _ => {
+                            error!("No variable {:?} for after-setup-command. \
+                                    Using empty string.", v);
+                            String::new()
+                        }
+                    }
+                }));
+            } else {
+                cmd.arg(item);
+            }
+        }
+        debug!("Running {}", cmd.display(&Style::short()));
+        match cmd.status() {
+            Ok(s) if s.success() => {}
+            Ok(s) => bail!("after-setup-command failed: {}", s),
+            Err(e) => bail!("after-setup-command failed: {}", e),
+        }
     }
 
     Ok(())

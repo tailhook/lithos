@@ -3,6 +3,17 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.18.0:
+
+v0.18.0
+=======
+
+* Breaking: we don't run ``arping`` after container setup by default,
+  as it `doesn't work in certain environments`__.
+  Use :bopt:`after-setup-command` instead.
+
+__ https://github.com/tailhook/lithos/issues/17
+
 .. _changelog 0.17.8:
 
 v0.17.8

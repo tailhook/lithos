@@ -200,12 +200,58 @@ Reference
         bridge: br0
         network: 10.0.0.0/24
         default_gateway: 10.0.0.1
+        after-setup-command: [/usr/bin/arping, -U, -c1, '@{container_ip}']
 
    .. note:: when bridged network is active your :ref:`process_config` should
       contain a list of ip addresses one for each container.
 
    .. note:: this setting does not affect ``tcp-ports``. So usually you should
       keep :opt:`allow-tcp-ports` setting empty when using bridged network.
+
+   .. versionchanged: 0.18.0
+
+      Previously lithos always called `/usr/bin/arping` now it doesn't but
+      the example of `after-setup-command` shown above does exactly same thing.
+
+   Options:
+
+   .. bopt:: after-setup-command
+
+      Command to run after setting up container namespace but before running
+      actual container. The example shown above sends unsolicited arp packet
+      to notify router and other machines on the network that MAC address
+      corresponding to container's IP is changed.
+
+      Command must have absolute path, and has almost empty environment, so
+      don't assume ``PATH`` is there if you're writing a script. Command runs
+      in *container's network* namespace but with all other namespaces in host
+      system (in particular in *host filesystem* and with permissions of root
+      in host system)
+
+      Replacement variables that work in command-line:
+
+      * ``@{container_ip}`` -- replaced with IP address of a container being
+        set up
+
+      Few examples:
+
+      1. ``[/usr/bin/arping, -U, -c1, '@{container_ip}']`` -- default
+         in v0.17.x. This notifies other peers that MAC address for
+         this IP changed.
+      2. ``[/usr/bin/arping, -c1, '10.0.0.1']`` -- other way to do that, that
+         often does the same as in (1) a side-effect
+         (where 10.0.0.1 is a default gateway)
+      3. ``[/usr/bin/ping, -c1, '10.0.0.1']`` -- doing same as (2) but using
+         ICMP instead of ARP directly
+
+      Most of the time containers should work with empty
+      ``after-setup-command``, but because container gets new MAC address each
+      time it starts, there might be a small delay (~ 5 sec) after container's
+      start where packets going to that IP are lost (so it appears that host
+      is unavailable).
+
+      .. version-added: v0.18.0
+
 
 .. opt:: secrets-private-key
 

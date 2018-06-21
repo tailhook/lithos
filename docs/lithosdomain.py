@@ -14,6 +14,10 @@ def setup(app):
                 objname      = "Process Config Option",
                 indextemplate = "pair: %s; Process Config Option",
             ),
+            bopt = dict(
+                objname      = "Bridge Setup Option",
+                indextemplate = "pair: %s; Bridge Setup Option",
+            ),
             volume = dict(
                 objname      = "Volume Type",
                 indextemplate = "pair: %s; Volume Type",

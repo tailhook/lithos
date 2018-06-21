@@ -15,6 +15,7 @@ pub struct BridgedNetwork {
     #[serde(with="::serde_str")]
     pub network: IpNetwork,
     pub default_gateway: Option<IpAddr>,
+    pub after_setup_command: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +88,7 @@ impl SandboxConfig {
             .member("bridge", Scalar::new())
             .member("network", Scalar::new())
             .member("default_gateway", Scalar::new())
+            .member("after_setup_command", Sequence::new(Scalar::new()))
             .optional())
         .member("secrets_private_key", Scalar::new().optional())
         .member("secrets_namespaces", Sequence::new(Scalar::new()))
