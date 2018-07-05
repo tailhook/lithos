@@ -95,6 +95,7 @@ pub struct TcpPort {
     pub fd: RawFd,
     pub reuse_addr: bool,
     pub reuse_port: bool,
+    pub set_non_block: bool,
     pub listen_backlog: usize,
     pub external: bool,
 }
@@ -263,6 +264,7 @@ impl ContainerConfig {
                 .member("fd", Numeric::new().min(0).optional())
                 .member("reuse_addr", Scalar::new().default(true))
                 .member("reuse_port", Scalar::new().default(false))
+                .member("set_non_block", Scalar::new().default(false))
                 .member("listen_backlog", Scalar::new().default(128))
                 .member("external", Scalar::new().default(false))
             ))
@@ -354,6 +356,7 @@ impl ContainerConfig {
                             fd,
                             reuse_addr: true,
                             reuse_port: false,
+                            set_non_block: false,
                             listen_backlog: 128,
                             external: false,
                         });

@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.18.1:
+
+v0.18.1
+=======
+
+* Feature: add ``set-non-block`` option to tcp-ports
+
+
 .. _changelog 0.18.0:
 
 v0.18.0

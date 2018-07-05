@@ -33,7 +33,7 @@ use std::os::unix::io::{RawFd, AsRawFd};
 use failure::Error;
 use humantime::format_rfc3339_seconds;
 use libc::{close};
-use nix::fcntl::{fcntl, FdFlag, F_GETFD, F_SETFD};
+use nix::fcntl::{fcntl, FdFlag, OFlag, F_GETFD, F_SETFD, F_GETFL, F_SETFL};
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::socket::{getsockname, SockAddr};
@@ -621,6 +621,7 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
     }
     result = result.and_then(|_| bind(sock, &SockAddr::Inet(addr)));
     result = result.and_then(|_| listen(sock, cfg.listen_backlog));
+    result = result.and_then(|_| listen(sock, cfg.listen_backlog));
     // Only reset cloexec flag when socket is fully ready
     result = result
         .and_then(|_| fcntl(sock, F_GETFD))
@@ -628,6 +629,14 @@ fn open_socket(addr: InetAddr, cfg: &TcpPort, uid: u32, gid: u32)
             FdFlag::from_bits(flags).expect("os returned valid flags")
             & !FdFlag::FD_CLOEXEC)))
         .map(|_| ());
+    if cfg.set_non_block {
+        result = result
+            .and_then(|_| fcntl(sock, F_GETFL))
+            .and_then(|flags| fcntl(sock, F_SETFL(
+                OFlag::from_bits(flags).expect("os returned valid flags")
+                | OFlag::O_NONBLOCK)))
+            .map(|_| ());
+    }
     if let Err(e) = result {
         unsafe { close(sock) };
         Err(format_err!("Socket option error: {:?}", e))

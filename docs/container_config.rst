@@ -490,6 +490,7 @@ Reference
         tcp-ports:
           80:
             fd: 3
+            set-non-block: true
         environ:
           NGINX: "3;"
 
@@ -550,6 +551,12 @@ Reference
 
       This should be set to ``true`` only on very high performant servers that
       experience assymetric workload in default case.
+
+    set-non-block
+      (default ``false``) Sets socket into non-blocking mode. This is usually
+      done by an application itself but some of them (especially ones, that
+      don't expect socket to be created by an external utility, e.g. nginx)
+      don't do it themselves.
 
     external
       (default ``false``) If set to ``true`` listen on the port in the
