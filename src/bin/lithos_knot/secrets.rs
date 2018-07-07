@@ -8,11 +8,13 @@ use std::str::from_utf8;
 use base64;
 use blake2::{Blake2b, digest::VariableOutput, digest::Input};
 use failure::{Error, ResultExt};
+use quire::{parse_config, Options};
 use ssh_keys::{PrivateKey, openssh};
 
 use lithos::nacl;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::child_config::ChildInstance;
+use lithos::container_config::{environ_validator};
 
 
 fn parse_private_key(filename: &Path) -> Result<Vec<PrivateKey>, Error> {
@@ -115,6 +117,12 @@ pub fn read_keys(sandbox: &SandboxConfig)
         bail!("No secrets key file defined to decode secrets");
     };
     return Ok(keys);
+}
+
+pub fn parse_file(path: &Path) -> Result<BTreeMap<String, Vec<String>>, String>
+{
+    parse_config(&path, &environ_validator(), &Options::default())
+        .map_err(|e| e.to_string())
 }
 
 pub fn decode(keys: Vec<PrivateKey>, sandbox: &SandboxConfig,

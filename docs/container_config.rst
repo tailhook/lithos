@@ -285,6 +285,35 @@ Reference
 
     See :ref:`encrypted-vars` for more info.
 
+    This option conflicts with :opt:`secret-environ-file`.
+
+.. opt:: secret-environ-file
+
+   Path to the file where to read secret environ from. Instead of including
+   ``secret-environ`` in the container config itself you can use a separate
+   file where data is contained. This is useful to keep single set of secrets
+   shared between multiple containers.
+
+   The target file is also yaml, but it containers just mapping of names of
+   the secrets to their values (or lists). For example:
+
+   .. code-block:: yaml
+
+      PASSWD1: v2:ROit92I5:82HdsExJ:Gd3ocJsr:Hp3pngQZUos5b8ioKVUx40kegM1uDsYWwsWqC1cJ1/1KmQPQQWJZe86xgl1EOIxbuLj6PUlBH8yz5qCnWp//Ofbc
+      PASSWD2:
+      - v2:h+M9Ue9x:82HdsExJ:Gd3ocJsr:/+f4ezLfKIP/mp0xdF7H6gfdM7onHWwbGFQX+M1aB+PoCNQidKyz/1yEGrwxD+i+qBGwLVBIXRqIc5FJ6/hw26CE
+      - v2:ROit92I5:cX9ciQzf:Gd3ocJsr:LMHBRtPFpMRRrljNnkaU6Y9JyVvEukRiDs4mitnTksNGSX5xU/zADWDwEOCOtYoelbJeyDdPhM7Q1mEOSwjeyO317Q==
+
+   Absolute paths here interpreted relative to the container root and relative
+   paths are interpreted relative to the container config itself. Note: we
+   currently support reading file from container's filesystem only, whether
+   reading from a volume works or not is *unspecified* at the moment.
+
+   This option conflicts with :opt:`secret-environ`.
+
+   .. versionadded: v0.18.2
+
+
 .. opt:: workdir
 
     The working directory for target process. Default is ``/``. Working

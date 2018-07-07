@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.18.2:
+
+v0.18.2
+=======
+
+* Feature: add ``secret-environ-file`` which can be used to offload secrets
+  to a separate (perhaps shared) file
+
 .. _changelog 0.18.1:
 
 v0.18.1

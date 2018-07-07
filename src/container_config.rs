@@ -130,6 +130,7 @@ pub struct ContainerConfig {
     pub arguments: Vec<String>,
     pub environ: BTreeMap<String, String>,
     pub secret_environ: BTreeMap<String, Vec<String>>,
+    pub secret_environ_file: Option<PathBuf>,
     pub workdir: PathBuf,
     pub resolv_conf: ResolvConf,
     pub hosts_file: HostsFile,
@@ -204,6 +205,13 @@ pub enum Activation {
     None,
 }
 
+pub fn environ_validator<'x>() -> Mapping<'x> {
+    Mapping::new(
+        Scalar::new(),
+        Sequence::new(Scalar::new())
+        .parser(wrap_into_list))
+}
+
 impl ContainerConfig {
     pub fn validator<'x>() -> Structure<'x> {
         Structure::new()
@@ -238,10 +246,8 @@ impl ContainerConfig {
         .member("environ", Mapping::new(
                 Scalar::new(),
                 Scalar::new()))
-        .member("secret_environ", Mapping::new(
-                Scalar::new(),
-                Sequence::new(Scalar::new())
-                .parser(wrap_into_list)))
+        .member("secret_environ", environ_validator())
+        .member("secret_environ_file", Scalar::new().optional())
         .member("workdir", Scalar::new().default("/"))
         .member("resolv_conf", Structure::new()
             .member("mount", Scalar::new().optional())

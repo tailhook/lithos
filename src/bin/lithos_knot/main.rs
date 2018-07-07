@@ -213,7 +213,9 @@ fn run(options: &Options) -> Result<i32, String>
             .map_err(|e| error!("Error setting cgroup limit: {}", e)).ok();
     }
 
-    let keys = if container.secret_environ.len() > 0 {
+    let has_secrets = container.secret_environ_file.is_some() ||
+                      !container.secret_environ.is_empty();
+    let keys = if has_secrets {
         Some(secrets::read_keys(&sandbox)
             .map_err(|e| format!("Error decoding private keys: {}", e))?)
     } else {
@@ -225,8 +227,22 @@ fn run(options: &Options) -> Result<i32, String>
     try!(unmount(Path::new("/tmp")));
 
     if let Some(keys) = keys {
+        let senv = if let Some(ref path) = container.secret_environ_file {
+            if !container.secret_environ.is_empty() {
+                return Err(format!("secret-environ and secret-environ-file \
+                    settings are mutually exclusive"));
+            }
+
+            let path = Path::new(&options.config.config).parent()
+                .expect("file always have parent path").join(path);
+            Some(secrets::parse_file(&path)
+                .map_err(|e| format!("Can't read secret environ file {:?}: {}",
+                                     path, e))?)
+        } else {
+            None
+        };
         let secrets = secrets::decode(keys, &sandbox, &options.config,
-            &container.secret_environ)
+            senv.as_ref().unwrap_or(&container.secret_environ))
             .map_err(|e| format!("Error decoding secrets: {}", e))?;
         local.environ.extend(secrets);
     }
