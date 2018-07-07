@@ -134,13 +134,6 @@ fn run(options: &Options) -> Result<i32, String>
         lithos_config_filename: &options.config.config,
     }).map_err(|e| format!("Variable substitution error: {}", e.join("; ")))?;
 
-    if container.secret_environ.len() > 0 {
-        let secrets = secrets::decode(&sandbox, &options.config,
-            &container.secret_environ)
-            .map_err(|e| format!("Error decoding secrets: {}", e))?;
-        local.environ.extend(secrets);
-    }
-
     let user_id = if
         let Some(user_id) = local.user_id.or(sandbox.default_user)
     {
@@ -220,9 +213,23 @@ fn run(options: &Options) -> Result<i32, String>
             .map_err(|e| error!("Error setting cgroup limit: {}", e)).ok();
     }
 
+    let keys = if container.secret_environ.len() > 0 {
+        Some(secrets::read_keys(&sandbox)
+            .map_err(|e| format!("Error decoding private keys: {}", e))?)
+    } else {
+        None
+    };
+
     let mount_dir = master.runtime_dir.join(&master.mount_dir);
     try!(change_root(&mount_dir, &mount_dir.join("tmp")));
     try!(unmount(Path::new("/tmp")));
+
+    if let Some(keys) = keys {
+        let secrets = secrets::decode(keys, &sandbox, &options.config,
+            &container.secret_environ)
+            .map_err(|e| format!("Error decoding secrets: {}", e))?;
+        local.environ.extend(secrets);
+    }
 
     try!(set_fileno_limit(local.fileno_limit)
         .map_err(|e| format!("Error setting file limit: {}", e)));

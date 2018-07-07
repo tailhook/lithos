@@ -106,22 +106,21 @@ fn decrypt_pair(keys: &[PrivateKey], namespaces: &HashSet<&str>,
     Err(errs)
 }
 
-pub fn decode(sandbox: &SandboxConfig, child_config: &ChildInstance,
-    secrets: &BTreeMap<String, Vec<String>>)
-    -> Result<BTreeMap<String, String>, Error>
+pub fn read_keys(sandbox: &SandboxConfig)
+    -> Result<Vec<PrivateKey>, Error>
 {
-    if secrets.len() == 0 {
-        // do not read keys
-        return Ok(BTreeMap::new());
-    }
-
     let keys = if let Some(ref filename) = sandbox.secrets_private_key {
         parse_private_key(&filename)?
     } else {
-        bail!("No secrets key file defined to decode secrets: {:?}",
-            secrets.keys());
+        bail!("No secrets key file defined to decode secrets");
     };
+    return Ok(keys);
+}
 
+pub fn decode(keys: Vec<PrivateKey>, sandbox: &SandboxConfig,
+    child_config: &ChildInstance, secrets: &BTreeMap<String, Vec<String>>)
+    -> Result<BTreeMap<String, String>, Error>
+{
     let mut all_namespaces = HashSet::new();
     if sandbox.secrets_namespaces.len() == 0 {
         all_namespaces.insert("");
