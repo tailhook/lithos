@@ -53,6 +53,8 @@ TcpPort
     Allows a number between 1-65535 and ensures that the number matches
     port range allowed in sandbox (see :opt:`allow-tcp-ports`)
 
+    .. _activation:
+
     .. versionchanged:: 0.17.4
 
        Added ``activation`` parameter as a shortcut to support systemd
