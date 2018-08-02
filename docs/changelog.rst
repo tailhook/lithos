@@ -3,6 +3,16 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.18.3:
+
+v0.18.3
+=======
+
+* Bugfix: it looks like that reading through ``/proc/`` is inherently racy,
+  i.e. some process may be skipped. This commit fixes walk faster and traverse
+  directory twice. More elaborate fix will be implemented in future.
+
+
 .. _changelog 0.18.2:
 
 v0.18.2
