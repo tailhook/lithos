@@ -148,12 +148,12 @@ containers:
     - !Ubuntu xenial
     - &pkgs !Install [make, gcc, libc-dev, ca-certificates, git, lsb-release, vim]
     - &rust !TarInstall
-      url: https://static.rust-lang.org/dist/rust-1.26.0-x86_64-unknown-linux-gnu.tar.gz
+      url: https://static.rust-lang.org/dist/rust-1.28.0-x86_64-unknown-linux-gnu.tar.gz
       script: "./install.sh --prefix=/usr --components=rustc,cargo \
                --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - &bulk !Tar
-      url: "https://github.com/tailhook/bulk/releases/download/v0.4.9/bulk-v0.4.9.tar.gz"
-      sha256: 23471a9986274bb4b7098c03e2eb7e1204171869b72c45385fcee1c64db2d111
+      url: "https://github.com/tailhook/bulk/releases/download/v0.4.12/bulk-v0.4.12.tar.gz"
+      sha256: 7deeb4895b3909afea46194ef01bafdeb30ff89fc4a7b6497172ba117734040e
       path: /
 
     environ: &environ
@@ -188,7 +188,7 @@ containers:
     - *pkgs
     - *rust
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-std-1.26.0-x86_64-unknown-linux-musl.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-std-1.28.0-x86_64-unknown-linux-musl.tar.gz"
       script: "./install.sh --prefix=/musl \
                --components=rust-std-x86_64-unknown-linux-musl"
     - !Sh 'ln -s /musl/lib/rustlib/x86_64-unknown-linux-musl /usr/lib/rustlib/x86_64-unknown-linux-musl'
