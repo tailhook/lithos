@@ -68,6 +68,8 @@ use lithos::tree_options::Options;
 
 use self::Timeout::*;
 
+mod args;
+
 
 pub const CONFIG_LOG_SIZE: u64 = 10_485_760;
 
@@ -175,46 +177,6 @@ fn global_init(master: &MasterConfig, options: &Options)
 fn global_cleanup(master: &MasterConfig) {
     clean_dir(&master.runtime_dir.join(&master.state_dir), false)
         .unwrap_or_else(|e| error!("Error removing state dir: {}", e));
-}
-
-fn discard<E>(_: E) { }
-
-fn _read_args(pid: Pid, global_config: &Path)
-    -> Result<(String, String), ()>
-{
-    let start = Instant::now();
-    loop {
-        let mut buf = String::with_capacity(4096);
-        try!(File::open(&format!("/proc/{}/cmdline", pid))
-             .and_then(|mut f| f.read_to_string(&mut buf))
-             .map_err(discard));
-        let args: Vec<&str> = buf[..].splitn(8, '\0').collect();
-
-        if Path::new(args[0]).file_name()
-          .and_then(|x| x.to_str()) == Some("lithos_tree")
-        {
-            if start + Duration::new(1, 0) > Instant::now() {
-                sleep(Duration::from_millis(2));
-                continue;
-            } else {
-                error!("Child did not exec'd in > 1 sec");
-                return Err(());
-            }
-        }
-
-        if args.len() != 8
-           || Path::new(args[0]).file_name()
-              .and_then(|x| x.to_str()) != Some("lithos_knot")
-           || args[1] != "--name"
-           || args[3] != "--master"
-           || Path::new(args[4]) != global_config
-           || args[5] != "--config"
-           || args[7] != ""
-        {
-            return Err(());
-        }
-        return Ok((args[2].to_string(), args[6].to_string()));
-    }
 }
 
 fn _is_child(pid: Pid, ppid: Pid) -> bool {
@@ -328,7 +290,7 @@ fn recover_processes(children: &mut HashMap<Pid, Child>,
         if !_is_child(pid, mypid) {
             continue;
         }
-        if let Ok((name, cfg_text)) = _read_args(pid, config_file) {
+        if let Ok((name, cfg_text)) = args::read(pid, config_file) {
             match configs.remove(&name) {
                 Some(child) => {
                     if &child.config[..] != &cfg_text[..] {
