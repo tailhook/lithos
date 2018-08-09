@@ -276,6 +276,7 @@ fn recover_processes(children: &mut HashMap<Pid, Child>,
     configs: &mut HashMap<String, Process>,
     queue: &mut Queue<Timeout>, metrics: &metrics::Metrics, config_file: &Path)
 {
+    use args::Child::*;
     let mypid = getpid();
     let now = Instant::now();
 
@@ -290,47 +291,49 @@ fn recover_processes(children: &mut HashMap<Pid, Child>,
         if !_is_child(pid, mypid) {
             continue;
         }
-        if let Ok((name, cfg_text)) = args::read(pid, config_file) {
-            match configs.remove(&name) {
+        match args::read(pid, config_file) {
+            Normal { name, config } => match configs.remove(&name) {
                 Some(child) => {
-                    if &child.config[..] != &cfg_text[..] {
+                    if &child.config[..] != &config[..] {
                         warn!("Config mismatch: {}, pid: {}. Upgrading...",
                               name, pid);
                         kill(pid, Signal::SIGTERM)
                         .map_err(|e|
                             error!("Error sending TERM to {}: {:?}",
                                 pid, e)).ok();
-                        queue.add(now +
-                                duration(child.inner_config.kill_timeout),
-                            Kill(pid));
                     }
                     metrics.processes[&child.base_name].running.incr(1);
                     metrics.running.incr(1);
                     children.insert(pid, Child::Process(child));
                 }
                 None => {
-                    warn!("Undefined child name: {}, pid: {}. \
+                    warn!("Retired child: {}, pid: {}. \
                         Sending SIGTERM...", name, pid);
                     children.insert(pid, Child::Unidentified(name));
                     kill(pid, Signal::SIGTERM)
                     .map_err(|e| error!("Error sending TERM to {}: {:?}",
                         pid, e)).ok();
-                    queue.add(
-                        now + duration(DEFAULT_KILL_TIMEOUT),
-                        Kill(pid));
                     metrics.unknown.incr(1);
                 }
-            };
-        } else {
-            warn!("Undefined child, pid: {}. Sending SIGTERM...", pid);
-            kill(pid, Signal::SIGTERM)
-                .map_err(|e| error!("Error sending TERM to {}: {:?}",
-                    pid, e)).ok();
-            queue.add(
-                now + duration(DEFAULT_KILL_TIMEOUT),
-                Kill(pid));
-            metrics.unknown.incr(1);
-            continue;
+            }
+            Zombie => {
+                debug!("Zombie process {}. Will reap shortly.", pid);
+            }
+            Error => {
+                // error is already logged
+            }
+            Unidentified => {
+                // TODO(tailhook) there shouldn't be any such processes.
+                // So maybe just kill?
+                warn!("Undefined child, pid: {}. Sending SIGTERM...", pid);
+                kill(pid, Signal::SIGTERM)
+                    .map_err(|e| error!("Error sending TERM to {}: {:?}",
+                        pid, e)).ok();
+                queue.add(
+                    now + duration(DEFAULT_KILL_TIMEOUT),
+                    Kill(pid));
+                metrics.unknown.incr(1);
+            }
         }
     }
 }

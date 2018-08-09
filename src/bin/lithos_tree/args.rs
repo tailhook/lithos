@@ -1,24 +1,42 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::Path;
 use std::thread::sleep;
 use std::time::{Instant, Duration};
 
 use nix::unistd::Pid;
 
+pub enum Child {
+    Normal { name: String, config: String },
+    Zombie,
+    Unidentified,
+    Error,
+}
 
 fn discard<E>(_: E) { }
 
-pub fn read(pid: Pid, global_config: &Path)
-    -> Result<(String, String), ()>
-{
+pub fn read(pid: Pid, global_config: &Path) -> Child {
+    use self::Child::*;
     let start = Instant::now();
     loop {
         let mut buf = String::with_capacity(4096);
-        File::open(&format!("/proc/{}/cmdline", pid))
+        match File::open(&format!("/proc/{}/cmdline", pid))
              .and_then(|mut f| f.read_to_string(&mut buf))
-             .map_err(discard)?;
+        {
+            Ok(_) => {},
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
+                // TODO(tailhook) actually already dead, but shouldn't happen
+                return Zombie;
+            }
+            Err(e) => {
+                warn!("Error opening /proc/{}/cmdline: {}", pid, e);
+                return Error;
+            }
+        }
         let args: Vec<&str> = buf[..].splitn(8, '\0').collect();
+        if args[0].len() == 0 {
+            return Zombie;
+        }
 
         if Path::new(args[0]).file_name()
           .and_then(|x| x.to_str()) == Some("lithos_tree")
@@ -28,7 +46,7 @@ pub fn read(pid: Pid, global_config: &Path)
                 continue;
             } else {
                 error!("Child did not exec'd in > 1 sec");
-                return Err(());
+                return Error;
             }
         }
 
@@ -41,8 +59,11 @@ pub fn read(pid: Pid, global_config: &Path)
            || args[5] != "--config"
            || args[7] != ""
         {
-            return Err(());
+            return Unidentified;
         }
-        return Ok((args[2].to_string(), args[6].to_string()));
+        return Normal {
+            name: args[2].to_string(),
+            config: args[6].to_string(),
+        };
     }
 }
