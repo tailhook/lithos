@@ -13,8 +13,6 @@ pub enum Child {
     Error,
 }
 
-fn discard<E>(_: E) { }
-
 pub fn read(pid: Pid, global_config: &Path) -> Child {
     use self::Child::*;
     let start = Instant::now();

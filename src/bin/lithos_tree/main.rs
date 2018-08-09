@@ -26,7 +26,6 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, Instant, Duration};
 use std::process::exit;
-use std::thread::sleep;
 use std::collections::{HashMap, BTreeMap, HashSet};
 use std::os::unix::io::{RawFd, AsRawFd};
 

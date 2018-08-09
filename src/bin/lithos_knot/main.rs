@@ -55,30 +55,37 @@ mod secrets;
 
 struct SignalIter<'a> {
     trap: &'a mut Trap,
-    interrupt: bool,
+    deadline: Option<Instant>,
 }
 
 impl<'a> SignalIter<'a> {
     fn new(trap: &mut Trap) -> SignalIter {
         SignalIter {
             trap: trap,
-            interrupt: false,
+            deadline: None,
         }
     }
+    fn set_deadline(&mut self, time: Instant) {
+        self.deadline = Some(time);
+    }
     fn interrupt(&mut self) {
-        self.interrupt = true;
+        self.deadline = Some(Instant::now());
     }
 }
 
 impl<'a> Iterator for SignalIter<'a> {
     type Item = Signal;
     fn next(&mut self) -> Option<Signal> {
-        if self.interrupt {
-            return self.trap.wait(Instant::now());
+        if let Some(dline) = self.deadline {
+            return self.trap.wait(dline);
         } else {
             return self.trap.next();
         }
     }
+}
+
+fn duration(inp: f32) -> Duration {
+    Duration::from_millis((inp * 1000.) as u64)
 }
 
 fn run(options: &Options) -> Result<i32, String>
@@ -312,6 +319,8 @@ fn run(options: &Options) -> Result<i32, String>
     let mut exit_code = 2;
     loop {
         let start = Instant::now();
+        let mut killed = false;
+        let mut dead = false;
 
         if !local.interactive {
             if let Some(ref path) = local.stdout_stderr_file {
@@ -361,11 +370,18 @@ fn run(options: &Options) -> Result<i32, String>
                     debug!("Received SIGTERM signal, propagating");
                     should_exit = true;
                     exit_code = 0;
-                    child.signal(SIGTERM).ok();
+                    if !killed {
+                        if let Ok(()) = child.signal(SIGTERM) {
+                            killed = true;
+                        }
+                        iter.set_deadline(
+                            Instant::now() + duration(container.kill_timeout));
+                    }
                 }
                 SIGCHLD => {
                     for (pid, status) in reap_zombies() {
                         if pid == child.pid() {
+                            dead = true;
                             if status.signal() == Some(SIGTERM as i32) ||
                                 status.code().map(|c| {
                                     if container.normal_exit_codes.is_empty() {
@@ -394,6 +410,22 @@ fn run(options: &Options) -> Result<i32, String>
                 }
                 _ => unreachable!(),
             }
+        }
+        if !dead {
+            let uptime = Instant::now() - start;
+            error!("Process {:?} \
+                did not respond to SIGTERM in {}s, uptime {}s. \
+                Killing container so hanging process will die.",
+                options.name, container.kill_timeout, uptime.as_secs());
+            stderr_file.write_all(
+                format!("{}: ----- \
+                    Process {:?} did not respond to SIGTERM in {}, \
+                    uptime {}s. Killing.. -----\n",
+                    format_rfc3339_seconds(SystemTime::now()),
+                    options.name, container.kill_timeout, uptime.as_secs(),
+                ).as_bytes()
+            ).ok();
+            return Ok(3);
         }
 
         if should_exit {

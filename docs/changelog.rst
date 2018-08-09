@@ -3,6 +3,18 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.18.4:
+
+v0.18.4
+=======
+
+* Bugfix: only send SIGTERM to the process once when upgrading or stopping it
+  (this prevents certain issues with the applications themselves)
+* Bugfix: use don't reset kill timeout on SIGQUIT of lithos_tree
+* Bugfix: correctly wait for kill timeout for retired children (not in the
+  config any more)
+
+
 .. _changelog 0.18.3:
 
 v0.18.3
