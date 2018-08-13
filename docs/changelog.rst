@@ -3,6 +3,14 @@ Lithos Changes By Release
 =========================
 
 
+.. _changelog 0.18.5:
+
+v0.18.5
+=======
+
+* Bugfix: made ``default-gateway`` in ``bridged-network`` optional
+
+
 .. _changelog 0.18.4:
 
 v0.18.4

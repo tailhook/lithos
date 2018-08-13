@@ -87,7 +87,7 @@ impl SandboxConfig {
         .member("bridged_network", Structure::new()
             .member("bridge", Scalar::new())
             .member("network", Scalar::new())
-            .member("default_gateway", Scalar::new())
+            .member("default_gateway", Scalar::new().optional())
             .member("after_setup_command", Sequence::new(Scalar::new()))
             .optional())
         .member("secrets_private_key", Scalar::new().optional())
