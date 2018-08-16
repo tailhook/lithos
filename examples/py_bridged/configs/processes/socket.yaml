@@ -1,0 +1,11 @@
+socket:
+  instances: 1
+  image: py_bridged-example
+  config: /config/socket.yaml
+  ip-addresses: [10.41.0.2]
+
+py:
+  kind: Command
+  image: py_bridged-example
+  config: /config/py.yaml
+  ip-addresses: [10.41.0.3]

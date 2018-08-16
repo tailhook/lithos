@@ -1,0 +1,14 @@
+allow-users: [1]
+allow-groups: [0-1]
+image-dir: /var/lib/lithos/images
+uid-map:
+- {outside: 10000, inside: 0, count: 2}
+gid-map:
+- {outside: 10000, inside: 0, count: 2}
+allow-tcp-ports: [77]
+
+bridged-network:
+  bridge: br0
+  network: 10.71.0.0/16
+  # default_gateway: 10.71.0.1
+  # after-setup-command: [/usr/bin/arping, -U, -c1, '@{container_ip}']
