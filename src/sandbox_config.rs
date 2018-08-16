@@ -9,7 +9,7 @@ use quire::validate::{Structure};
 use range::Range;
 
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct BridgedNetwork {
     pub bridge: String,
     #[serde(with="::serde_str")]

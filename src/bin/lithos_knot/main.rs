@@ -25,24 +25,27 @@ use std::path::{Path};
 use std::time::{SystemTime, Instant, Duration};
 use std::thread::sleep;
 use std::process::exit;
+use std::net::SocketAddr;
 
 use humantime::format_rfc3339_seconds;
 use libmount::BindMount;
 use quire::{parse_config, Options as COptions};
 use signal::trap::Trap;
-use unshare::{Command, Stdio, Fd, Style, reap_zombies};
+use unshare::{Command, Stdio, Style, reap_zombies, Capability, Namespace};
 use nix::sys::signal::Signal;
 use nix::sys::signal::{SIGINT, SIGTERM, SIGCHLD};
+use nix::sys::socket::{InetAddr, SockAddr};
 
 use lithos::cgroup;
 use lithos::utils::{check_mapping, in_mapping, change_root};
+use lithos::utils::{temporary_change_root};
 use lithos::range::in_range;
 use lithos::master_config::MasterConfig;
 use lithos::sandbox_config::SandboxConfig;
 use lithos::container_config::{ContainerConfig, Variables};
 use lithos::container_config::ContainerKind::Daemon;
 use lithos::setup::{init_logging};
-use lithos::mount::{unmount, mount_private, mount_ro_recursive};
+use lithos::mount::{unmount, mount_private, mount_ro_recursive, mount_pseudo};
 use lithos::limits::{set_fileno_limit};
 use lithos::knot_options::Options;
 
@@ -189,12 +192,6 @@ fn run(options: &Options) -> Result<i32, String>
     }
 
     info!("[{}] Starting container", options.name);
-    if sandbox.bridged_network.is_some() {
-        setup_network::setup(&sandbox, &options.config, &local)?;
-    }
-    let extra_fds = setup_network::listen_fds(
-        &sandbox, &options.config, &local)?;
-
     let state_dir = &master.runtime_dir.join(&master.state_dir)
         .join(&options.name);
     try!(prepare_state_dir(state_dir, &local, &sandbox));
@@ -229,38 +226,47 @@ fn run(options: &Options) -> Result<i32, String>
         None
     };
 
-    let mount_dir = master.runtime_dir.join(&master.mount_dir);
-    try!(change_root(&mount_dir, &mount_dir.join("tmp")));
-    try!(unmount(Path::new("/tmp")));
+    if let Some(ref keys) = keys {
+        temporary_change_root(&mount_dir, || {
+            let senv = if let Some(ref path) = container.secret_environ_file {
+                if !container.secret_environ.is_empty() {
+                    return Err(format!("secret-environ and \
+                        secret-environ-file \
+                        settings are mutually exclusive"));
+                }
 
-    if let Some(keys) = keys {
-        let senv = if let Some(ref path) = container.secret_environ_file {
-            if !container.secret_environ.is_empty() {
-                return Err(format!("secret-environ and secret-environ-file \
-                    settings are mutually exclusive"));
-            }
-
-            let path = Path::new(&options.config.config).parent()
-                .expect("file always have parent path").join(path);
-            Some(secrets::parse_file(&path)
-                .map_err(|e| format!("Can't read secret environ file {:?}: {}",
-                                     path, e))?)
-        } else {
-            None
-        };
-        let secrets = secrets::decode(keys, &sandbox, &options.config,
-            senv.as_ref().unwrap_or(&container.secret_environ))
-            .map_err(|e| format!("Error decoding secrets: {}", e))?;
-        local.environ.extend(secrets);
+                let path = Path::new(&options.config.config).parent()
+                    .expect("file always have parent path").join(path);
+                Some(secrets::parse_file(&path)
+                    .map_err(|e| format!("Can't read secret \
+                                         environ file {:?}: {}",
+                                         path, e))?)
+            } else {
+                None
+            };
+            let secrets = secrets::decode(keys, &sandbox, &options.config,
+                senv.as_ref().unwrap_or(&container.secret_environ))
+                .map_err(|e| format!("Error decoding secrets: {}", e))?;
+            local.environ.extend(secrets);
+            Ok(())
+        })?;
     }
+    drop(keys);
 
     try!(set_fileno_limit(local.fileno_limit)
         .map_err(|e| format!("Error setting file limit: {}", e)));
 
+    // This is needed for unshare to properly initialize user namespace
+    mount_pseudo(&Path::new("/proc"), "proc", "", false)?;
 
     let mut cmd = Command::new(&local.executable);
     cmd.uid(user_id);
     cmd.gid(group_id);
+    if sandbox.bridged_network.is_some() {
+        cmd.keep_caps(&[
+            Capability::CAP_NET_BIND_SERVICE,
+        ]);
+    }
     cmd.current_dir(&local.workdir);
 
     // Should we propagate TERM?
@@ -302,14 +308,41 @@ fn run(options: &Options) -> Result<i32, String>
                 count: g.count,
             }).collect());
     }
-    if extra_fds.len() > 0 {
-        for (dest_fd, sock_fd) in extra_fds {
-            if dest_fd == 0 {
-                cmd.stdin(Stdio::from_file(sock_fd));
-            } else {
-                cmd.file_descriptor(dest_fd, Fd::from_file(sock_fd));
+
+    let mount_dir = master.runtime_dir.join(&master.mount_dir);
+    let child_setup = move |_pid| {
+        change_root(&mount_dir, &mount_dir.join("tmp"))?;
+        unmount(Path::new("/tmp"))?;
+        Ok(())
+    };
+    if let Some(ref net) = sandbox.bridged_network {
+        cmd.unshare(&[Namespace::Net]);
+
+        let net = net.clone();
+        let child = options.config.clone();
+        cmd.before_unfreeze(move |pid| {
+            setup_network::setup(pid, &net, &child)?;
+            child_setup(pid)?;
+            Ok(())
+        });
+        let sockets = local.tcp_ports.iter()
+            .filter(|(_, v)| !v.external)
+            .map(|(port, cfg)| {
+                let addr = SockAddr::new_inet(InetAddr::from_std(
+                    &SocketAddr::new(cfg.host.0, *port)));
+                (cfg.clone(), addr)
+            })
+            .collect::<Vec<_>>();
+        cmd.before_exec(move || {
+            for &(ref cfg, ref addr) in &sockets {
+                unsafe {
+                    setup_network::open_socket(cfg, addr)?;
+                }
             }
-        }
+            Ok(())
+        });
+    } else {
+        cmd.before_unfreeze(child_setup);
     }
     let rtimeo = Duration::from_millis((local.restart_timeout*1000.0) as u64);
 

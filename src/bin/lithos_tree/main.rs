@@ -115,7 +115,7 @@ impl AsRawFd for Socket {
 
 
 fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
-    cfg: &str, options: &Options, sandbox: &SandboxConfig)
+    cfg: &str, options: &Options, _sandbox: &SandboxConfig)
     -> Command
 {
     let mut cmd = Command::new(&bin.lithos_knot);
@@ -140,11 +140,8 @@ fn new_child(bin: &Binaries, name: &str, master_fn: &Path,
     if let Some(x) = env::var_os("RUST_BACKTRACE") {
         cmd.env("RUST_BACKTRACE", x);
     }
-    cmd.unshare([Namespace::Mount, Namespace::Uts,
-                 Namespace::Ipc, Namespace::Pid].iter().cloned());
-    if sandbox.bridged_network.is_some() {
-        cmd.unshare([Namespace::Net].iter().cloned());
-    }
+    cmd.unshare(&[Namespace::Mount, Namespace::Uts,
+                  Namespace::Ipc, Namespace::Pid]);
     cmd
 }
 

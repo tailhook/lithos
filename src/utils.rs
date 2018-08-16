@@ -42,9 +42,9 @@ extern {
 }
 
 
-pub fn temporary_change_root<T, F>(path: &Path, fun: F)
+pub fn temporary_change_root<T, F>(path: &Path, mut fun: F)
     -> Result<T, String>
-    where F: Fn() -> Result<T, String>
+    where F: FnMut() -> Result<T, String>
 {
     // The point is: if we gat fatal signal in the chroot, we have 2 issues:
     //

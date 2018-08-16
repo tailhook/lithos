@@ -109,10 +109,10 @@ fn run(master_cfg: &Path, sandbox_name: String,
     }
     cmd.arg("--");
     cmd.args(&args);
-    cmd.unshare([Namespace::Mount, Namespace::Uts,
-                 Namespace::Ipc, Namespace::Pid].iter().cloned());
+    cmd.unshare(&[Namespace::Mount, Namespace::Uts,
+                 Namespace::Ipc, Namespace::Pid]);
     if sandbox.bridged_network.is_some() {
-        cmd.unshare([Namespace::Net].iter().cloned());
+        cmd.unshare(&[Namespace::Net]);
     }
 
     info!("Running {:?}", cmd);

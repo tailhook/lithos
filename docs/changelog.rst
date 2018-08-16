@@ -3,12 +3,19 @@ Lithos Changes By Release
 =========================
 
 
-.. _changelog 0.18.5:
+.. _changelog 0.19.0:
 
-v0.18.5
+v0.19.0
 =======
 
+* Feature: new process in bridged network gets CAP_NET_BIND_SERVICE
+  capability in it's own network namespace (effectively allowing it to
+  bind port 80, 443 or any other port < 1024)
 * Bugfix: made ``default-gateway`` in ``bridged-network`` optional
+
+Note: we're making this release major to show that it requires more testing
+than regular update. This is because we changed internals quite a bit to
+allow network namespace owned by process.
 
 
 .. _changelog 0.18.4:

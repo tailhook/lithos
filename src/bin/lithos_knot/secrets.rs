@@ -125,7 +125,7 @@ pub fn parse_file(path: &Path) -> Result<BTreeMap<String, Vec<String>>, String>
         .map_err(|e| e.to_string())
 }
 
-pub fn decode(keys: Vec<PrivateKey>, sandbox: &SandboxConfig,
+pub fn decode(keys: &Vec<PrivateKey>, sandbox: &SandboxConfig,
     child_config: &ChildInstance, secrets: &BTreeMap<String, Vec<String>>)
     -> Result<BTreeMap<String, String>, Error>
 {
