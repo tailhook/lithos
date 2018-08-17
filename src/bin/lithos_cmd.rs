@@ -111,9 +111,6 @@ fn run(master_cfg: &Path, sandbox_name: String,
     cmd.args(&args);
     cmd.unshare(&[Namespace::Mount, Namespace::Uts,
                  Namespace::Ipc, Namespace::Pid]);
-    if sandbox.bridged_network.is_some() {
-        cmd.unshare(&[Namespace::Net]);
-    }
 
     info!("Running {:?}", cmd);
 
