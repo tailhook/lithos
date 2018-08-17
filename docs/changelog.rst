@@ -12,6 +12,8 @@ v0.19.0
   capability in it's own network namespace (effectively allowing it to
   bind port 80, 443 or any other port < 1024)
 * Bugfix: made ``default-gateway`` in ``bridged-network`` optional
+* Bugfix: lithos now deletes veth interface if that exists, before starting
+  a process (previously you needed to manually resolve this issue)
 
 Note: we're making this release major to show that it requires more testing
 than regular update. This is because we changed internals quite a bit to

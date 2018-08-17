@@ -12,6 +12,7 @@ use libc::{close};
 use nix::sched::{setns};
 use nix::sched::CloneFlags;
 use nix::sys::socket::{SockAddr};
+use nix::ifaddrs::getifaddrs;
 use serde_json::to_vec;
 use unshare::{self, Style};
 
@@ -90,6 +91,17 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
     let iinterface = interface.replace("_", "-");
     assert!(iinterface != interface);
 
+    if getifaddrs()?.any(|x| x.interface_name == interface) {
+        let mut cmd = unshare::Command::new("/bin/ip");
+        cmd.arg("link");
+        cmd.arg("del").arg(&interface);
+        debug!("Running {}", cmd.display(&Style::short()));
+        match cmd.status() {
+            Ok(s) if s.success() => {}
+            Ok(s) => bail!("ip link del failed: {}", s),
+            Err(e) => bail!("ip link del failed: {}", e),
+        }
+    }
     {
         // Create interface in the child namespace
         // This helps to keep parent namespace clean if this process crashes
@@ -104,8 +116,8 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
         debug!("Running {}", cmd.display(&Style::short()));
         match cmd.status() {
             Ok(s) if s.success() => {}
-            Ok(s) => bail!("ip link failed: {}", s),
-            Err(e) => bail!("ip link failed: {}", e),
+            Ok(s) => bail!("ip link add failed: {}", s),
+            Err(e) => bail!("ip link add failed: {}", e),
         }
 
         // The move just external part of the interface to the parent namespace
@@ -118,8 +130,8 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
         debug!("Running {}", cmd.display(&Style::short()));
         match cmd.status() {
             Ok(s) if s.success() => {}
-            Ok(s) => bail!("ip link failed: {}", s),
-            Err(e) => bail!("ip link failed: {}", e),
+            Ok(s) => bail!("ip link set failed: {}", s),
+            Err(e) => bail!("ip link set failed: {}", e),
         }
     }  // return into parent namespace to add to bridge and up the interface
 
@@ -139,8 +151,8 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
     debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
-        Ok(s) => bail!("ip link failed: {}", s),
-        Err(e) => bail!("ip link failed: {}", e),
+        Ok(s) => bail!("ip link up failed: {}", s),
+        Err(e) => bail!("ip link up failed: {}", e),
     }
 
     {
@@ -153,8 +165,8 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
         debug!("Running {}", cmd.display(&Style::short()));
         match cmd.status() {
             Ok(s) if s.success() => {}
-            Ok(s) => bail!("ip link failed: {}", s),
-            Err(e) => bail!("ip link failed: {}", e),
+            Ok(s) => bail!("ip link up lo failed: {}", s),
+            Err(e) => bail!("ip link up lo failed: {}", e),
         }
 
         let mut cmd = unshare::Command::new("/sbin/ip");
@@ -166,8 +178,8 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
         debug!("Running {}", cmd.display(&Style::short()));
         match cmd.status() {
             Ok(s) if s.success() => {}
-            Ok(s) => bail!("ip link failed: {}", s),
-            Err(e) => bail!("ip link failed: {}", e),
+            Ok(s) => bail!("ip link addr failed: {}", s),
+            Err(e) => bail!("ip link addr failed: {}", e),
         }
 
         let mut cmd = unshare::Command::new("/sbin/ip");
@@ -177,8 +189,8 @@ fn _setup_bridged(pid: u32, net: &BridgedNetwork, ip: IpAddr)
         debug!("Running {}", cmd.display(&Style::short()));
         match cmd.status() {
             Ok(s) if s.success() => {}
-            Ok(s) => bail!("ip link failed: {}", s),
-            Err(e) => bail!("ip link failed: {}", e),
+            Ok(s) => bail!("ip link child up failed: {}", s),
+            Err(e) => bail!("ip link child up failed: {}", e),
         }
 
         if let Some(gw) = net.default_gateway {
@@ -233,8 +245,8 @@ fn _setup_isolated(child: u32) -> Result<(), Error> {
     debug!("Running {}", cmd.display(&Style::short()));
     match cmd.status() {
         Ok(s) if s.success() => {}
-        Ok(s) => bail!("ip link failed: {}", s),
-        Err(e) => bail!("ip link failed: {}", e),
+        Ok(s) => bail!("ip link up lo failed: {}", s),
+        Err(e) => bail!("ip link up lo failed: {}", e),
     }
     Ok(())
 }
