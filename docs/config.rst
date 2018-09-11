@@ -33,6 +33,8 @@ There are three roles which influence lithos containers.
    :local:
 
 
+.. _container-overview:
+
 Developer
 ---------
 
@@ -91,13 +93,14 @@ Note the following things:
 1. It doesn't define where filesystem root is because config itself lies in
    the filesystem root.
 2. Volumes don't specify path in the host filesystem, it's a virtual path
-   (`/db` in this case). This is because otherwise the config would depend
+   (``/db`` in this case). This is because otherwise the config would depend
    on exact filesystem layout on host system **and** in some cases it might
    be a vulnerability (or at least exposure of unnecessary data). Later we'll
    describe how it's mapped to the real filesystem.
 
 Container operates inside a **sandbox** defined by platform maintainers.
 
+.. _sandbox-overview:
 
 Platform Maintainer
 -------------------
@@ -106,7 +109,7 @@ Platform maintainers define how containers are run. They define :ref:`sandbox
 config<sandbox_config>` and :ref:`master config<master_config>`.
 
 Former defines sandbox for a specific application.
-Let's see example (don't use it in production see below):
+Let's see an example *(don't use it in production, see below)*:
 
 .. code-block:: yaml
 
@@ -148,16 +151,16 @@ Note the following things:
    number ``1`` (i.e. first non-root user)
 4. This scheme works for 99% applications. But in case you need containers in
    containers or some other specific scenario you can enlarge uid-map and
-   allowed groups as much as system allows.
+   allowed groups as much as OS allows.
 
 The id ``10002`` is arbitrary. You can use any one. For security and monitoring
 purposes you should keep separate user ids for each app. Whether they are
 same across the cluster or allocated on each node is irrelevant unless you
-have shared filesystem between nodes. Keeping them same across cluster is
-still recommended for easier debugging.
+have shared filesystem between machines. *Keeping them same uids across
+cluster is still recommended for easier monitoring and debugging*.
 
 You can allow uid ``0`` too. When using uid name spaces it **should not**
-cause any elevated privileges. But this allows creating mountpoints, creating
+cause any elevated privileges. But this allows creating mountpoints, spawning
 other namespaces and do lots of things which creates larger vector of attack.
 This has caused vulnerabilities due to kernel bugs in the past.
 
@@ -165,7 +168,7 @@ This has caused vulnerabilities due to kernel bugs in the past.
 Filesystem
 ``````````
 
-As you have already seen sandbox config defines a place with container
+As you have already seen, sandbox config defines a place with container
 base directories:
 
 .. code-block:: yaml
@@ -174,8 +177,9 @@ base directories:
    image-dir-levels: 1   # default value
 
 In this config, directories named like this ``/opt/app1-images/some-name1``
-serve as the root directory for the containers (we'll show later how to find
-out which specific directory is used now). With this config:
+serve as the root directory for containers(we'll show later how to find out
+which specific directory is used now). They are mounted **readonly**. With this
+config:
 
 .. code-block:: yaml
 
@@ -183,7 +187,7 @@ out which specific directory is used now). With this config:
    image-dir-levels: 2
 
 Images are located in ``/opt/app2-images/service1/version1``. I.e. two
-directory components to the image dir. Arbitrary :opt:`image-dir-levels`
+directory components below the image dir. Arbitrary :opt:`image-dir-levels`
 can be used. Only fixed number of components supported for each specific
 sandbox, though.
 
@@ -195,7 +199,7 @@ Extra directories can be specified as follows:
       /timezones: /usr/share/timezones
 
     writable-paths:
-      /data: /var/lib/app1-database
+      /db: /var/lib/app1-database
 
 There are virtual paths on the left. These can be mounted by referencing them
 in :ref:`container config <container_config>`:
@@ -208,7 +212,7 @@ in :ref:`container config <container_config>`:
     - --port=8080
     volumes:
       /etc/timezones: !Readonly /timezones
-      /var/lib/sqlite: !Persistent /data
+      /var/lib/sqlite: !Persistent /db
 
 This allows platform maintainers to move directories around in the host
 system and map different directories on different systems without ever
@@ -219,7 +223,10 @@ Network
 ```````
 
 Sandbox also contains network configuration. By default all containers have
-host network. There is also support for bridged network:
+host network (i.e. they operate in the same network namespace, just like
+non-containerized processes).
+
+There is also support for bridged network:
 
 .. code-block:: yaml
 
@@ -234,6 +241,9 @@ have its own network config with separate IP address (see below which one) but
 all of them derive their configuration from the sandbox config.
 
 Different sandboxes may have the same or different bridged network configs.
+
+
+See :ref:`reference <sandbox_config>` for more info.
 
 .. _master-overview:
 
@@ -262,7 +272,7 @@ You might also want to nullify :opt:`config-log-dir` if you don't use
     config-log-dir: null
 
 Usually, you don't need to set anything else. There are various directories
-for things in case you have non-standard filesystem layout. See
+to configure in case you have non-standard filesystem layout. See
 :ref:`reference <master_config>` for full list of settings.
 
 
@@ -275,7 +285,7 @@ container configs together. We call it :ref:`process config <process_config>`.
 The general idea is that this config is created by an orchestration system.
 I.e. system that decides where, which version and how many processes to run.
 This can be some real system like verwalter_ or just an ansible/chef/salt/bash
-script that writes needed config.
+script that writes required configs.
 
 Basically it looks like:
 
@@ -296,9 +306,15 @@ Basically it looks like:
 Here we run two kinds of services "web worker" with 2 instances
 (equal processes/containers) and "background worker" with 3 instances.
 
-The ``image`` is a directory relative to :ref:`image-dir` and ``config`` is
-the path inside the container. This must contain the number of path components
-specified in :ref:`image-dir-levels`.
+The ``image`` is a directory path relative to :opt:`image-dir`. Path must
+contain the number of path components specified in :opt:`image-dir-levels`.
+It is also expected that the diretory is immutable, so each new version
+of container is run from a different directory and directory path contains
+some notion of the container version.
+
+``config`` is the path inside the container. There is no limit on how many
+configs might be in the same container. Not all of them might be running at
+any moment in time.
 
 There are few other things that can be configured in this config.
 If you're using bridged networking, you need to specify IP address for each
@@ -315,7 +331,8 @@ container:
         - 10.64.0.10
         - 10.64.0.11
 
-And sometimes containers allow to customize their config with :ref:`variables`:
+And sometimes containers allow to customize their config with
+:ref:`variables <container_variables>`:
 
 
 .. code-block:: yaml
@@ -328,5 +345,6 @@ And sometimes containers allow to customize their config with :ref:`variables`:
       variables:
         queue_name: "main-queue"
 
+See :ref:`reference <process_config>` for more info.
 
 .. _verwalter: https://verwalter.readthedocs.io/en/latest/

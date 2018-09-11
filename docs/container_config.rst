@@ -24,6 +24,9 @@ The somewhat minimal configuration is looks like following:
     executable: /bin/sleep
     arguments: [60]
 
+See :ref:`overview <container-overview>` for guidelines.
+
+
 .. _container_variables:
 
 Variables

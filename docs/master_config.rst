@@ -10,7 +10,7 @@ Master configuration file is the one that usually at
 parameters. Minimal configuration is an *empty file* but it **must exist**
 anyway. Here is the reference of the parameters along with the default values:
 
-See :ref:`overview <master-overview>`. For guidelines.
+See :ref:`overview <master-overview>` for guidelines.
 
 .. opt:: sandboxes-dir
 
