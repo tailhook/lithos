@@ -14,8 +14,10 @@ Including:
 * A directory where image resides
 * Set of directories that are mounted inside the container (i.e. all writable
   directories for the container, the ``/tmp``...)
-* ulimit settings
-* cgroup limits
+* User and group limits
+
+See :ref:`overview <sandbox-overview>` for guidelines.
+
 
 Reference
 =========
