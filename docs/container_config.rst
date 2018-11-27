@@ -368,7 +368,7 @@ Reference
 
    mount
        (default ``nil``, which means "auto") Mount copied ``resolv.conf`` file
-       over ``/etc/resolf.conf``.
+       over ``/etc/resolv.conf``.
 
        `nil` enables mounting if ``/etc/resolv.conf`` is present
        in the container and is a file (not a symlink) and also

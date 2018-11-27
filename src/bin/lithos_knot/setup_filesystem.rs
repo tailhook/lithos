@@ -101,7 +101,7 @@ fn _prepare_state_dir(dir: &Path, local: &InstantiatedConfig,
     }
 
     prepare_resolv_conf(dir, local, tree)
-        .map_err(|e| format_err!("error preparing resolf.conf: {}", e))?;
+        .map_err(|e| format_err!("error preparing resolv.conf: {}", e))?;
     prepare_hosts_file(dir, local, tree)
         .map_err(|e| format_err!("error preparing hosts: {}", e))?;
     return Ok(());
@@ -169,7 +169,7 @@ fn mount_resolv_conf(root: &Path, local: &InstantiatedConfig,
         (false, None) => return Ok(()),
         (true, None) | (true, Some(true)) => {}
         (false, Some(true)) => {
-            bail!("/etc/resolf.conf is not a valid mount point");
+            bail!("/etc/resolv.conf is not a valid mount point");
         }
         (_, Some(false)) => return Ok(()),  // unreachable
     }
